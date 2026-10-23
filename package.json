@@ -2,19 +2,37 @@
   "name": "lantern-site",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=22.18"
+  },
   "scripts": {
     "dev": "next dev",
-    "build": "next build && node scripts/check.mjs out",
-    "build:demo": "DEMO=1 next build && node scripts/build-demo.mjs && node scripts/check.mjs dist",
-    "check": "node scripts/check.mjs out",
-    "test": "node scripts/test-engine.mjs"
+    "build": "next build && node scripts/check.ts out",
+    "build:demo": "DEMO=1 next build && node scripts/build-demo.ts && node scripts/check.ts dist",
+    "check": "node scripts/check.ts out",
+    "lint": "eslint .",
+    "typecheck": "next typegen && tsc --noEmit",
+    "format": "prettier --write .",
+    "test": "node scripts/test-engine.ts"
   },
   "dependencies": {
     "next": "16.4.2",
     "react": "19.3.1",
-    "react-dom": "19.3.1"
+    "react-dom": "19.3.1",
+    "tailwind-merge": "3.7.0"
   },
   "devDependencies": {
-    "javascript-obfuscator": "5.9.0"
+    "@tailwindcss/postcss": "4.3.3",
+    "@types/node": "22.20.5",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "eslint": "10.12.0",
+    "eslint-config-next": "16.4.2",
+    "javascript-obfuscator": "5.9.0",
+    "prettier": "3.9.10",
+    "prettier-plugin-tailwindcss": "0.8.1",
+    "schema-dts": "2.1.0",
+    "tailwindcss": "4.3.3",
+    "typescript": "6.0.3"
   }
 }

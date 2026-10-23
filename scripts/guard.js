@@ -1,4 +1,4 @@
-// Demo-only copy deterrent: app/layout.js loads it as /assets/rt.js when DEMO=1, and build-demo.mjs
+// Demo-only copy deterrent: app/layout.tsx loads it as /assets/rt.js when DEMO=1, and build-demo.ts
 // writes that file. It slows down casual copying
 // (right-click, select, copy, view-source and DevTools shortcuts); it cannot stop
 // someone who opens DevTools from the browser menu, disables JS or uses curl.
@@ -33,9 +33,13 @@
     if (mod && ['KeyA', 'KeyC', 'KeyX'].includes(e.code) && !editable(e.target)) return true;
     return false;
   };
-  addEventListener('keydown', (e) => {
-    if (!blocked(e)) return;
-    e.preventDefault();
-    e.stopPropagation();
-  }, { capture: true });
+  addEventListener(
+    'keydown',
+    (e) => {
+      if (!blocked(e)) return;
+      e.preventDefault();
+      e.stopPropagation();
+    },
+    { capture: true },
+  );
 })();

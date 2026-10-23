@@ -1,0 +1,7 @@
+.next
+out
+dist
+public
+lib/word-rush/words.ts
+package-lock.json
+next-env.d.ts
