@@ -3,14 +3,18 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "node scripts/check.mjs public",
-    "build": "node scripts/check.mjs public && node scripts/build-demo.mjs",
-    "serve": "python3 -m http.server 5195 --bind 127.0.0.1 --directory public",
-    "serve:demo": "python3 -m http.server 5196 --bind 127.0.0.1 --directory dist"
+    "dev": "next dev",
+    "build": "next build && node scripts/check.mjs out",
+    "build:demo": "DEMO=1 next build && node scripts/build-demo.mjs && node scripts/check.mjs dist",
+    "check": "node scripts/check.mjs out",
+    "test": "node scripts/test-engine.mjs"
+  },
+  "dependencies": {
+    "next": "16.4.2",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
   },
   "devDependencies": {
-    "esbuild": "0.28.2",
-    "html-minifier-terser": "7.2.0",
     "javascript-obfuscator": "5.9.0"
   }
 }

@@ -1,11 +1,11 @@
-// Pre-deploy check for a static site folder (default: public/).
+// Pre-deploy check for the built site folder (out/, or dist/ for the demo).
 // Fails on: local links/assets that don't exist, manifest icons that are missing or the
 // wrong size, sw.js precache paths that don't exist. Warns on [BRACKET] placeholders left
-// in pages (terms/privacy drafts). Run again after the client's zips are dropped in.
+// in pages (terms/privacy drafts).
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, extname, join, relative, resolve } from 'node:path';
 
-const root = resolve(process.argv[2] || 'public');
+const root = resolve(process.argv[2] || 'out');
 const errors = [];
 const warnings = [];
 
@@ -76,7 +76,8 @@ if (existsSync(sw)) {
   const code = readFileSync(sw, 'utf8');
   const paths = [...code.matchAll(/["'`](\/[^"'`\s$]*|\.\/[^"'`\s$]+)["'`]/g)].map((m) => m[1]);
   for (const path of new Set(paths)) {
-    if (/\.\w{2,12}$|^\/$|^\.\/$/.test(path) && !exists(path, sw)) errors.push(`sw.js: precache path missing ${path}`);
+    // Pages (/rules) and files (/icons/icon.svg); prefixes like /_next/static/ are skipped.
+    if ((!path.endsWith('/') || path === '/') && !exists(path, sw)) errors.push(`sw.js: precache path missing ${path}`);
   }
 } else {
   warnings.push('no sw.js at the root');

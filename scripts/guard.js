@@ -1,4 +1,5 @@
-// Demo-only copy deterrent, injected by build-demo.mjs. It slows down casual copying
+// Demo-only copy deterrent: app/layout.js loads it as /assets/rt.js when DEMO=1, and build-demo.mjs
+// writes that file. It slows down casual copying
 // (right-click, select, copy, view-source and DevTools shortcuts); it cannot stop
 // someone who opens DevTools from the browser menu, disables JS or uses curl.
 (() => {
