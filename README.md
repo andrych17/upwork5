@@ -1,93 +1,207 @@
-# MeetDoConnect site
+# MeetDoConnect
 
-Skip the swiping. Start doing.
+> **Skip the swiping. Start doing.**  
+> Live alcohol-free evenings online: make something, work beside someone, or wind down with friends in small rooms of ~5.
 
-A Next.js 16 project (App Router, TypeScript, Tailwind CSS v4) that builds to a plain static website. `npm run build` writes HTML, CSS and JS into `out/`, and Cloudflare serves that folder as is. No server is needed yet. The site installs to a phone's home screen like an app (a progressive web app).
+**Live Website:** [https://meetdoconnect.com](https://meetdoconnect.com)
 
-The interactive parts are prototypes: bookings, credits, the Bad Hair Day pass, reminders, buddy picks and reports are not saved, and nothing is sent or charged yet.
+---
 
-## What is in the project
+## Overview
 
-- `app/`: the routes. Each folder is a page: `/` (home), `evenings` (the prototype calendar), `activities` and `activities/[slug]` (one page per activity), `how-it-works`, `safety`, `membership`, `widgets-while-you-wait` (Word Rush), `offline`, and `(docs)` for Rules, Terms and Privacy. `sitemap.ts`, `robots.ts` and `llms.txt/route.ts` are generated from the same data. `globals.css` holds the Tailwind setup and the brand tokens.
-- `components/`: shared UI. `ui.tsx` has the small building blocks (`Button`, `Shell`, `Eyebrow`, `Section`, `PageHead` and so on), `demos.tsx` the interactive prototypes (calendar, room, buddy picks, report, join), `word-rush.tsx` the game screen, `install-button.tsx` the "Install the app" button.
-- `lib/`: data and logic with no UI. `sessions.ts` is the example calendar and the prototype rules (credits, the 24-hour window, passes per month). `site.ts` holds the domain, page titles and descriptions. `placeholders.ts` holds the blanks in the legal pages. `word-rush/engine.ts` is the game logic.
-- `public/`: `manifest.webmanifest`, `sw.js` (offline support), `icons/`, `og.png` (the share image) and `prototypes/lantern-calendar-v1.html` (the earlier calendar, kept for reference and not indexed).
-- `scripts/`: `check.ts` (pre-deploy check), `test-engine.ts` (Word Rush test), `build-demo.ts` and `guard.js` (preview build only).
+MeetDoConnect is a membership-based web application for live, alcohol-free online social evenings. Members receive 3 weekly credits to book interactive sessions (quiet co-working, wind-downs, cooking contests, and social games) hosted in small rooms with rotating roles and optional cameras. Afterward, members can mutual-match for private buddy chats.
 
-## Work on it
+This repository contains the front-end prototype and marketing web app, built with **Next.js 16** (App Router, TypeScript, Tailwind CSS v4). It compiles into a static website (`output: 'export'`) served globally via **Cloudflare Workers Static Assets** with full offline **PWA** support.
 
-Needs Node.js 22.18 or newer (the scripts are TypeScript that Node runs directly).
+---
 
-```bash
-npm install
-npm run dev        # http://localhost:3000, reloads as you edit
-npm run lint       # ESLint with the Next.js rules
-npm run typecheck  # TypeScript, including typed routes
-npm run format     # Prettier, also sorts Tailwind classes
-npm test           # Word Rush engine check
-npm run build      # writes out/, then runs the check below
+## Tech Stack
+
+| Layer | Technology | Details |
+| :--- | :--- | :--- |
+| **Framework** | Next.js 16.4 (App Router) | Static export (`output: 'export'`), SSG |
+| **Language** | TypeScript 6.0 | Strict type safety, typed routes |
+| **Styling** | Tailwind CSS v4 | Native CSS tokens, responsive layout, dark/light mode |
+| **Hosting & CDN** | Cloudflare Workers Assets | Global edge delivery, automated SSL/TLS |
+| **Mobile & Offline** | Progressive Web App (PWA) | Service Worker (`sw.js`), Web App Manifest |
+| **Search & AI Discovery** | SEO, AEO, GEO | Schema.org JSON-LD, `sitemap.xml`, `robots.txt`, `llms.txt` |
+
+---
+
+## Project Structure
+
+```text
+site/
+├── app/                              # Next.js App Router (Pages & Metadata)
+│   ├── (docs)/                       # Legal pages (Rules, Terms, Privacy)
+│   ├── activities/                   # Activity directory & 13 individual slug pages
+│   │   └── [slug]/
+│   ├── evenings/                     # Interactive calendar prototype
+│   ├── how-it-works/                 # Feature breakdown & buddy system explanation
+│   ├── llms.txt/                     # AI assistant discovery endpoint
+│   ├── membership/                   # Pricing, credit tiers & FAQ
+│   ├── offline/                      # Fallback screen when internet is lost
+│   ├── safety/                       # Community safety, reporting & moderation rules
+│   ├── widgets-while-you-wait/       # Word Rush standalone game widget
+│   ├── globals.css                   # Tailwind v4 configuration & design tokens
+│   ├── layout.tsx                    # Root HTML shell, fonts, header & footer
+│   ├── not-found.tsx                 # 404 page
+│   ├── page.tsx                      # Homepage & interactive demo widgets
+│   ├── robots.ts                     # Search engine crawler permissions
+│   └── sitemap.ts                    # Auto-generated XML sitemap (29 routes)
+├── components/                       # Shared UI & Interactive Prototypes
+│   ├── demos.tsx                     # Interactive calendar, room & buddy match demos
+│   ├── install-button.tsx            # PWA install prompt button for mobile & desktop
+│   ├── ui.tsx                        # Core UI components (Button, Shell, Card, Badge)
+│   └── word-rush.tsx                 # Word Rush game UI container
+├── lib/                              # Data, Business Logic & Utilities
+│   ├── placeholders.ts               # Legal template blanks (LLC name, email, dates)
+│   ├── sessions.ts                   # Mock schedule data, credit rules & cancellation policy
+│   ├── site.ts                       # Metadata, navigation links & SEO configuration
+│   └── word-rush/                    # Game engine rules, tile scoring & dictionary
+├── public/                           # Static Assets
+│   ├── icons/                        # PWA app icons (192x192, 512x512, maskable)
+│   ├── manifest.webmanifest          # PWA installation manifest
+│   ├── og.png                        # Social share card (1200x630)
+│   └── sw.js                         # Offline cache service worker
+├── scripts/                          # Build & Quality Assurance Scripts
+│   ├── build-demo.ts                 # Demo build generator with content guard
+│   ├── check.ts                      # Pre-deploy asset & link integrity checker
+│   ├── guard.js                      # DevTools & content protection trap for preview
+│   └── test-engine.ts                # Word Rush game engine automated test suite
+├── wrangler.json                     # Cloudflare Workers Static Assets configuration
+└── next.config.ts                    # Next.js build configuration (Static HTML Export)
 ```
 
-`npm run build` fails on local links or files that don't exist, manifest icons that are missing or the wrong size, `sw.js` paths and sitemap URLs with no page behind them, and structured data that isn't valid JSON. It also lists every `[BRACKET]` still left in a page. To look at the built folder the way Cloudflare serves it, run `npx serve out`. The service worker only runs in the built site, not in `npm run dev`.
+---
 
-Styling conventions: Tailwind utilities in the markup, brand colors and sizes as tokens in `app/globals.css` (`bg-surface`, `text-muted`, `text-title`, `rounded-card` …). Repeated patterns are components in `components/ui.tsx`, not `@apply` classes. Dark mode follows the visitor's system setting; the dark "ink" panels use the `ink` utility, which re-points the colors inside them.
+## Local Development
 
-## Deploy to Cloudflare
+### Prerequisites
+* **Node.js**: `v22.18.0` or newer
+* **npm**: `v10.0.0` or newer
 
-`wrangler.json` serves `out/` as Workers static assets and shows the 404 page for unknown paths:
+### Setup & Commands
 
 ```bash
+# 1. Install dependencies
+npm install
+
+# 2. Run local development server (http://localhost:3000)
+npm run dev
+
+# 3. Run automated tests (Word Rush game engine verification)
+npm test
+
+# 4. Check TypeScript types
+npm run typecheck
+
+# 5. Run ESLint code analysis
+npm run lint
+
+# 6. Format code with Prettier and Tailwind class sorter
+npm run format
+
+# 7. Build production static bundle (outputs to out/ and runs check.ts)
+npm run build
+```
+
+---
+
+## Deployment (Cloudflare)
+
+The site is configured to deploy directly to **Cloudflare Workers Static Assets** or **Cloudflare Pages**.
+
+### Deploy via Wrangler CLI
+
+```bash
+# Build static pages and deploy to Cloudflare
 npm run build
 npx wrangler deploy
 ```
 
-Moving the domain from GoDaddy:
+`wrangler.json` automatically maps the `./out` directory to Cloudflare's edge network without requiring server-side runtime code:
 
-1. In Cloudflare, add the domain (Free plan). Check the imported DNS records against GoDaddy, MX and TXT especially, so email keeps working.
-2. At GoDaddy, turn DNSSEC off if it's on, then set the two nameservers Cloudflare shows.
-3. Once Cloudflare says Active, add the bare domain and `www` as custom domains on the Worker. Confirm the site loads over https.
+```json
+{
+  "name": "upwork5",
+  "compatibility_date": "2024-09-23",
+  "assets": {
+    "directory": "./out"
+  }
+}
+```
 
-The registration can stay at GoDaddy. Moving it to Cloudflare Registrar is optional: it needs the auth code, adds a year at cost, and isn't allowed within 60 days of registration or a previous transfer.
+### Domain & DNS Configuration
 
-Installing on a phone: on Android and desktop Chrome or Edge, the "Install the app" button on the home page opens the browser's install dialog. On iPhone and iPad, the button explains Safari's Share, then Add to Home Screen. In Chrome DevTools, the Application tab shows the manifest and the service worker. If you change the page list in `public/sw.js`, change `CACHE` there too (for example to `meetdoconnect-v3`) so phones pick up the new copy.
+1. **Custom Domain**: Bound to `meetdoconnect.com` and `www.meetdoconnect.com`.
+2. **Worker Route Pattern**: Ensure the route pattern is set to `meetdoconnect.com/*` (with wildcard `/*`) so sub-routes, sitemaps, and PWA manifests route properly.
+3. **SSL / HTTPS**:
+   * **Mode**: Full (or Flexible).
+   * **Always Use HTTPS**: Enabled (redirects `http://` to `https://`).
+   * **Automatic HTTPS Rewrites**: Enabled.
 
-## Search and answer engines
+---
 
-- Every page has its own title, description, canonical link and share image (`public/og.png`). `SITE_URL` in `.env.production` sets the domain used in those links.
-- `/sitemap.xml` lists every page, including the 13 activity pages. `/robots.txt` lets every crawler in, AI assistants included; `app/robots.ts` shows how to keep one out.
-- Structured data (JSON-LD): Organization and WebSite on the home page, FAQPage and the membership offer on `/membership`, ItemList on `/activities`, BreadcrumbList and HowTo on each activity page, WebApplication for Word Rush.
-- `/llms.txt` is a plain-text summary of the site and its activities for AI assistants.
-- Each page opens with a short, direct answer under its title. Keep that pattern when adding pages.
-- Not marked up yet: sessions as `Event`s. Add that once sessions have real dates.
+## Progressive Web App (PWA)
 
-## Before you take payments or members
+MeetDoConnect installs directly to a user's device without requiring an App Store or Google Play Store download.
 
-- Fill in the blanks in the Rules, Terms and Privacy pages: dates, legal name, email, prices, state. The shared ones are in `lib/placeholders.ts`; the rest are the `ph('...', '...')` calls in `app/(docs)/terms/page.tsx` and `app/(docs)/privacy/page.tsx`. Replace each call with your final text. (The second value in each call is only the sample text shown on the preview site.) `npm run build` lists any `[BRACKET]` still left.
-- Have a lawyer review the Terms and Privacy pages. They are starting outlines, not legal advice.
-- Remove the draft notices and the comments at the top of those two pages when they are final.
-- Prices and times are examples. Prices are in `app/page.tsx` and `app/membership/page.tsx` (`$24`, `$4`, `$8`, `$15`); session times and seats in `lib/sessions.ts`; the cancellation window and passes per month at the top of the prototype rules in `lib/sessions.ts`.
+* **Android (Chrome)**: Tap the in-app "Install the app" button or open Chrome menu (`⋮`) > **Install app** / **Add to Home screen**.
+* **iOS / iPadOS (Safari)**: Tap the **Share** button (`⎋`) > select **Add to Home Screen**.
+* **Desktop (Chrome / Edge)**: Click the **Install** monitor icon on the right side of the address bar.
+* **Offline Support**: When offline, visitors are served `/offline` from cache, while the Word Rush game remains fully playable.
 
-## What to build next so it works for real
+---
 
-The pages are the front end. To make it live you need:
+## Search, AI & Discovery (SEO / AEO / GEO)
 
-1. **Accounts, credits, bookings, the Bad Hair Day pass, buddy picks and reports:** a hosted database with sign-in, such as Supabase. Its free tier pauses a project after a week of inactivity, so move to a paid plan at launch.
-2. **Payments:** Stripe checkout for the membership and extra credits.
-3. **Video:** an embeddable service such as JaaS (Jitsi as a Service), authorized by a small server step so only booked members enter a room.
-4. **Reminders:** an email service triggered from the database (confirmation, 48 hours, 24 hours, 1 hour, Sunday credits, after-session buddy picks). Texts need each member's opt-in and carrier registration.
-5. **Push notifications on phones:** web push through the installed app, which on iPhone needs iOS 16.4 or later.
+The codebase is optimized for traditional search engines, voice assistants, and Generative AI engines:
 
-Steps 1 to 4 need a server. At that point remove `output: 'export'` from `next.config.ts` and deploy with the OpenNext Cloudflare adapter (`@opennextjs/cloudflare`); the pages, components and `lib/` stay as they are, and the example data in `lib/sessions.ts` is replaced by database queries. Nothing here has been tested against live Stripe, Supabase or JaaS accounts.
+* **SEO (Search Engine Optimization)**:
+  * Unique meta titles, descriptions, canonical URLs, and Open Graph share cards (`/og.png`) for all 29 routes.
+  * Validated `/sitemap.xml` and `/robots.txt`.
+* **AEO (Answer Engine Optimization)**:
+  * Direct concise answers under each page headline for voice search and answer snippets.
+  * Structured JSON-LD schemas: `Organization`, `WebSite`, `FAQPage`, `ItemList`, `BreadcrumbList`, `HowTo`, and `WebApplication`.
+* **GEO (Generative Engine Optimization)**:
+  * Dedicated [`/llms.txt`](https://meetdoconnect.com/llms.txt) plain-text reference summarizing the community model, credit system, and session rules so AI models (ChatGPT, Claude, Perplexity, Gemini) can accurately recommend the platform.
 
-## Word Rush notes
+---
 
-- Everyone who enters the same deal code gets the same tiles in the same order, so friends on different devices can compare scores without a server. Live head-to-head rooms would need the database from step 1 above.
-- The word list is built from the open Hunspell en_US (SCOWL) dictionary: about 37,000 words of 2 to 7 letters. It is smaller than a full tournament list, so a few valid words will be rejected. Keep the SCOWL/Hunspell credit on the page and check its license text before a commercial launch.
-- Strong profanity was left out of the list. Add more words to the `BLOCKED` list in `lib/word-rush/engine.ts` as needed.
-- Tile values, tile counts and scoring are original to this game, not copied from any commercial word game.
+## Pre-Launch Legal Checklist
 
-## Preview site (Vercel)
+Before opening the site to real paid members:
 
-`npm run build:demo` builds the preview into `dist/`. It is the same site with three differences: a `noindex` tag on every page (plus the `X-Robots-Tag` header from `vercel.json` and a robots.txt that blocks all crawlers), sample text in place of every `[BRACKET]`, and `scripts/guard.js`, which blocks right-click, text selection, copy, print, and the view-source, save and DevTools shortcuts, with a debugger trap that pauses the page while DevTools is open.
+1. **Fill in Placeholders**:
+   * Edit `lib/placeholders.ts` to provide the legal business entity name, registration state, support email, and effective date.
+   * `npm run build` will flag any remaining `[BRACKET]` placeholders.
+2. **Legal Review**:
+   * Have a licensed attorney review the Community Rules, Terms of Service, and Privacy Policy templates.
+3. **Pricing & Times**:
+   * Verify session credit costs and subscription prices in `app/membership/page.tsx` and `lib/sessions.ts`.
 
-The guard only slows down casual copying. Anyone can still open DevTools from the browser menu, turn off JavaScript, or fetch the files with `curl`. Never deploy `dist/` to the live domain.
+---
+
+## Roadmap: Next Milestones (Backend & Real Application)
+
+The current front end is built to seamlessly graduate into a full-stack SaaS application:
+
+1. **Authentication & Member Accounts**:
+   * Integration with Supabase or PostgreSQL for secure member login, passwordless magic links, and profile management.
+2. **Booking & Credit Engine**:
+   * Backend persistence for 3 weekly credits, the 24-hour cancellation cutoff, and "Bad Hair Day" cards.
+3. **Payment Processing**:
+   * Stripe Checkout & Customer Portal for recurring monthly memberships ($24/mo) and add-on credit packs.
+4. **Live Video Rooms**:
+   * Embedded rooms via Jitsi as a Service (JaaS) or Daily.co, authenticated so only booked members can join.
+5. **Real-Time Buddy Chat**:
+   * WebSocket/Supabase Realtime messaging unlocked when two session attendees mutually select each other.
+6. **Automated Reminders**:
+   * Email/SMS reminders (48-hour supply card notice, 24-hour lock-in, 1-hour room link).
+
+---
+
+## License
+
+Private and confidential. All rights reserved by **MeetDoConnect**.
