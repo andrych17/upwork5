@@ -67,3 +67,4 @@
 .core.ink .hint { color: var(--ink-muted); }
 
 @media (prefers-reduced-motion: reduce) { .tile:hover:not(.used), .tile:active:not(.used) { transform: none; } }
+.credit { margin-top: clamp(48px, 8vw, 96px); max-width: 65ch; }

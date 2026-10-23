@@ -1,57 +1,39 @@
 import Link from 'next/link';
-import { BuddyPick, JoinButton, Planner, ReportDemo, RoomDemo } from './home-demos';
-import { SESSIONS } from './sessions';
-import './home.css';
+import ActivityGroups from './activity-groups';
+import JsonLd from './json-ld';
+import { SESSIONS, activityHref } from './sessions';
+import { DEFINITION, SITE_NAME, SITE_URL, TAGLINE, pageMeta } from './site';
+
+export const metadata = pageMeta('/');
 
 const STEPS = [
-  ['Choose', 'You get 3 credits a week. Spend one on any session in the calendar below.'],
+  ['Choose', 'You get 3 credits a week. Spend one on any session in the calendar.'],
   ['Prepare', 'Each booking unlocks a prep card with supplies, cost and the run of show.'],
   ['Do', 'Join at the start time. The screen leads: a timer, prompts and rotating roles.'],
   ['Find your buddies', 'Afterward, tap who you would do it again with. If they tap you too, you are activity buddies.'],
-];
-const LAYERS = [
-  ['Paid and verified', 'A card, an email and a phone number are needed to join.'],
-  ['Probation', 'New members start in structured sessions and open rooms after 5 clean sessions.'],
-  ['Code of conduct', 'No nudity, no harassment, no selling, no recording. Breaking it ends the membership.'],
-  ['Rooms lock', 'Rooms lock 10 minutes after the start, so nobody joins late.'],
-  ['Two-report rule', 'Two reports from different members within 30 days suspends the account until it is reviewed.'],
-  ['Weekly review', 'A person reviews the report queue every week.'],
-];
-const FAQ = [
-  ['Is this a sobriety program?', 'No. It is for anyone who wants a good evening without alcohol, whether they drink sometimes or never. It is not treatment or recovery support.'],
-  ['Do I need to be creative or on camera?', 'No. Most sessions walk you through each step, and cameras are optional.'],
-  ['What do I need to buy?', 'The prep card lists supplies, mostly kitchen and craft-drawer items, with an estimated cost.'],
-  ['Can kids join?', 'Kitchen-Table Lab, Mocktail Studio and Cards and Collage Night are made for families. An adult books and stays in the room.'],
-  ['Are sessions recorded?', 'No, so people can relax and take part.'],
 ];
 const friday = SESSIONS.filter((s) => s.day === 'Fri');
 
 export default function Home() {
   return (
-    <div className="wrap home">
-      <div className="bar">
-        <div className="logo">Meet<b>Do</b>Connect</div>
-        <nav className="nav" aria-label="Sections">
-          <a href="#evenings">This week</a>
-          <a href="#rooms">How rooms work</a>
-          <a href="#buddies">Buddies</a>
-          <a href="#safety">Safety</a>
-          <a href="#join">Join</a>
-          <Link href="/widgets-while-you-wait">Play while you wait</Link>
-        </nav>
-      </div>
+    <main id="main">
+      <JsonLd data={{
+        '@graph': [
+          { '@type': 'Organization', '@id': `${SITE_URL}/#org`, name: SITE_NAME, url: `${SITE_URL}/`, logo: `${SITE_URL}/icons/icon-512.png`, slogan: TAGLINE, description: DEFINITION },
+          { '@type': 'WebSite', '@id': `${SITE_URL}/#website`, name: SITE_NAME, url: `${SITE_URL}/`, publisher: { '@id': `${SITE_URL}/#org` } },
+        ],
+      }} />
 
-      <main id="main">
-        <header className="hero">
-          <span className="eyebrow">Live evenings, no bar</span>
-          <h1>Meet<span className="do">Do</span>Connect</h1>
-          <div className="hero-body">
+      <header className="hero">
+        <span className="eyebrow">Live evenings, no bar</span>
+        <h1>Meet<span className="do">Do</span>Connect</h1>
+        <div className="hero-body">
           <div className="hero-copy">
-            <p className="tagline"><span>Skip the swiping. Start doing.</span></p>
+            <p className="tagline"><span>{TAGLINE}</span></p>
             <p className="lead">Pick three live sessions a week. Make something, work beside someone, or wind down. Prep a simple supply card, log in, and find people worth doing things with.</p>
             <div className="actions">
-              <a className="btn primary big" href="#evenings">See this week&apos;s evenings<span className="arrow" aria-hidden="true">↓</span></a>
-              <a className="btn big" href="#join">Membership</a>
+              <Link className="btn primary big" href="/evenings">See this week&apos;s evenings<span className="arrow" aria-hidden="true">→</span></Link>
+              <Link className="btn big" href="/membership">Membership</Link>
             </div>
             <ul className="chips">
               <li>No bar. No hangover.</li>
@@ -72,7 +54,7 @@ export default function Home() {
                   <li key={s.id}>
                     <span className="t">{s.time}</span>
                     <span>
-                      <strong>{s.title}</strong>
+                      <Link href={activityHref(s.title)}><strong>{s.title}</strong></Link>
                       <span className="muted">{s.kind} · {s.mins} min · {s.seats - s.taken} seats left</span>
                     </span>
                   </li>
@@ -81,115 +63,78 @@ export default function Home() {
               <p className="muted small">One credit books any standard session. Cameras optional.</p>
             </div>
           </aside>
-          </div>
-        </header>
-
-        <section className="section" aria-labelledby="how-title">
-          <div className="section-head">
-            <span className="eyebrow">Four steps</span>
-            <h2 id="how-title">How it works</h2>
-          </div>
-          <ol className="steps">
-            {STEPS.map(([title, text], i) => (
-              <li key={title} className="step">
-                <span className="step-num" aria-hidden="true">0{i + 1}</span>
-                <h3>{title}</h3>
-                <p>{text}</p>
-              </li>
-            ))}
-          </ol>
-        </section>
-
-        <Planner />
-
-        <section id="rooms" className="section split">
-          <div className="section-head">
-            <span className="eyebrow">No host needed</span>
-            <h2>A room that runs itself</h2>
-            <p className="lead">Social sessions split into rooms of about 5. A shared timer, prompts that appear at the right moment, and rotating roles do the leading. Quiet sessions have no talking and need no structure beyond a check-in and check-out.</p>
-            <p className="muted">Each round starts in pairs for three minutes, then merges into the group. The activity comes first, so the talking has something to talk about.</p>
-          </div>
-          <RoomDemo />
-        </section>
-
-        <section id="buddies" className="section split flip">
-          <div className="section-head">
-            <span className="eyebrow">Friendship first</span>
-            <h2>Find activity buddies</h2>
-            <p className="lead">After a session, tap who you would do it again with. Nobody sees who you tapped. If two people tap each other, a private buddy chat opens. Dating can happen on its own, with no pressure and no label.</p>
-            <ul className="assure">
-              <li>Only first names, and only people you shared a session with.</li>
-              <li>One-sided picks stay private. Neither person is told.</li>
-              <li>Either buddy can unmatch or block at any time.</li>
-              <li>MeetDoConnect never shares contact details. Buddies decide whether to swap them.</li>
-            </ul>
-          </div>
-          <BuddyPick />
-        </section>
-
-        <section id="safety" className="section">
-          <div className="section-head">
-            <span className="eyebrow">Safe without a supervisor</span>
-            <h2>Built so bad behavior is costly and short</h2>
-          </div>
-          <div className="safety">
-            <ol className="layers">
-              {LAYERS.map(([title, text], i) => (
-                <li key={title}>
-                  <span className="layer-num" aria-hidden="true">{i + 1}</span>
-                  <div><h3>{title}</h3><p className="muted">{text}</p></div>
-                </li>
-              ))}
-            </ol>
-            <ReportDemo />
-          </div>
-          <p className="muted">No system is risk-free. Families join on one adult account, with an adult in the room.</p>
-        </section>
-
-        <section id="join" className="section">
-          <div className="section-head">
-            <span className="eyebrow">Pricing</span>
-            <h2>Membership</h2>
-          </div>
-          <div className="join">
-            <div className="shell">
-              <div className="core ink price-card">
-                <span className="eyebrow">Founding member</span>
-                <div className="price">$24<small> per month</small></div>
-                <p>3 credits every week. One credit books any standard session.</p>
-                <ul className="checks">
-                  <li>Extra credits: $4 each, or a 5-pack for $15</li>
-                  <li>Add a partner or family for $8 a month; your household uses one credit per session</li>
-                  <li>Cancel a booking up to 3 hours ahead and the credit returns</li>
-                </ul>
-                <JoinButton />
-              </div>
-            </div>
-            <div className="faq-list">
-              <h3>Questions</h3>
-              {FAQ.map(([q, a]) => (
-                <details key={q} className="faq">
-                  <summary>{q}</summary>
-                  <p>{a}</p>
-                </details>
-              ))}
-            </div>
-          </div>
-        </section>
-      </main>
-
-      <footer className="site-foot">
-        <div>
-          <div className="logo">Meet<b>Do</b>Connect</div>
-          <div>Skip the swiping. Start doing.</div>
         </div>
-        <nav aria-label="Footer">
-          <Link href="/widgets-while-you-wait">Word Rush</Link>
-          <Link href="/rules">Community Rules</Link>
-          <Link href="/terms">Terms</Link>
-          <Link href="/privacy">Privacy</Link>
-        </nav>
-      </footer>
-    </div>
+      </header>
+
+      <section className="section" aria-labelledby="what">
+        <div className="section-head">
+          <span className="eyebrow">How it works</span>
+          <h2 id="what">What is MeetDoConnect?</h2>
+          <p className="lead answer">{DEFINITION}</p>
+        </div>
+        <ol className="steps">
+          {STEPS.map(([title, text], i) => (
+            <li key={title} className="step">
+              <span className="step-num" aria-hidden="true">0{i + 1}</span>
+              <h3>{title}</h3>
+              <p>{text}</p>
+            </li>
+          ))}
+        </ol>
+      </section>
+
+      <section className="section" aria-labelledby="evenings">
+        <div className="section-head">
+          <span className="eyebrow">Activities</span>
+          <h2 id="evenings">This week&apos;s evenings</h2>
+          <p className="lead">Make something, work beside someone, or wind down. Every session has a prep card with supplies, cost and the run of show.</p>
+        </div>
+        <ActivityGroups />
+        <div className="actions">
+          <Link className="btn primary" href="/evenings">Open the calendar</Link>
+          <Link className="btn" href="/activities">All activities</Link>
+        </div>
+      </section>
+
+      <section className="section" aria-labelledby="inside">
+        <div className="section-head">
+          <span className="eyebrow">Friendship first</span>
+          <h2 id="inside">No bar. No hangover.</h2>
+        </div>
+        <div className="features">
+          <Link className="feature shell" href="/how-it-works">
+            <span className="core ink">
+              <span className="eyebrow">No host needed</span>
+              <strong>A room that runs itself</strong>
+              <span className="muted">Social sessions split into rooms of about 5. A shared timer, prompts that appear at the right moment, and rotating roles do the leading.</span>
+              <span className="go" aria-hidden="true">→</span>
+            </span>
+          </Link>
+          <Link className="feature" href="/how-it-works#buddies">
+            <strong>Find activity buddies</strong>
+            <span className="muted">After a session, tap who you would do it again with. If two people tap each other, a private buddy chat opens.</span>
+            <span className="go" aria-hidden="true">→</span>
+          </Link>
+          <Link className="feature" href="/safety">
+            <strong>Built so bad behavior is costly and short</strong>
+            <span className="muted">Paid and verified members, probation, rooms that lock, a two-report rule and a weekly review.</span>
+            <span className="go" aria-hidden="true">→</span>
+          </Link>
+        </div>
+      </section>
+
+      <section className="section" aria-labelledby="price">
+        <div className="shell">
+          <div className="core ink band">
+            <div>
+              <span className="eyebrow">Founding member</span>
+              <h2 id="price" className="price">$24<small> per month</small></h2>
+              <p>3 credits every week. One credit books any standard session.</p>
+            </div>
+            <Link className="btn primary big" href="/membership">See membership<span className="arrow" aria-hidden="true">→</span></Link>
+          </div>
+        </div>
+      </section>
+    </main>
   );
 }

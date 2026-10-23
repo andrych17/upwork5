@@ -1,9 +1,7 @@
 import { EMAIL, UPDATED } from '../placeholders';
+import { pageMeta } from '../../site';
 
-export const metadata = {
-  title: 'Community Rules',
-  description: 'How MeetDoConnect sessions work and what we expect from every member.',
-};
+export const metadata = pageMeta('/rules');
 
 export default function Rules() {
   return (

@@ -1,6 +1,6 @@
 // Pre-deploy check for the built site folder (out/, or dist/ for the demo).
 // Fails on: local links/assets that don't exist, manifest icons that are missing or the
-// wrong size, sw.js precache paths that don't exist. Warns on [BRACKET] placeholders left
+// wrong size, sw.js precache paths and sitemap URLs that don't exist. Warns on [BRACKET] placeholders left
 // in pages (terms/privacy drafts).
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, extname, join, relative, resolve } from 'node:path';
@@ -35,6 +35,9 @@ for (const file of files.filter((f) => extname(f) === '.html')) {
   }
   for (const [, url] of html.matchAll(/url\(\s*["']?([^"')]+)["']?\s*\)/gi)) {
     if (!external(url) && !exists(url, file)) errors.push(`${rel(file)}: missing ${url} (css url)`);
+  }
+  for (const [, json] of html.matchAll(/<script type="application\/ld\+json">([^<]*)<\/script>/g)) {
+    try { JSON.parse(json); } catch (err) { errors.push(`${rel(file)}: invalid JSON-LD (${err.message})`); }
   }
   const brackets = [...new Set([...html.matchAll(/\[[A-Z][A-Z0-9 _/&.,'-]{2,}\]/g)].map((m) => m[0]))];
   if (brackets.length) warnings.push(`${rel(file)}: placeholders left ${brackets.slice(0, 8).join(' ')}${brackets.length > 8 ? ' …' : ''}`);
@@ -81,6 +84,15 @@ if (existsSync(sw)) {
   }
 } else {
   warnings.push('no sw.js at the root');
+}
+
+// Every sitemap URL must be a page in the build.
+const sitemap = join(root, 'sitemap.xml');
+if (existsSync(sitemap)) {
+  for (const [, loc] of readFileSync(sitemap, 'utf8').matchAll(/<loc>([^<]+)<\/loc>/g)) {
+    const path = new URL(loc).pathname;
+    if (!exists(path === '/' ? '/index.html' : path, sitemap)) errors.push(`sitemap.xml: no page for ${loc}`);
+  }
 }
 
 for (const w of warnings) console.log(`warn  ${w}`);

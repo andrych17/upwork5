@@ -4,7 +4,7 @@
    Next.js build files under /_next/static/ never change once built, so those come from the cache first.
    Bump CACHE when you change the lists below. */
 var CACHE = "meetdoconnect-v2";
-var PAGES = ["/", "/rules", "/terms", "/privacy", "/offline"];
+var PAGES = ["/", "/evenings", "/activities", "/how-it-works", "/safety", "/membership", "/rules", "/terms", "/privacy", "/offline"];
 var FILES = ["/manifest.webmanifest", "/icons/icon.svg", "/icons/icon-192.png", "/icons/icon-512.png"];
 
 function save(cache, url) {

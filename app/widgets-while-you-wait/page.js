@@ -1,25 +1,23 @@
-import Link from 'next/link';
+import JsonLd from '../json-ld';
+import { SITE_URL, pageMeta } from '../site';
 import WordRush from './word-rush';
 import './game.css';
 
-export const metadata = {
-  title: 'Widgets While You Wait',
-  description: 'A free speed word game to play while you wait for your MeetDoConnect session.',
-};
+export const metadata = pageMeta('/widgets-while-you-wait');
 
 export default function Widgets() {
   return (
-    <div className="wrap">
-      <div className="bar">
-        <Link className="logo" href="/">Meet<b>Do</b>Connect</Link>
-        <nav className="nav" aria-label="Main">
-          <Link href="/">Home</Link>
-          <Link href="/widgets-while-you-wait" aria-current="page">Play</Link>
-          <Link href="/rules">Rules</Link>
-        </nav>
-      </div>
-
+    <>
       <main id="main" className="game">
+        <JsonLd data={{
+          '@type': 'WebApplication',
+          name: 'Word Rush',
+          url: `${SITE_URL}/widgets-while-you-wait`,
+          applicationCategory: 'GameApplication',
+          operatingSystem: 'Any',
+          isAccessibleForFree: true,
+          offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+        }} />
         <header className="intro">
           <span className="eyebrow">Widgets While You Wait · Free</span>
           <h1>Word Rush</h1>
@@ -39,9 +37,7 @@ export default function Widgets() {
         <WordRush />
       </main>
 
-      <footer className="site-foot">
-        <p>Word list: Hunspell en_US dictionary (SCOWL, by Kevin Atkinson and contributors). Some valid words may be missing, and Word Rush is an original game, not affiliated with any commercial word game.</p>
-      </footer>
-    </div>
+      <p className="credit small muted">Word list: Hunspell en_US dictionary (SCOWL, by Kevin Atkinson and contributors). Some valid words may be missing, and Word Rush is an original game, not affiliated with any commercial word game.</p>
+    </>
   );
 }

@@ -1,9 +1,7 @@
 import { EMAIL, LLC, UPDATED, isDemo, ph } from '../placeholders';
+import { pageMeta } from '../../site';
 
-export const metadata = {
-  title: 'Privacy Policy',
-  description: 'What MeetDoConnect collects, why, and the choices you have.',
-};
+export const metadata = pageMeta('/privacy');
 
 const PAYMENTS = ph('PAYMENT PROCESSOR', 'Stripe');
 

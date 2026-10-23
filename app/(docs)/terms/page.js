@@ -1,10 +1,8 @@
 import Link from 'next/link';
 import { EMAIL, LLC, UPDATED, isDemo, ph } from '../placeholders';
+import { pageMeta } from '../../site';
 
-export const metadata = {
-  title: 'Terms of Service',
-  description: 'The terms for using MeetDoConnect.',
-};
+export const metadata = pageMeta('/terms');
 
 /*
   DRAFT TEMPLATE. This page is a starting outline, not legal advice.

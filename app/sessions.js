@@ -24,3 +24,15 @@ export const SESSIONS = [
   { id: "trivia-thu", day: "Thu", time: "6:30 pm", title: "Trivia Showdown", kind: "Challenge", mode: R, mins: 60, seats: 15, taken: 6, who: "Solo, couple, friends", blurb: "Each room of five is a team. Four rounds, a live scoreboard, and bragging rights.", cost: "$0", supplies: ["Pen and paper", "The scoresheet from your prep card", "A team name ready to go"], run: ["5 min: team names", "40 min: four rounds of ten questions", "10 min: scoreboard and a tiebreaker", "5 min: pick next week's category"] },
   { id: "cook-sat", day: "Sat", time: "6:30 pm", title: "Pantry Cook-Off", kind: "Challenge", mode: R, mins: 60, seats: 10, taken: 4, who: "Solo, couple", blurb: "Everyone gets the same five ingredients and 15 minutes. Cook your best dish and score each other's.", cost: "about $8", supplies: ["4 eggs", "4 tortillas", "A handful of grated cheese", "2 tomatoes", "1 onion", "Salt, pepper and a pan"], run: ["10 min: the rules and the five ingredients", "15 min: cook", "20 min: show and score each dish", "15 min: swap your best tip"], safety: "Adults handle knives and the stove. Wash hands and surfaces after handling raw eggs." }
 ];
+
+export const slugify = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
+// One entry per activity (some run twice a week), each with its own page at /activities/<slug>.
+export const ACTIVITIES = Object.values(SESSIONS.reduce((acc, s) => {
+  const slug = slugify(s.title);
+  acc[slug] ??= { ...s, slug, times: [] };
+  acc[slug].times.push(`${FULL[s.day]} ${s.time}`);
+  return acc;
+}, {}));
+export const KINDS = [...new Set(ACTIVITIES.map((a) => a.kind))];
+export const activityHref = (title) => `/activities/${slugify(title)}`;

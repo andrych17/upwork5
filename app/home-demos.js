@@ -1,8 +1,9 @@
 'use client';
 
-// The interactive prototypes on the home page. Nothing here is saved, sent or charged.
+// The interactive prototypes on the public pages. Nothing here is saved, sent or charged.
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { ALLDAYS, DAYS, FULL, IDX, SESSIONS } from './sessions';
+import { ALLDAYS, DAYS, FULL, IDX, SESSIONS, activityHref } from './sessions';
 
 const BASE_CREDITS = 3;
 const PREFS = [
@@ -100,13 +101,7 @@ export function Planner() {
 
   return (
     <>
-      <section id="evenings" className="section">
-        <div className="section-head">
-          <span className="eyebrow">Prototype calendar</span>
-          <h2>This week&apos;s evenings</h2>
-          <p className="note">Example seats and times (Central). Bookings are not saved and nothing is sent or charged.</p>
-        </div>
-
+      <section className="calendar" aria-label="Calendar">
         <div className="credits" role="group" aria-label="Weekly credits">
           <div className="credits-left">
             <div className="pips" aria-hidden="true">
@@ -143,7 +138,7 @@ export function Planner() {
                   <span className="time">{s.time} · {s.mins} min</span>
                   <span className="tags"><span className="tag">{s.kind}</span><span className="tag">{s.mode}</span></span>
                 </div>
-                <h3>{s.title}</h3>
+                <h3><Link href={activityHref(s.title)}>{s.title}</Link></h3>
                 <p>{s.blurb}</p>
                 <div className="meta">
                   <span>For: {s.who}</span>

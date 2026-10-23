@@ -1,6 +1,8 @@
 // Blanks the client fills in before launch (with a lawyer for terms and privacy).
 // The live build shows them as [BRACKETS]; the Vercel preview (DEMO=1) shows sample values so the pages read whole.
-export const isDemo = process.env.DEMO === '1';
+import { isDemo } from '../site';
+
+export { isDemo };
 export const ph = (label, sample) => (isDemo ? sample : `[${label}]`);
 
 export const EMAIL = ph('EMAIL', 'hello@example.com');
