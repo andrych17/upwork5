@@ -89,7 +89,7 @@ export default async function ActivityPage({ params }: PageProps<'/activities/[s
       </header>
 
       <div className="grid gap-7 pt-[clamp(28px,4vw,48px)] lg:grid-cols-[4fr_8fr] lg:items-start lg:gap-x-12">
-        <Shell className="lg:sticky lg:top-6">
+        <Shell className="lg:sticky lg:top-(--sticky-top)">
           <dl>
             {facts.map(([label, value]) => (
               <div key={label} className="grid gap-0.5 border-t border-line py-3 first:border-t-0 first:pt-0">

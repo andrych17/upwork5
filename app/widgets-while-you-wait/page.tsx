@@ -34,7 +34,7 @@ export default function Widgets() {
             offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
           }}
         />
-        <header className="grid content-start gap-4 lg:sticky lg:top-6">
+        <header className="grid content-start gap-4 lg:sticky lg:top-(--sticky-top)">
           <Eyebrow>Widgets While You Wait · Free</Eyebrow>
           <h1 className="text-[clamp(3rem,9vw,6rem)] leading-[0.92] tracking-[-0.05em]">Word Rush</h1>
           <Lead>

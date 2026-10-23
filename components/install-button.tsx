@@ -1,24 +1,26 @@
 'use client';
 
-// "Install the app" for the PWA. Chrome, Edge and Android hand us a beforeinstallprompt event to show their
-// install dialog; iPhone and iPad have no such API, so there the button explains Add to Home Screen instead.
-// Hidden when the site already runs as an installed app, or when the browser offers neither.
+// "Install the app" for the PWA, shown on the home page and in the mobile menu.
+// - Chrome, Edge and Android hand us a beforeinstallprompt event; the button opens the browser's install dialog.
+// - Android before that event (Chrome waits for a tap and some time on the site): the button explains the ⋮ menu.
+// - iPhone and iPad have no install API, so the button explains Safari's Add to Home Screen.
+// - Hidden when the site already runs as an installed app, and on desktop browsers that offer no install.
 import { useState, useSyncExternalStore } from 'react';
-import { Button } from './ui';
+import { Button, cn } from './ui';
 
 interface BeforeInstallPromptEvent extends Event {
   prompt(): Promise<void>;
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
 }
-type Mode = 'prompt' | 'ios' | 'installed' | 'none';
+type Mode = 'prompt' | 'ios' | 'android' | 'installed' | 'none';
 
-// The event fires once, early, so listen at module load and keep it until the button is pressed.
+// The event fires once per page load, so listen as soon as this module loads (SiteHeader imports it on every page).
+// The browser's own install banner is left alone; this button is a second way in.
 let deferred: BeforeInstallPromptEvent | null = null;
 const listeners = new Set<() => void>();
 const emit = () => listeners.forEach((listener) => listener());
 if (typeof window !== 'undefined') {
   window.addEventListener('beforeinstallprompt', (e) => {
-    e.preventDefault(); // keep Chrome's own mini bar away; the button below opens the same dialog
     deferred = e as BeforeInstallPromptEvent;
     emit();
   });
@@ -40,13 +42,19 @@ function getMode(): Mode {
     matchMedia('(display-mode: standalone)').matches || (navigator as { standalone?: boolean }).standalone;
   if (standalone) return 'installed';
   if (deferred) return 'prompt';
-  const ios =
-    /iphone|ipad|ipod/i.test(navigator.userAgent) ||
-    (/macintosh/i.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
-  return ios ? 'ios' : 'none';
+  const ua = navigator.userAgent;
+  if (/iphone|ipad|ipod/i.test(ua) || (/macintosh/i.test(ua) && navigator.maxTouchPoints > 1)) return 'ios';
+  if (/android/i.test(ua)) return 'android';
+  return 'none';
 }
 
-export default function InstallButton() {
+const HELP = {
+  ios: 'In Safari, tap the Share button, then Add to Home Screen. MeetDoConnect opens from your home screen like an app.',
+  android:
+    'In Chrome, tap the ⋮ menu at the top right, then Install app (or Add to Home screen). MeetDoConnect opens from your home screen like an app.',
+} as const;
+
+export default function InstallButton({ inMenu = false }: { inMenu?: boolean }) {
   const mode = useSyncExternalStore(subscribe, getMode, () => 'none' as Mode);
   const [showHelp, setShowHelp] = useState(false);
 
@@ -58,28 +66,29 @@ export default function InstallButton() {
     emit();
   }
 
+  if (mode === 'installed' || mode === 'none') return null;
+  const style = inMenu
+    ? 'min-h-11 w-full justify-between rounded-xl px-4 text-[0.95rem] text-fg hover:bg-shell'
+    : 'justify-self-start ring-1 ring-line';
+  const label = mode === 'ios' ? 'Add to Home Screen' : 'Install the app';
+
   if (mode === 'prompt') {
     return (
-      <Button variant="quiet" onClick={install} className="justify-self-start ring-1 ring-line">
-        Install the app
-      </Button>
+      <div className={cn('grid', inMenu && 'border-t border-line pt-1')}>
+        <Button variant="quiet" onClick={install} className={style}>
+          {label}
+        </Button>
+      </div>
     );
   }
-  if (mode !== 'ios') return null;
   return (
-    <div className="grid gap-2">
-      <Button
-        variant="quiet"
-        aria-expanded={showHelp}
-        onClick={() => setShowHelp(!showHelp)}
-        className="justify-self-start ring-1 ring-line"
-      >
-        Add to Home Screen
+    <div className={cn('grid gap-2', inMenu && 'border-t border-line pt-1')}>
+      <Button variant="quiet" aria-expanded={showHelp} onClick={() => setShowHelp(!showHelp)} className={style}>
+        {label}
       </Button>
       {showHelp && (
-        <p role="status" className="max-w-prose text-sm text-muted">
-          In Safari, tap the Share button, then Add to Home Screen. MeetDoConnect opens from your home screen like an
-          app.
+        <p role="status" className={cn('max-w-prose text-sm text-muted', inMenu && 'px-4 pb-2')}>
+          {HELP[mode]}
         </p>
       )}
     </div>

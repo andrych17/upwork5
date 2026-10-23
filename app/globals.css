@@ -27,6 +27,8 @@
   --ink-line: rgb(237 245 240 / 0.12);
   --lift: 0 1px 2px rgb(19 36 31 / 0.05), 0 18px 40px -24px rgb(19 36 31 / 0.35);
   --highlight: rgb(255 255 255 / 0.8);
+  /* where sticky panels stop, just below the sticky site header */
+  --sticky-top: 5.75rem;
   color-scheme: light;
 }
 

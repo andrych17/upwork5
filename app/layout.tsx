@@ -4,7 +4,7 @@ import Link from 'next/link';
 import Script from 'next/script';
 import type { ReactNode } from 'react';
 import RegisterSW from '@/components/register-sw';
-import SiteNav from '@/components/site-nav';
+import SiteHeader from '@/components/site-header';
 import { Logo } from '@/components/ui';
 import { PAGES, SITE_NAME, SITE_URL, TAGLINE, isDemo } from '@/lib/site';
 import './globals.css';
@@ -68,10 +68,7 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
           Skip to content
         </a>
         <div className="mx-auto max-w-site">
-          <header className="flex flex-wrap items-center justify-between gap-x-5 gap-y-3 py-4.5">
-            <Logo href="/" />
-            <SiteNav />
-          </header>
+          <SiteHeader />
           {children}
           <footer className="mt-section flex flex-wrap items-baseline justify-between gap-x-8 gap-y-3.5 border-t border-line pt-7 text-[0.9rem] text-muted">
             <div>

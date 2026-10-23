@@ -211,7 +211,7 @@ export function Planner() {
         <div
           role="group"
           aria-label="Weekly credits"
-          className="sticky top-[max(10px,env(safe-area-inset-top))] z-10 flex flex-wrap items-center justify-between gap-x-6 gap-y-3 rounded-[22px] bg-surface py-2.5 pr-2.5 pl-4.5 shadow-lift ring-1 ring-line"
+          className="sticky top-(--sticky-top) z-10 flex flex-wrap items-center justify-between gap-x-6 gap-y-3 rounded-[22px] bg-surface py-2.5 pr-2.5 pl-4.5 shadow-lift ring-1 ring-line"
         >
           <div className="flex min-w-0 flex-wrap items-center gap-x-6 gap-y-2">
             <div className="flex items-center gap-3.5">
@@ -563,7 +563,7 @@ export function ReportDemo() {
   const [reason, setReason] = useState<string>(REASONS[0]);
   const [sent, setSent] = useState('');
   return (
-    <Shell className="lg:sticky lg:top-6">
+    <Shell className="lg:sticky lg:top-(--sticky-top)">
       <h3 className="text-xl">Try the one-tap report</h3>
       <p className="text-muted">Report, mute and leave stay on screen in every room.</p>
       <div className="flex flex-wrap items-center gap-2.5">
