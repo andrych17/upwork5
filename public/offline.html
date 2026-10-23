@@ -1,29 +1,21 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>You're offline · Lantern</title>
-  <meta name="theme-color" content="#1e2622">
-  <link rel="icon" href="/icons/favicon.svg" type="image/svg+xml">
-  <style>
-    body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 1.5rem; box-sizing: border-box;
-      background: #f5efe4; color: #1e2622; font: 400 1rem/1.6 system-ui, -apple-system, "Segoe UI", sans-serif; }
-    main { max-width: 26rem; }
-    img { width: 56px; height: 56px; border-radius: 14px; }
-    h1 { font: 600 2rem/1.15 Georgia, "Times New Roman", serif; margin: 1.2rem 0 0.6rem; }
-    p { margin: 0 0 1.4rem; color: #4a524d; }
-    button { font: 600 0.95rem system-ui, sans-serif; min-height: 48px; padding: 0 1.5rem; border: 0; border-radius: 999px;
-      background: #1e2622; color: #f5efe4; cursor: pointer; }
-    button:focus-visible { outline: 2px solid #9c5a0f; outline-offset: 3px; }
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Offline | MeetDoConnect</title>
+<meta name="theme-color" content="#0e6a5c">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="assets/pages.css">
 </head>
 <body>
+<div class="wrap">
+  <div class="bar"><a class="logo" href="index.html">Meet<b>Do</b>Connect</a></div>
   <main>
-    <img src="/icons/favicon.svg" alt="">
-    <h1>You're offline</h1>
-    <p>Pages you opened before still work. This one loads again once you're back online.</p>
-    <button type="button" onclick="location.reload()">Try again</button>
+    <h1>You are offline</h1>
+    <p>MeetDoConnect needs a connection to book and join sessions. Check your connection and try again.</p>
+    <p><a href="index.html">Back to the home page</a></p>
   </main>
+</div>
 </body>
 </html>

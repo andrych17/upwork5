@@ -1,84 +1,83 @@
-// Bump CACHE when the precache list changes; old caches are dropped on activate.
-const CACHE = 'lantern-v1';
-const PRECACHE = [
-  '/',
-  '/rules.html',
-  '/terms.html',
-  '/privacy.html',
-  '/offline.html',
-  '/widgets-while-you-wait.html',
-  '/prototypes/lantern-calendar-v1.html',
-  '/assets/site.css',
-  '/assets/app.js',
-  '/assets/memory-widget.js',
-  '/manifest.webmanifest',
-  '/icons/favicon.svg',
-  '/icons/icon-192.png',
-  '/icons/icon-512.png',
+/* MeetDoConnect service worker: keeps the shell available offline.
+   Pages load from the network first so updates show up right away,
+   and fall back to the saved copy when there is no connection.
+   Bump CACHE when you change the file list. */
+var CACHE = "meetdoconnect-v1";
+var CORE = [
+  "./",
+  "index.html",
+  "rules.html",
+  "terms.html",
+  "privacy.html",
+  "offline.html",
+  "assets/pages.css",
+  "manifest.webmanifest",
+  "icons/icon.svg",
+  "icons/icon-192.png",
+  "icons/icon-512.png"
 ];
 
-// Cloudflare Pages (and Vercel cleanUrls) redirect /page.html to /page, so pages
-// are stored under the extensionless path and looked up the same way.
-const pageKey = (url) => {
-  const path = new URL(url, self.location.origin).pathname;
-  return path.replace(/\/index\.html$/, '/').replace(/\.html$/, '');
-};
+self.addEventListener("install", function (event) {
+  event.waitUntil(
+    caches.open(CACHE).then(function (cache) {
+      return Promise.all(CORE.map(function (url) {
+        return cache.add(url).catch(function () { /* skip a file that fails */ });
+      }));
+    }).then(function () { return self.skipWaiting(); })
+  );
+});
 
-async function precache() {
-  const cache = await caches.open(CACHE);
-  await Promise.all(PRECACHE.map(async (url) => {
-    const res = await fetch(url, { cache: 'reload' });
-    if (!res.ok) throw new Error(`precache ${url}: ${res.status}`);
-    // A redirected response can't answer a navigation, so keep a clean copy.
-    const copy = res.redirected
-      ? new Response(await res.blob(), { status: res.status, statusText: res.statusText, headers: res.headers })
-      : res;
-    await cache.put(url.endsWith('.html') || url === '/' ? pageKey(url) : url, copy);
-  }));
+self.addEventListener("activate", function (event) {
+  event.waitUntil(
+    caches.keys().then(function (keys) {
+      return Promise.all(keys.filter(function (k) { return k !== CACHE; }).map(function (k) { return caches.delete(k); }));
+    }).then(function () { return self.clients.claim(); })
+  );
+});
+
+// A copy saved through a redirect (/offline.html -> /offline) can't answer a page load,
+// so rebuild it as a plain response.
+function unredirect(res) {
+  if (!res || !res.redirected) return res;
+  return res.blob().then(function (body) {
+    return new Response(body, { status: res.status, statusText: res.statusText, headers: res.headers });
+  });
 }
 
-self.addEventListener('install', (event) => {
-  event.waitUntil(precache().then(() => self.skipWaiting()));
-});
+self.addEventListener("fetch", function (event) {
+  var req = event.request;
+  if (req.method !== "GET") return;
+  var url = new URL(req.url);
+  if (url.origin !== self.location.origin) return; // leave fonts and other sites alone
 
-self.addEventListener('activate', (event) => {
-  event.waitUntil((async () => {
-    for (const key of await caches.keys()) if (key !== CACHE) await caches.delete(key);
-    await self.clients.claim();
-  })());
-});
-
-self.addEventListener('fetch', (event) => {
-  const req = event.request;
-  if (req.method !== 'GET' || new URL(req.url).origin !== self.location.origin) return;
-
-  // Pages: network first so edits show up, cached copy or offline.html without a connection.
-  if (req.mode === 'navigate') {
-    event.respondWith((async () => {
-      try {
-        const res = await fetch(req);
-        if (res.ok && res.type === 'basic') {
-          const copy = res.clone();
-          caches.open(CACHE).then((cache) => cache.put(pageKey(req.url), copy));
-        }
+  if (req.mode === "navigate") {
+    event.respondWith(
+      fetch(req).then(function (res) {
+        var copy = res.clone();
+        caches.open(CACHE).then(function (c) { c.put(req, copy); });
         return res;
-      } catch {
-        return (await caches.match(pageKey(req.url))) || (await caches.match('/offline'));
-      }
-    })());
+      }).catch(function () {
+        // Cloudflare Pages serves /rules.html as /rules, so also try the .html copy saved at install.
+        var page = url.pathname.replace(/\/$/, "/index") + ".html";
+        return caches.match(req)
+          .then(function (hit) { return hit || caches.match(page); })
+          .then(function (hit) { return hit || caches.match("offline.html"); })
+          .then(unredirect);
+      })
+    );
     return;
   }
 
-  // Everything else: serve from cache, refresh in the background.
-  event.respondWith((async () => {
-    const cache = await caches.open(CACHE);
-    const hit = await cache.match(req);
-    const network = fetch(req)
-      .then((res) => {
-        if (res.ok && res.type === 'basic') cache.put(req, res.clone());
+  event.respondWith(
+    caches.match(req).then(function (hit) {
+      if (hit) return hit;
+      return fetch(req).then(function (res) {
+        if (res && res.ok) {
+          var copy = res.clone();
+          caches.open(CACHE).then(function (c) { c.put(req, copy); });
+        }
         return res;
-      })
-      .catch(() => hit || Response.error());
-    return hit || network;
-  })());
+      });
+    })
+  );
 });

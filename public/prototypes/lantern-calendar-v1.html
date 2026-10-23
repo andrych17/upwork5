@@ -1,52 +1,306 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Lantern calendar v1 · Lantern preview</title>
-  <meta name="theme-color" content="#1e2622">
-  <link rel="manifest" href="/manifest.webmanifest">
-  <link rel="icon" href="/icons/favicon.svg" type="image/svg+xml">
-  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lora:wght@500;600&family=Plus+Jakarta+Sans:wght@400;500;600&display=swap">
-  <link rel="stylesheet" href="/assets/site.css">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Lantern Club Calendar (early prototype)</title>
+<meta name="description" content="Earlier calendar-only prototype, kept for reference.">
+<meta name="theme-color" content="#0e6a5c">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Figtree:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: sticky credit bar over a day-tab strip; two session cards per evening; booked cards open a prep card. */
+:root {
+  --bg: #f1f5f2;
+  --surface: #ffffff;
+  --fg: #13241f;
+  --muted: #55675f;
+  --line: #d3dfd8;
+  --accent: #0e6a5c;
+  --accent-fg: #ffffff;
+  --lantern: #e29a2b;
+  --warn: #9a4a12;
+  --warn-bg: #fbeede;
+  --display: "Bricolage Grotesque", "Trebuchet MS", sans-serif;
+  --body: "Figtree", "Segoe UI", system-ui, sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0d1614; --surface: #15221f; --fg: #e5eee9; --muted: #98aaa2; --line: #28392f;
+    --accent: #5fcdb6; --accent-fg: #07211b; --lantern: #f0b454; --warn: #f2b985; --warn-bg: #2d2114;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0d1614; --surface: #15221f; --fg: #e5eee9; --muted: #98aaa2; --line: #28392f;
+  --accent: #5fcdb6; --accent-fg: #07211b; --lantern: #f0b454; --warn: #f2b985; --warn-bg: #2d2114;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 16px; line-height: 1.5;
+  padding-block: 20px 48px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap { max-width: 920px; margin: 0 auto; display: grid; gap: 20px; }
+h1, h2, h3 { font-family: var(--display); line-height: 1.15; margin: 0; text-wrap: balance; }
+h1 { font-size: clamp(1.7rem, 4vw, 2.4rem); }
+h2 { font-size: 1.15rem; }
+h3 { font-size: 1.1rem; }
+p { margin: 0; }
+button { font: inherit; color: inherit; cursor: pointer; }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+.top { display: grid; gap: 6px; }
+.eyebrow { font-size: 0.78rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.note { background: var(--warn-bg); color: var(--warn); border-radius: 8px; padding: 8px 12px; font-size: 0.88rem; }
+
+.credits {
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; justify-content: space-between;
+}
+.credits-left { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; min-width: 0; }
+.pips { display: flex; gap: 6px; flex-wrap: wrap; }
+.pip { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--lantern); background: transparent; }
+.pip.used { background: var(--lantern); }
+.credit-text { font-variant-numeric: tabular-nums; font-weight: 600; }
+.credit-sub { color: var(--muted); font-size: 0.85rem; }
+.btn {
+  border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 8px 14px; font-weight: 600;
+}
+.btn:hover { border-color: var(--accent); }
+.btn.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn.quiet { padding: 6px 10px; font-weight: 500; color: var(--muted); }
+
+.tabs { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
+.tab {
+  flex: 0 0 auto; border: 1px solid var(--line); background: var(--surface); border-radius: 999px;
+  padding: 8px 16px; font-weight: 600; display: flex; gap: 8px; align-items: center;
+}
+.tab[aria-selected="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+.tab .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--lantern); }
+
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 14px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 16px; display: grid; gap: 10px; align-content: start; min-width: 0; }
+.card.booked { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.card-head { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.time { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--accent); }
+.tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.tag { font-size: 0.75rem; border: 1px solid var(--line); border-radius: 6px; padding: 2px 8px; color: var(--muted); }
+.meta { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 0.88rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.msg { font-size: 0.85rem; color: var(--warn); }
+
+details.prep { border-top: 1px solid var(--line); padding-top: 10px; }
+details.prep summary { cursor: pointer; font-weight: 600; color: var(--accent); }
+.prep-body { display: grid; gap: 10px; margin-top: 10px; font-size: 0.93rem; }
+.prep-body h4 { margin: 0 0 4px; font-size: 0.78rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.prep-body ul, .prep-body ol { margin: 0; padding-left: 20px; }
+.prep-body li { margin: 2px 0; }
+
+.week { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 16px; display: grid; gap: 10px; }
+.row { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; border-top: 1px solid var(--line); padding-top: 10px; }
+.row:first-of-type { border-top: 0; padding-top: 0; }
+.empty { color: var(--muted); }
+.foot { color: var(--muted); font-size: 0.85rem; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .card, .pip { transition: border-color 0.15s, background 0.15s; }
+}
+</style>
 </head>
 <body>
+<div class="wrap">
   <header class="top">
-    <div class="wrap">
-      <a class="brand" href="/"><img src="/icons/favicon.svg" alt="" width="34" height="34"> Lantern <small>preview</small></a>
-      <nav class="nav" aria-label="Main">
-        <a href="/">Home</a>
-        <a href="/rules.html">Community Rules</a>
-        <a href="/widgets-while-you-wait.html">Widgets While You Wait</a>
-        <a href="/prototypes/lantern-calendar-v1.html" aria-current="page">Calendar v1</a>
-      </nav>
-    </div>
+    <span class="eyebrow">Lantern Club · Prototype</span>
+    <h1>Pick your evenings</h1>
+    <p class="credit-sub">Three credits a week. One credit books one session. Book, open the prep card, and log in at start time.</p>
   </header>
 
-  <main class="page">
-    <div class="wrap">
-      <div>
-        <span class="eyebrow">Slot · /prototypes/lantern-calendar-v1.html</span>
-        <h1>Lantern calendar v1</h1>
-        <p class="muted">The earlier calendar-only page, kept for reference. It stays out of the main navigation on the live site unless you want it there.</p>
-      </div>
-      <div class="shell">
-        <div class="slot">
-          <p>Your <code>lantern-calendar-v1.html</code> goes here as-is.</p>
-        </div>
-      </div>
-    </div>
-  </main>
+  <p class="note">Prototype with example seats and times (Central). Bookings are not saved and no payment happens.</p>
 
-  <footer class="foot">
-    <div class="wrap">
-      <p>Preview by Andry. Placeholder text only; your files replace each page.</p>
-      <nav aria-label="Legal"><a href="/terms.html">Terms</a><a href="/privacy.html">Privacy</a></nav>
+  <section class="credits" aria-label="Weekly credits">
+    <div class="credits-left">
+      <div class="pips" id="pips" aria-hidden="true"></div>
+      <div>
+        <div class="credit-text" id="creditText"></div>
+        <div class="credit-sub">Credits reset Sunday night</div>
+      </div>
     </div>
-  </footer>
-  <script src="/assets/app.js" defer></script>
+    <button class="btn" id="addCredit" type="button">Add a credit · $4</button>
+  </section>
+
+  <div class="tabs" role="tablist" aria-label="Day of the week" id="tabs"></div>
+
+  <section aria-live="polite">
+    <div class="grid" id="sessions"></div>
+  </section>
+
+  <section class="week" aria-label="My week">
+    <h2>My week</h2>
+    <div id="myWeek"></div>
+  </section>
+
+  <p class="foot">Cancel up to 3 hours before start and the credit comes back. In the live site, a prep card unlocks 48 hours ahead.</p>
+</div>
+<script>
+(function () {
+  var DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  var FULL = { Mon: "Monday", Tue: "Tuesday", Wed: "Wednesday", Thu: "Thursday", Fri: "Friday", Sat: "Saturday" };
+  var S = [
+    { id: "cowork-mon", day: "Mon", time: "6:30 pm", title: "Quiet Co-Work", kind: "Work beside someone", host: "Member-hosted", mins: 60, seats: 12, taken: 7, who: ["Solo"],
+      blurb: "Silent focus time with a goal check-in and check-out. Bring any task.",
+      cost: "$0", supplies: ["The one task you will work on", "Water or tea", "Phone out of reach"],
+      run: ["5 min: type one goal in chat", "45 min: silent work, camera optional", "10 min: check out on what got done"] },
+    { id: "wind-mon", day: "Mon", time: "8:00 pm", title: "Wind-Down", kind: "Care", host: "Member-hosted", mins: 45, seats: 12, taken: 5, who: ["Solo", "Couple", "Family"],
+      blurb: "Gentle stretching, slow breathing and a short journal. Relaxation only, not therapy.",
+      cost: "about $2", supplies: ["Blanket", "Herbal tea", "Journal and pen"],
+      run: ["5 min: arrive", "10 min: gentle stretching", "10 min: breathe in for 4, out for 6", "10 min: journal from three prompts", "10 min: quiet, cameras off"] },
+    { id: "skin-tue", day: "Tue", time: "6:30 pm", title: "Skin Ritual", kind: "Care", host: "Host-led", mins: 60, seats: 10, taken: 6, who: ["Solo", "Couple"],
+      blurb: "Mix an oat mask and a green tea mist, and learn to read ingredient labels.",
+      cost: "about $4", supplies: ["2 tbsp finely ground oats", "1 tbsp plain yogurt or mashed ripe banana", "1 tsp honey", "Cooled green tea in a clean spray bottle", "Cucumber slices and mint"],
+      run: ["10 min: skin basics and labels", "15 min: mix and apply for 10 minutes", "15 min: rinse and mist", "20 min: swap low-waste routines"],
+      safety: "Patch test on the inner arm first. Skip any ingredient you are allergic to, use the same day, discard leftovers. General wellness, not medical advice." },
+    { id: "write-tue", day: "Tue", time: "8:00 pm", title: "Write Together", kind: "Think", host: "Member-hosted", mins: 60, seats: 12, taken: 4, who: ["Solo"],
+      blurb: "Two quiet writing sprints around a shared prompt, with an optional read-aloud.",
+      cost: "$0", supplies: ["Notebook or blank document", "A drink", "A pick from this week's prompt list"],
+      run: ["5 min: prompt", "20 min: write", "5 min: stretch", "20 min: write", "10 min: optional read-aloud of one sentence"] },
+    { id: "lab-wed", day: "Wed", time: "6:30 pm", title: "Kitchen-Table Lab", kind: "Together", host: "Host-led", mins: 45, seats: 10, taken: 3, who: ["Family"],
+      blurb: "Turn red cabbage into a color-changing indicator and test what is in your pantry.",
+      cost: "about $5", supplies: ["Quarter of a red cabbage", "2 cups hot water", "4 clear cups", "Lemon juice", "1 tsp baking soda in half a cup of water", "White vinegar", "Plain sparkling water", "A spoon"],
+      run: ["10 min: steep, strain and cool the cabbage water", "25 min: add a different liquid to each cup and record colors", "10 min: guess which turns pink, green or blue"],
+      safety: "An adult supervises, nothing is tasted, wash hands after." },
+    { id: "idea-wed", day: "Wed", time: "8:00 pm", title: "Idea Lab", kind: "Think", host: "Host-led", mins: 75, seats: 12, taken: 8, who: ["Solo", "Couple"],
+      blurb: "Bring a half-formed idea. Small groups build on it with yes-and rounds.",
+      cost: "$0", supplies: ["One sentence describing your idea", "Sticky notes or a blank page"],
+      run: ["5 min: rules", "45 min: three hot seats of 15 min in groups of 4", "10 min: regroup", "15 min: next-step notes"] },
+    { id: "cowork-thu", day: "Thu", time: "6:30 pm", title: "Quiet Co-Work", kind: "Work beside someone", host: "Member-hosted", mins: 60, seats: 12, taken: 2, who: ["Solo"],
+      blurb: "Silent focus time with a goal check-in and check-out. Bring any task.",
+      cost: "$0", supplies: ["The one task you will work on", "Water or tea", "Phone out of reach"],
+      run: ["5 min: type one goal in chat", "45 min: silent work, camera optional", "10 min: check out on what got done"] },
+    { id: "sketch-thu", day: "Thu", time: "8:00 pm", title: "Botanical Sketch Night", kind: "Make", host: "Host-led", mins: 75, seats: 10, taken: 9, who: ["Solo", "Couple"],
+      blurb: "Draw a single leaf or herb sprig slowly, from outline to shading.",
+      cost: "about $5", supplies: ["Paper", "Pencil", "Black pen", "One leaf or herb sprig per person", "A cup of tea"],
+      run: ["10 min: slow contour warm-up", "30 min: sketch the sprig", "20 min: add shading", "15 min: show and tell"] },
+    { id: "mock-fri", day: "Fri", time: "6:30 pm", title: "Mocktail Studio", kind: "Make", host: "Host-led", mins: 60, seats: 10, taken: 5, who: ["Couple", "Family"],
+      blurb: "Build and score two versions of a cranberry-ginger spritz, then name your favorite.",
+      cost: "about $6", supplies: ["120 ml unsweetened cranberry juice", "1 tsp honey or maple syrup", "2 thin slices fresh ginger", "Sparkling water", "Ice", "Lime wedge", "Rosemary sprig"],
+      run: ["10 min: balance sweet, sour, bitter and fizz", "25 min: build two versions", "15 min: tasting scorecards", "10 min: name your drink"] },
+    { id: "tea-fri", day: "Fri", time: "8:00 pm", title: "Tea Duel for Two", kind: "Together", host: "Host-led", mins: 60, seats: 10, taken: 2, who: ["Couple", "Solo"],
+      blurb: "Blind-taste three teas, score them, then trade conversation prompts.",
+      cost: "about $12", supplies: ["Three teas or herbal blends, labeled A, B and C by a helper", "Kettle", "Two mugs", "Tasting card: aroma, flavor, finish, score out of 10"],
+      run: ["10 min: brew", "30 min: blind taste and score, then guess the type", "20 min: conversation prompts"] },
+    { id: "cards-sat", day: "Sat", time: "6:30 pm", title: "Cards and Collage Night", kind: "Make", host: "Host-led", mins: 75, seats: 10, taken: 4, who: ["Solo", "Couple", "Family"],
+      blurb: "Cut and paste three collage postcards, then write a note on one to mail.",
+      cost: "about $8", supplies: ["Scrap paper", "Old magazines or catalogs", "Glue stick", "Scissors", "3 pieces of card stock cut to postcard size", "A pen"],
+      run: ["10 min: pick a palette and theme", "40 min: build three postcards", "15 min: show and tell", "10 min: write a note to mail"] },
+    { id: "wind-sat", day: "Sat", time: "8:00 pm", title: "Wind-Down", kind: "Care", host: "Member-hosted", mins: 45, seats: 12, taken: 1, who: ["Solo", "Couple", "Family"],
+      blurb: "Gentle stretching, slow breathing and a short journal. Relaxation only, not therapy.",
+      cost: "about $2", supplies: ["Blanket", "Herbal tea", "Journal and pen"],
+      run: ["5 min: arrive", "10 min: gentle stretching", "10 min: breathe in for 4, out for 6", "10 min: journal from three prompts", "10 min: quiet, cameras off"] }
+  ];
+
+  var state = { day: "Wed", booked: {}, extra: 0, flash: {} };
+  var BASE = 3;
+
+  var $ = function (id) { return document.getElementById(id); };
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+  function usedCount() { return Object.keys(state.booked).length; }
+  function total() { return BASE + state.extra; }
+  function byId(id) { for (var i = 0; i < S.length; i++) if (S[i].id === id) return S[i]; }
+
+  function renderCredits() {
+    var t = total(), u = usedCount(), html = "";
+    for (var i = 0; i < t; i++) html += '<span class="pip' + (i < u ? " used" : "") + '"></span>';
+    $("pips").innerHTML = html;
+    var left = t - u;
+    $("creditText").textContent = left + " of " + t + " credits left this week";
+  }
+
+  function renderTabs() {
+    $("tabs").innerHTML = DAYS.map(function (d) {
+      var n = S.filter(function (s) { return s.day === d && state.booked[s.id]; }).length;
+      return '<button class="tab" role="tab" type="button" data-day="' + d + '" aria-selected="' + (d === state.day) + '">' +
+        FULL[d] + (n ? '<span class="dot" title="' + n + ' booked"></span>' : "") + "</button>";
+    }).join("");
+  }
+
+  function prepHtml(s) {
+    return '<details class="prep"><summary>Prep card · ' + esc(s.cost) + '</summary><div class="prep-body">' +
+      "<div><h4>Supplies</h4><ul>" + s.supplies.map(function (x) { return "<li>" + esc(x) + "</li>"; }).join("") + "</ul></div>" +
+      "<div><h4>Run of show</h4><ol>" + s.run.map(function (x) { return "<li>" + esc(x) + "</li>"; }).join("") + "</ol></div>" +
+      (s.safety ? '<p class="msg">' + esc(s.safety) + "</p>" : "") +
+      '<div class="actions"><button class="btn quiet" type="button" data-copy="' + s.id + '">Copy card text</button></div>' +
+      "</div></details>";
+  }
+
+  function renderSessions() {
+    var list = S.filter(function (s) { return s.day === state.day; });
+    $("sessions").innerHTML = list.map(function (s) {
+      var isB = !!state.booked[s.id];
+      var left = s.seats - s.taken - (isB ? 1 : 0);
+      var full = left <= 0 && !isB;
+      var seatTxt = full ? "Full" : left + " seat" + (left === 1 ? "" : "s") + " left";
+      var action = isB
+        ? '<button class="btn" type="button" data-cancel="' + s.id + '">Cancel booking</button>'
+        : '<button class="btn primary" type="button" data-book="' + s.id + '"' + (full ? " disabled" : "") + ">Book · 1 credit</button>";
+      return '<article class="card' + (isB ? " booked" : "") + '">' +
+        '<div class="card-head"><span class="time">' + s.time + " · " + s.mins + " min</span><span class=\"tags\"><span class=\"tag\">" + esc(s.kind) + "</span><span class=\"tag\">" + esc(s.host) + "</span></span></div>" +
+        "<h3>" + esc(s.title) + "</h3>" +
+        "<p>" + esc(s.blurb) + "</p>" +
+        '<div class="meta"><span>For: ' + s.who.join(", ") + "</span><span>" + seatTxt + "</span></div>" +
+        '<div class="actions">' + action + (state.flash[s.id] ? '<span class="msg">' + esc(state.flash[s.id]) + "</span>" : "") + "</div>" +
+        (isB ? prepHtml(s) : "") + "</article>";
+    }).join("");
+  }
+
+  function renderWeek() {
+    var ids = Object.keys(state.booked);
+    if (!ids.length) { $("myWeek").innerHTML = '<p class="empty">Nothing booked yet. Pick a session above to use a credit.</p>'; return; }
+    ids.sort(function (a, b) {
+      var x = byId(a), y = byId(b);
+      var d = DAYS.indexOf(x.day) - DAYS.indexOf(y.day);
+      return d || (parseInt(x.time, 10) - parseInt(y.time, 10)) || (x.time < y.time ? -1 : 1);
+    });
+    $("myWeek").innerHTML = ids.map(function (id) {
+      var s = byId(id);
+      return '<div class="row"><span><strong>' + FULL[s.day] + " " + s.time + "</strong> · " + esc(s.title) + '</span><button class="btn quiet" type="button" data-cancel="' + id + '">Cancel</button></div>';
+    }).join("");
+  }
+
+  function renderAll() { renderCredits(); renderTabs(); renderSessions(); renderWeek(); }
+
+  document.addEventListener("click", function (e) {
+    var t = e.target;
+    if (!(t instanceof Element)) return;
+    var b = t.closest("button");
+    if (!b) return;
+    if (b.id === "addCredit") { state.extra += 1; renderAll(); return; }
+    if (b.dataset.day) { state.day = b.dataset.day; renderAll(); return; }
+    if (b.dataset.book) {
+      var id = b.dataset.book;
+      if (usedCount() >= total()) {
+        state.flash = {}; state.flash[id] = "No credits left. Add a credit for $4 or cancel another booking.";
+      } else { state.booked[id] = true; state.flash = {}; }
+      renderAll(); return;
+    }
+    if (b.dataset.cancel) { delete state.booked[b.dataset.cancel]; state.flash = {}; renderAll(); return; }
+    if (b.dataset.copy) {
+      var s = byId(b.dataset.copy);
+      var text = s.title + " prep card (" + s.cost + ")\n\nSupplies:\n- " + s.supplies.join("\n- ") + "\n\nRun of show:\n- " + s.run.join("\n- ") + (s.safety ? "\n\n" + s.safety : "");
+      var done = function (m) { b.textContent = m; setTimeout(function () { b.textContent = "Copy card text"; }, 1800); };
+      try { navigator.clipboard.writeText(text).then(function () { done("Copied"); }, function () { done("Select the card text to copy"); }); }
+      catch (err) { done("Select the card text to copy"); }
+    }
+  });
+
+  renderAll();
+})();
+</script>
+
 </body>
 </html>
