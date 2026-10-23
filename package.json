@@ -1,0 +1,16 @@
+{
+  "name": "lantern-site",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "node scripts/check.mjs public",
+    "build": "node scripts/check.mjs public && node scripts/build-demo.mjs",
+    "serve": "python3 -m http.server 5195 --bind 127.0.0.1 --directory public",
+    "serve:demo": "python3 -m http.server 5196 --bind 127.0.0.1 --directory dist"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "html-minifier-terser": "7.2.0",
+    "javascript-obfuscator": "5.9.0"
+  }
+}

@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lantern preview build</title>
+  <meta name="description" content="Test build of the site tree, ready for Cloudflare Pages.">
+  <meta name="theme-color" content="#1e2622">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/icons/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lora:wght@500;600&family=Plus+Jakarta+Sans:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="/assets/site.css">
+</head>
+<body>
+  <header class="top">
+    <div class="wrap">
+      <a class="brand" href="/"><img src="/icons/favicon.svg" alt="" width="34" height="34"> Lantern <small>preview</small></a>
+      <nav class="nav" aria-label="Main">
+        <a href="/" aria-current="page">Home</a>
+        <a href="/rules.html">Community Rules</a>
+        <a href="/widgets-while-you-wait.html">Widgets While You Wait</a>
+        <a href="/prototypes/lantern-calendar-v1.html">Calendar v1</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="wrap">
+        <div>
+          <span class="eyebrow">Preview build</span>
+          <h1 id="hero-title">Your site tree, already wired up.</h1>
+          <p class="lead">Every page from your list sits at its exact path here as a placeholder. When the zips come in, your real files drop into these slots. Then the folder goes to Cloudflare Pages and your GoDaddy domain points at it.</p>
+          <div class="actions">
+            <a class="btn" href="/widgets-while-you-wait.html">Try the widget page
+              <span class="arrow" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 12 12 4M5.5 4H12v6.5"/></svg></span>
+            </a>
+            <a class="btn ghost" href="#install">Install on a phone</a>
+          </div>
+        </div>
+        <div class="shell">
+          <div class="core">
+            <h2>Working on this test URL</h2>
+            <ul class="works">
+              <li><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m3 8.5 3 3 7-7"/></svg><span>Installs to a phone home screen from the manifest and service worker.</span></li>
+              <li><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m3 8.5 3 3 7-7"/></svg><span>Shows offline.html when there is no connection.</span></li>
+              <li><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m3 8.5 3 3 7-7"/></svg><span>New Widgets While You Wait page, with a stand-in game in the widget slot.</span></li>
+              <li><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m3 8.5 3 3 7-7"/></svg><span>Cloudflare headers file so sw.js and the manifest are served correctly.</span></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="tree-title">
+      <div class="wrap bento">
+        <div class="shell span-8">
+          <div class="core">
+            <span class="eyebrow">Site tree</span>
+            <h2 id="tree-title" style="margin-top:0.9rem">Where each file lands</h2>
+            <ul class="tree">
+              <li><a href="/"><code>index.html</code></a><span>Home: calendar, reminders, leaderless room, buddy matching, safety, membership, FAQ</span><b class="chip todo">Slot</b></li>
+              <li><a href="/rules.html"><code>rules.html</code></a><span>Community Rules</span><b class="chip todo">Slot</b></li>
+              <li><a href="/terms.html"><code>terms.html</code></a><span>Draft, bracketed fields to fill</span><b class="chip todo">Slot</b></li>
+              <li><a href="/privacy.html"><code>privacy.html</code></a><span>Draft, bracketed fields to fill</span><b class="chip todo">Slot</b></li>
+              <li><a href="/offline.html"><code>offline.html</code></a><span>Shown with no connection</span><b class="chip ok">Working</b></li>
+              <li><a href="/widgets-while-you-wait.html"><code>widgets-while-you-wait.html</code></a><span>New page for the game widget</span><b class="chip new">New</b></li>
+              <li><code>prototypes/</code><span>Earlier work, kept for reference</span><b></b></li>
+              <li class="sub"><a href="/prototypes/lantern-calendar-v1.html"><code>lantern-calendar-v1.html</code></a><span>Calendar-only page</span><b class="chip todo">Slot</b></li>
+              <li><a href="/manifest.webmanifest"><code>manifest.webmanifest</code></a><span>Name, colours and icons for home-screen install</span><b class="chip ok">Working</b></li>
+              <li><code>sw.js</code><span>Offline cache, push notifications later</span><b class="chip ok">Working</b></li>
+              <li><code>icons/</code><span>192, 512, maskable, Apple touch icon</span><b class="chip ok">Working</b></li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="shell span-4" id="install">
+          <div class="core">
+            <span class="eyebrow">Install</span>
+            <h2 style="margin-top:0.9rem">Add it to a phone</h2>
+            <p class="muted">On Android or desktop Chrome, the button below opens the install prompt.</p>
+            <div class="actions" style="margin-top:1.2rem">
+              <button class="btn" type="button" data-install>Install this preview
+                <span class="arrow" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 2.5v8M4.5 7 8 10.5 11.5 7M3 13.5h10"/></svg></span>
+              </button>
+            </div>
+            <p class="muted" data-install-note style="margin-top:1rem">iPhone: open this page in Safari, tap Share, then Add to Home Screen. Push notifications there need iOS 16.4 or later.</p>
+            <p class="muted" style="margin-top:1rem">To see the offline page, open a couple of pages, switch on airplane mode and reload. Pages you already visited still open.</p>
+          </div>
+        </div>
+
+        <div class="shell span-12">
+          <div class="core">
+            <span class="eyebrow">Domain</span>
+            <h2 style="margin-top:0.9rem">Moving the domain from GoDaddy to Cloudflare</h2>
+            <ol class="steps">
+              <li><strong>Add it to Cloudflare</strong><p>Free plan. Cloudflare copies the DNS records it finds, and I check the email (MX) records came across so your mail keeps working.</p></li>
+              <li><strong>Swap the nameservers</strong><p>At GoDaddy, turn off DNSSEC if it is on, then enter the two nameservers Cloudflare gives you.</p></li>
+              <li><strong>Wait for "Active"</strong><p>Usually under an hour. GoDaddy says up to 48 hours, and nothing on the old setup goes down meanwhile.</p></li>
+              <li><strong>Attach to Pages</strong><p>The bare domain and www both point at the Pages project. Cloudflare issues the HTTPS certificate on its own.</p></li>
+            </ol>
+            <p class="note">The registration itself can stay at GoDaddy. Moving it to Cloudflare Registrar is optional: it needs the GoDaddy auth code, adds a year of renewal at cost, and isn't allowed in the first 60 days after a domain is registered or transferred.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <div class="wrap">
+      <p>Preview by Andry. Placeholder text only; your files replace each page.</p>
+      <nav aria-label="Legal"><a href="/terms.html">Terms</a><a href="/privacy.html">Privacy</a></nav>
+    </div>
+  </footer>
+  <script src="/assets/app.js" defer></script>
+</body>
+</html>
