@@ -4,5 +4,15 @@
   "assets": {
     "directory": "./out",
     "not_found_handling": "404-page"
-  }
+  },
+  "routes": [
+    {
+      "pattern": "meetdoconnect.com/*",
+      "zone_name": "meetdoconnect.com"
+    },
+    {
+      "pattern": "www.meetdoconnect.com/*",
+      "zone_name": "meetdoconnect.com"
+    }
+  ]
 }
