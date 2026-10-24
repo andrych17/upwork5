@@ -30,6 +30,11 @@ export const PAGES = {
     description:
       'The example calendar of live alcohol-free sessions: book with weekly credits, open prep cards and see your reminders.',
   },
+  '/schedule': {
+    title: 'Schedule',
+    description:
+      'Book your weekly sessions with credits, add extra sessions, and use a Bad Hair Day card when you need one. Prototype that saves in your browser.',
+  },
   '/activities': {
     title: 'Activities',
     description:
@@ -54,6 +59,10 @@ export const PAGES = {
     title: 'Widgets While You Wait',
     description: 'Word Rush, a free speed word game to play while you wait for your MeetDoConnect session.',
   },
+  '/slow-chess': {
+    title: 'Slow Chess',
+    description: 'Play chess with a friend over days. Make your move, send the link, come back when you like.',
+  },
   '/rules': {
     title: 'Community Rules',
     description: 'How MeetDoConnect sessions work and what we expect from every member.',
@@ -63,6 +72,13 @@ export const PAGES = {
 } as const satisfies Record<string, PageInfo>;
 
 export type PagePath = keyof typeof PAGES;
+
+// The earlier calendar is a plain HTML file in public/, not a Next.js route, so it gets a normal <a>.
+export const PROTOTYPE = {
+  href: '/prototypes/lantern-calendar-v1.html',
+  label: 'Lantern Calendar',
+  desc: 'The earlier calendar prototype',
+} as const;
 
 const OG_IMAGE = {
   url: '/og.png',

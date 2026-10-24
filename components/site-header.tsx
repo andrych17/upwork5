@@ -1,32 +1,30 @@
 'use client';
 
 // Site header: a sticky bar with the logo, the main navigation and one call to action.
-// Seven links only fit side by side from xl (1280px); below that they live in a drawer.
+// Eight links only fit side by side from xl (1280px); below that they live in a drawer. The drawer also has the
+// Lantern Calendar prototype, which is in the footer on wide screens.
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import InstallButton from './install-button';
+import { PROTOTYPE } from '@/lib/site';
 import { ButtonLink, Logo, cn } from './ui';
 
 const NAV = [
   { href: '/evenings', label: 'Evenings', desc: 'This week’s calendar and credits' },
+  { href: '/schedule', label: 'Schedule', desc: 'Book your week, prototype that saves in your browser' },
   { href: '/activities', label: 'Activities', desc: '13 live sessions, with prep cards' },
   { href: '/how-it-works', label: 'How it works', desc: 'Rooms of about 5 and activity buddies' },
   { href: '/safety', label: 'Safety', desc: 'Verified members and one-tap reports' },
   { href: '/membership', label: 'Membership', desc: '$24 a month, 3 credits a week' },
   { href: '/widgets-while-you-wait', label: 'Play', desc: 'Word Rush, a speed word game' },
+  { href: '/slow-chess', label: 'Slow Chess', desc: 'Chess with a friend over days, by link' },
 ] as const;
-// The earlier calendar is a plain HTML file in public/, not a Next.js route, so it gets a normal <a>.
-const PROTOTYPE = {
-  href: '/prototypes/lantern-calendar-v1.html',
-  label: 'Lantern Calendar',
-  desc: 'The earlier calendar prototype',
-};
 
 const isActive = (path: string, href: string) => path === href || path.startsWith(`${href}/`);
 
 const DESKTOP_LINK =
-  'inline-flex min-h-10 items-center rounded-full px-3.5 text-[0.9rem] font-semibold text-muted no-underline transition-colors duration-200 ease-spring hover:bg-bg hover:text-fg aria-[current=page]:bg-fg aria-[current=page]:text-bg';
+  'inline-flex min-h-10 items-center rounded-full px-3 text-[0.9rem] whitespace-nowrap font-semibold text-muted no-underline transition-colors duration-200 ease-spring hover:bg-bg hover:text-fg aria-[current=page]:bg-fg aria-[current=page]:text-bg';
 const DRAWER_LINK =
   'group flex min-h-14 items-center justify-between gap-3 rounded-2xl px-4 py-2.5 text-fg no-underline transition-colors duration-150 hover:bg-bg aria-[current=page]:bg-fg aria-[current=page]:text-bg';
 
@@ -75,9 +73,6 @@ export default function SiteHeader() {
               {item.label}
             </Link>
           ))}
-          <a href={PROTOTYPE.href} className={DESKTOP_LINK}>
-            {PROTOTYPE.label}
-          </a>
         </nav>
 
         <div className="flex items-center gap-2">

@@ -42,20 +42,26 @@ site/
 │   ├── membership/                   # Pricing, credit tiers & FAQ
 │   ├── offline/                      # Fallback screen when internet is lost
 │   ├── safety/                       # Community safety, reporting & moderation rules
+│   ├── schedule/                     # Booking calendar (prototype, saves in the browser)
+│   ├── slow-chess/                   # Slow Chess, played over days by sharing a link
 │   ├── widgets-while-you-wait/       # Word Rush standalone game widget
 │   ├── globals.css                   # Tailwind v4 configuration & design tokens
 │   ├── layout.tsx                    # Root HTML shell, fonts, header & footer
 │   ├── not-found.tsx                 # 404 page
 │   ├── page.tsx                      # Homepage & interactive demo widgets
 │   ├── robots.ts                     # Search engine crawler permissions
-│   └── sitemap.ts                    # Auto-generated XML sitemap (29 routes)
+│   └── sitemap.ts                    # Auto-generated XML sitemap
 ├── components/                       # Shared UI & Interactive Prototypes
 │   ├── demos.tsx                     # Interactive calendar, room & buddy match demos
 │   ├── install-button.tsx            # PWA install prompt button for mobile & desktop
+│   ├── schedule.tsx                  # Schedule screen and its browser-only store
+│   ├── slow-chess.tsx                # Slow Chess board, game link and saved games
 │   ├── ui.tsx                        # Core UI components (Button, Shell, Card, Badge)
 │   └── word-rush.tsx                 # Word Rush game UI container
 ├── lib/                              # Data, Business Logic & Utilities
 │   ├── placeholders.ts               # Legal template blanks (LLC name, email, dates)
+│   ├── schedule/rules.ts             # Booking, credit, cancel, card and payment rules (ported from rules.js)
+│   ├── slow-chess/engine.ts          # Chess rules, notation and the game link format
 │   ├── sessions.ts                   # Mock schedule data, credit rules & cancellation policy
 │   ├── site.ts                       # Metadata, navigation links & SEO configuration
 │   └── word-rush/                    # Game engine rules, tile scoring & dictionary
@@ -68,7 +74,9 @@ site/
 │   ├── build-demo.ts                 # Demo build generator with content guard
 │   ├── check.ts                      # Pre-deploy asset & link integrity checker
 │   ├── guard.js                      # DevTools & content protection trap for preview
-│   └── test-engine.ts                # Word Rush game engine automated test suite
+│   ├── test-chess.ts                 # Slow Chess engine tests (perft counts, mate, links)
+│   ├── test-engine.ts                # Word Rush game engine automated test suite
+│   └── test-schedule.ts              # Schedule rules tests (credits, cancels, cards, payments)
 ├── wrangler.json                     # Cloudflare Workers Static Assets configuration
 └── next.config.ts                    # Next.js build configuration (Static HTML Export)
 ```
@@ -90,7 +98,7 @@ npm install
 # 2. Run local development server (http://localhost:3000)
 npm run dev
 
-# 3. Run automated tests (Word Rush game engine verification)
+# 3. Run automated tests (Word Rush, Schedule rules and Slow Chess engine)
 npm test
 
 # 4. Check TypeScript types
@@ -159,7 +167,7 @@ MeetDoConnect installs directly to a user's device without requiring an App Stor
 The codebase is optimized for traditional search engines, voice assistants, and Generative AI engines:
 
 * **SEO (Search Engine Optimization)**:
-  * Unique meta titles, descriptions, canonical URLs, and Open Graph share cards (`/og.png`) for all 29 routes.
+  * Unique meta titles, descriptions, canonical URLs, and Open Graph share cards (`/og.png`) for all 31 routes.
   * Validated `/sitemap.xml` and `/robots.txt`.
 * **AEO (Answer Engine Optimization)**:
   * Direct concise answers under each page headline for voice search and answer snippets.

@@ -6,7 +6,7 @@ import type { ReactNode } from 'react';
 import RegisterSW from '@/components/register-sw';
 import SiteHeader from '@/components/site-header';
 import { Logo } from '@/components/ui';
-import { PAGES, SITE_NAME, SITE_URL, TAGLINE, isDemo } from '@/lib/site';
+import { PAGES, PROTOTYPE, SITE_NAME, SITE_URL, TAGLINE, isDemo } from '@/lib/site';
 import './globals.css';
 
 const display = Bricolage_Grotesque({ subsets: ['latin'], axes: ['opsz'], variable: '--font-bricolage' });
@@ -32,11 +32,13 @@ export const viewport: Viewport = {
 
 const EXPLORE = [
   ['/evenings', 'Evenings'],
+  ['/schedule', 'Schedule'],
   ['/activities', 'Activities'],
   ['/how-it-works', 'How it works'],
   ['/safety', 'Safety'],
   ['/membership', 'Membership'],
   ['/widgets-while-you-wait', 'Word Rush'],
+  ['/slow-chess', 'Slow Chess'],
 ] as const;
 const POLICIES = [
   ['/rules', 'Community Rules'],
@@ -44,7 +46,15 @@ const POLICIES = [
   ['/privacy', 'Privacy'],
 ] as const;
 
-function FooterNav({ label, links }: { label: string; links: typeof EXPLORE | typeof POLICIES }) {
+function FooterNav({
+  label,
+  links,
+  children,
+}: {
+  label: string;
+  links: typeof EXPLORE | typeof POLICIES;
+  children?: ReactNode;
+}) {
   return (
     <nav aria-label={label} className="flex flex-wrap gap-x-4.5 gap-y-1.5">
       {links.map(([href, text]) => (
@@ -52,6 +62,7 @@ function FooterNav({ label, links }: { label: string; links: typeof EXPLORE | ty
           {text}
         </Link>
       ))}
+      {children}
     </nav>
   );
 }
@@ -75,7 +86,11 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
               <Logo />
               <div>{TAGLINE}</div>
             </div>
-            <FooterNav label="Explore" links={EXPLORE} />
+            <FooterNav label="Explore" links={EXPLORE}>
+              <a href={PROTOTYPE.href} className="text-muted hover:text-fg">
+                {PROTOTYPE.label}
+              </a>
+            </FooterNav>
             <FooterNav label="Policies" links={POLICIES} />
           </footer>
         </div>

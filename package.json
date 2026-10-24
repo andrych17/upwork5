@@ -13,7 +13,7 @@
     "lint": "eslint .",
     "typecheck": "next typegen && tsc --noEmit",
     "format": "prettier --write .",
-    "test": "node scripts/test-engine.ts"
+    "test": "node scripts/test-engine.ts && node scripts/test-schedule.ts && node scripts/test-chess.ts"
   },
   "dependencies": {
     "next": "16.4.2",
