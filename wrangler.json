@@ -1,20 +1,10 @@
 {
   "name": "upwork5",
   "compatibility_date": "2024-09-23",
-  "workers_dev": false,
+  "workers_dev": true,
   "preview_urls": false,
   "assets": {
     "directory": "./out",
     "not_found_handling": "404-page"
-  },
-  "routes": [
-    {
-      "pattern": "meetdoconnect.com/*",
-      "zone_name": "meetdoconnect.com"
-    },
-    {
-      "pattern": "www.meetdoconnect.com/*",
-      "zone_name": "meetdoconnect.com"
-    }
-  ]
+  }
 }
