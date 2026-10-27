@@ -1,12 +1,12 @@
 'use client';
 
-// "Install the app" for the PWA, shown on the home page and in the mobile menu.
+// "Install the app" for the PWA, shown in the site footer.
 // - Chrome, Edge and Android hand us a beforeinstallprompt event; the button opens the browser's install dialog.
 // - Android before that event (Chrome waits for a tap and some time on the site): the button explains the ⋮ menu.
 // - iPhone and iPad have no install API, so the button explains Safari's Add to Home Screen.
 // - Hidden when the site already runs as an installed app, and on desktop browsers that offer no install.
 import { useState, useSyncExternalStore } from 'react';
-import { Button, cn } from './ui';
+import { Button } from './ui';
 
 interface BeforeInstallPromptEvent extends Event {
   prompt(): Promise<void>;
@@ -54,7 +54,7 @@ const HELP = {
     'In Chrome, tap the ⋮ menu at the top right, then Install app (or Add to Home screen). MeetDoConnect opens from your home screen like an app.',
 } as const;
 
-export default function InstallButton({ inMenu = false }: { inMenu?: boolean }) {
+export default function InstallButton() {
   const mode = useSyncExternalStore(subscribe, getMode, () => 'none' as Mode);
   const [showHelp, setShowHelp] = useState(false);
 
@@ -67,14 +67,12 @@ export default function InstallButton({ inMenu = false }: { inMenu?: boolean }) 
   }
 
   if (mode === 'installed' || mode === 'none') return null;
-  const style = inMenu
-    ? 'min-h-11 w-full justify-between rounded-xl px-4 text-[0.95rem] text-fg hover:bg-shell'
-    : 'justify-self-start ring-1 ring-line';
+  const style = 'justify-self-start ring-1 ring-line';
   const label = mode === 'ios' ? 'Add to Home Screen' : 'Install the app';
 
   if (mode === 'prompt') {
     return (
-      <div className={cn('grid', inMenu && 'border-t border-line pt-1')}>
+      <div className="grid">
         <Button variant="quiet" onClick={install} className={style}>
           {label}
         </Button>
@@ -82,12 +80,12 @@ export default function InstallButton({ inMenu = false }: { inMenu?: boolean }) 
     );
   }
   return (
-    <div className={cn('grid gap-2', inMenu && 'border-t border-line pt-1')}>
+    <div className="grid gap-2">
       <Button variant="quiet" aria-expanded={showHelp} onClick={() => setShowHelp(!showHelp)} className={style}>
         {label}
       </Button>
       {showHelp && (
-        <p role="status" className={cn('max-w-prose text-sm text-muted', inMenu && 'px-4 pb-2')}>
+        <p role="status" className="max-w-prose text-sm text-muted">
           {HELP[mode]}
         </p>
       )}

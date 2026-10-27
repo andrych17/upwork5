@@ -12,10 +12,10 @@ export default function NotFound() {
       <p>The link may be old or mistyped. These are good places to start:</p>
       <ul>
         <li>
-          <Link href="/evenings">This week’s evenings</Link>
+          <Link href="/calendar">This week’s sessions</Link>
         </li>
         <li>
-          <Link href="/activities">All activities</Link>
+          <Link href="/games">Games</Link>
         </li>
         <li>
           <Link href="/">The home page</Link>

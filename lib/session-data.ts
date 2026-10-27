@@ -1,0 +1,235 @@
+export type SessionContent = {
+  title: string;
+  slug: string;
+  forWhom: string;
+  description?: string;
+  prep: string;
+  run: string;
+  tone: string;
+  ideas?: string[];
+  note?: string;
+  day: string;
+  date: string;
+  month: string;
+  time: string;
+};
+
+export const prepCards: SessionContent[] = [
+  {
+    title: 'Quiet Co-Work',
+    slug: 'quiet-co-work',
+    forWhom: 'Solos, couples, adults & teens',
+    prep: 'Choose the one task you will work on, bring a beverage—hot or fizzy—and put your phone out of reach.',
+    ideas: [
+      'Jigsaw puzzle',
+      'Read a book',
+      'Write a poem',
+      'Homework',
+      'Doodle',
+      'Scrapbook',
+      'Knit or crochet',
+      'Bead art',
+      'Needlepoint',
+      'Paint by number',
+      'Model kit',
+    ],
+    run: '5 min: Say hello and each person types one goal in chat. 45 min: Silent work, with encouragement through everyone’s presence. Last 10 min: Check out and share what got done.',
+    tone: 'navy',
+    day: 'Sun',
+    date: '18',
+    month: 'May',
+    time: '10:00 am',
+  },
+  {
+    title: 'Write Together',
+    slug: 'write-together',
+    forWhom: 'Solos, couples, adults & teens',
+    prep: 'Bring a notebook or blank document, a beverage of your choice, and a pick from the prompt list—or your own project.',
+    ideas: [
+      'Write a letter to someone you would like to thank but cannot for some reason, even if you never send it.',
+      'Write about a version of today in which one small thing went differently, following the change wherever it leads.',
+      'Write about an object nearby as if it had a memory of what it has witnessed.',
+    ],
+    run: '5 min: Prompt. 20 min: Writing. 5 min: Stretch. 20 min: Writing. 10 min: Optional read-aloud of one sentence.',
+    tone: 'berry',
+    day: 'Mon',
+    date: '19',
+    month: 'May',
+    time: '6:30 pm',
+  },
+  {
+    title: 'Botanical Sketch Night',
+    slug: 'botanical-sketch-night',
+    forWhom: 'Solos, couples, adults & teens',
+    prep: 'Bring paper, pencil, black pen, and one leaf or herb sprig per person. Don’t forget a delicious bevvy to sip, preferably with something creamy on top.',
+    run: '10 min: Mindful observation. Notice your sprig and what you like about it—color, scent, curves, poky parts, or anything unique. Imagine how you will capture those elements on paper. Touch and reposition your sprig several ways; notice how it changes shape, captures light differently, or looks ugly or beautiful. It is yours to draw. 30 min: Sketch the sprig in several positions to find your favorite. Start with the stem and structure, noticing differences in size, strength, and color as your eyes move around the shape. 20 min: Move to shading, adding shadows and light. Do not worry if it is not perfect. Your living sprig will likely have imperfections and unique traits—give them life on your paper. Let it look however it looks: sophisticated or simple, straight or droopy, strong or withered. Shade the space holding it too, however you like. 15 min: Show and tell. Notice how everyone in the group can interpret a simple sprig very differently. You have done it—artwork!',
+    tone: 'leaf',
+    day: 'Tue',
+    date: '20',
+    month: 'May',
+    time: '7:00 pm',
+  },
+  {
+    title: 'Skin Ritual',
+    slug: 'skin-ritual',
+    forWhom: 'Solos, couples & teens',
+    prep: 'Bring 2 tbsp finely ground oats, 1 tbsp plain yogurt or mashed ripe banana, 1 tsp honey, cooled green tea in a clean spray bottle—or cotton for dabbing—and cucumber slices and mint for water. Wash your face before starting. Notice what your skin is telling you: tightness asks for moisture; redness asks for calm; shea butter helps seal moisture in.',
+    run: '10 min: Say hello, cover skin basics, and read ingredient labels. 15 min: Mix and apply the mask for 10 minutes. 15 min: Rinse and tea-mist. 20 min: Swap favorite low-waste routines.',
+    note: 'Patch test on the inner arm first. Skip any ingredient you are allergic to. Use the mixture the same day and discard leftovers. General wellness, not medical advice.',
+    tone: 'sky',
+    day: 'Wed',
+    date: '21',
+    month: 'May',
+    time: '7:30 pm',
+  },
+  {
+    title: 'Wind-Down',
+    slug: 'wind-down',
+    forWhom: 'Everyone',
+    prep: 'Bring a blanket, herbal tea, journal, and pen. Quiet, wordless music is optional.',
+    ideas: [
+      'What was the best part of my day, and why did it stand out?',
+      'What thoughts do I want to leave on the page instead of taking to bed?',
+      'What can I let go of before sleeping tonight?',
+      'How do I want to feel when I wake up tomorrow?',
+    ],
+    run: 'The Timekeeper gently prompts each shift. 5 min: Say hello. 10 min: Gentle stretches for shoulders, back, hips, legs, and neck. 10 min: Slow breathing—in for 4, out for 6. 10 min: Journal from prompts. 10 min: Quiet.',
+    tone: 'plum',
+    day: 'Sun',
+    date: '18',
+    month: 'May',
+    time: '7:00 pm',
+  },
+  {
+    title: 'Idea Lab',
+    slug: 'idea-lab',
+    forWhom: 'Solos, couples, adults & teens',
+    description:
+      'Bring a half-formed idea into a generous room. Members can take a hot seat to pitch a project, story, small business, or invention and receive thoughtful “yes, and” feedback—or the whole group can brainstorm from bold questions.',
+    prep: 'Bring one sentence describing your half-formed idea—a project, story, or small business—sticky notes or a blank page, and an elevator pitch to convey your idea to the group.',
+    ideas: [
+      'What would I do, invent, or create if time and money were totally unlimited?',
+      'How would we spend a day if all technology everywhere stopped working?',
+      'What do people complain about daily that they have accepted as “just how things are”?',
+      'What problem is so old that everyone assumes it cannot be solved?',
+      'What does nature solve that we still struggle with—self-healing materials, zero-waste decomposition, or passive cooling? Biology has years of R&D we have not reverse-engineered yet.',
+    ],
+    run: '5 min: Introductions. Three 15-min hot seats for members who want to share. Take 2 minutes to give an elevator pitch: explain the problem, your solution, your target market or audience, and why people would want what you are creating. Spend 8 minutes on generous “yes, and” ideas. Praise what works and share weaknesses gently—weaknesses are opportunities to improve. Spend 2 minutes naming one next step: try this, bend that, add onion, remove the red switch. Finish with 10 min to regroup, chat, and encourage. If nobody presents, brainstorm from the prompt questions. There are no bad ideas; brainstorming could lead to the next great invention, cure, world-famous story, or best pizza ever.',
+    tone: 'gold',
+    day: 'Thu',
+    date: '22',
+    month: 'May',
+    time: '7:30 pm',
+  },
+  {
+    title: 'Mocktail Studio',
+    slug: 'mocktail-studio',
+    forWhom: 'Couples, families, friends, adults & teens',
+    description:
+      'Build two alcohol-free drinks while learning how sweet, sour, bitter, and fizz work together. Taste, score, adjust, and finish by giving your creation a name worthy of the group scoreboard.',
+    prep: 'Per drink: 120 ml unsweetened cranberry juice, 1 tsp honey or maple syrup, 2 thin slices fresh ginger, sparkling water to top, ice, a lime wedge, and a rosemary sprig.',
+    ideas: [
+      'Base the name on the group’s favorite show.',
+      'Rhyme words with the ingredients.',
+      'Use descriptive color names.',
+      'Highlight the health benefits the drink offers.',
+      'Be creative—the best name wins the day.',
+    ],
+    run: '10 min: Learn to balance sweet, sour, bitter, and fizz. 25 min: Build two different versions. 15 min: Taste and compare using scorecards. 10 min: Name your drink. Base names on the group’s favorite show, rhymes with ingredients, descriptive colors, or the drink’s benefits. Be creative—the best name wins the day.',
+    note: 'Kids make the same drink with less ginger.',
+    tone: 'coral',
+    day: 'Fri',
+    date: '23',
+    month: 'May',
+    time: '7:00 pm',
+  },
+  {
+    title: 'Cards & Collage Night',
+    slug: 'cards-and-collage-night',
+    forWhom: 'Solos, couples, families, adults & teens',
+    prep: 'Bring scrap paper, old magazines or catalogs, a glue stick, scissors, 3 pieces of card stock cut to postcard size, and a pen. Background music is optional.',
+    ideas: [
+      'Retro Revival: sepia tones and vintage typography',
+      'Night Sky: stars, moons, and constellations',
+      'Nature’s Symphony: leaves, twigs, and organic textures',
+      'One-color night',
+      'No scissors—tear everything by hand',
+      'Mini viewfinder',
+      'Lead with one hero image',
+    ],
+    run: '10 min: Say hello, make introductions, and pick themes. 40 min: Build collages on posterboard, cardboard boxes, or postcard paper. 10 min: Show and tell.',
+    tone: 'cobalt',
+    day: 'Wed',
+    date: '21',
+    month: 'May',
+    time: '5:30 pm',
+  },
+  {
+    title: 'BYO Dad Jokes (a really punny session...)',
+    slug: 'byo-dad-jokes',
+    forWhom: 'Families, solos, couples, adults & teens',
+    prep: 'Bring ’em on. Who has the groan-iest one-liner, story, or pun? If you have no Dad jokes yet, look some up and come ready to make some eyes roll.',
+    run: '5 min: Say hello, make introductions, and agree on a speaking rotation. 55 min: Share the goofiest jokes you can think of, one at a time. Bonus points for anti-humor. Buzzers, whistles, and cowbells for crowd approval are optional.',
+    tone: 'tomato',
+    day: 'Fri',
+    date: '23',
+    month: 'May',
+    time: '8:30 pm',
+  },
+  {
+    title: "(Don't) Spill the Tea",
+    slug: 'dont-spill-the-tea',
+    forWhom: 'Couples, friends & solos',
+    description:
+      'Slow down over a blind tasting of three teas. Compare aroma, flavor, and finish, guess each blend, and use the ritual of brewing as a starting point for a calm, screen-free conversation.',
+    prep: 'Bring three different teas or herbal blends labeled A, B, and C by a helper, a kettle, two mugs, and a tasting card for aroma, flavor, finish, and a score out of 10.',
+    ideas: [
+      'What was the best evening you ever spent without a screen?',
+      'What does your ideal relaxing tea moment look like? Describe the environment—dim lighting, candlelight, or a quiet corner—and how it enhances the experience.',
+      'How does the ritual of brewing tea affect your stress levels? Reflect on steeping as a form of mindfulness that forces you to slow down.',
+      'Which tea aroma do you find most calming? Describe how scents such as jasmine or lavender trigger a relaxation response.',
+    ],
+    run: '10 min: Brewing. 30 min: Blind taste and score each tea, then guess the type. 20 min: Conversation prompts and reflection.',
+    tone: 'sage',
+    day: 'Sat',
+    date: '24',
+    month: 'May',
+    time: '4:00 pm',
+  },
+  {
+    title: 'Share a Song',
+    slug: 'share-a-song',
+    forWhom: 'Couples, friends, solos, adults & teens',
+    description:
+      'Get to know people through the music they love. Share an all-time favorite or the song that fits today’s mood, listen together, and discover an artist or genre you may never have heard before. Musicians may also perform live.',
+    prep: 'Bring another device—a second phone or tablet—to play a favorite song. Bring your playlist in case the group circles around more than once. Musicians are welcome to sing or play an instrument.',
+    ideas: [
+      'What is the first song you remember loving as a child, and why does it stick with you?',
+      'If your life were a movie, what song would play during the opening credits?',
+      'What is a song that brings you back in time to a certain memory?',
+      'Can sad music be comforting, and how does it help people process difficult feelings?',
+    ],
+    run: '5 min: Introductions. 40 min: Share music, listen, and vibe. 15 min: Conversation prompts. Share an all-time favorite or simply the song that fits your mood today.',
+    tone: 'violet',
+    day: 'Sat',
+    date: '24',
+    month: 'May',
+    time: '6:30 pm',
+  },
+  {
+    title: 'Trivia, Trivier, Triviest',
+    slug: 'trivia-trivier-triviest',
+    forWhom: 'Couples, friends, solos, adults & teens',
+    prep: 'No prep. Just show up and guess. MeetDoConnect’s proprietary trivia game will reveal who is Quizzy, Quizzier, and Quizziest.',
+    run: '5 min: Introductions. 50 min: Play MeetDoConnect trivia. 5 min: Say goodbye.',
+    tone: 'ink',
+    day: 'Sat',
+    date: '24',
+    month: 'May',
+    time: '8:00 pm',
+  },
+];
+
+export function getSession(slug?: string) {
+  return prepCards.find((card) => card.slug === slug) ?? prepCards[0];
+}

@@ -1,16 +1,11 @@
 import type { Metadata, Viewport } from 'next';
-import { Bricolage_Grotesque, Figtree } from 'next/font/google';
 import Link from 'next/link';
 import Script from 'next/script';
 import type { ReactNode } from 'react';
 import RegisterSW from '@/components/register-sw';
-import SiteHeader from '@/components/site-header';
-import { Logo } from '@/components/ui';
-import { PAGES, PROTOTYPE, SITE_NAME, SITE_URL, TAGLINE, isDemo } from '@/lib/site';
+import InstallButton from '@/components/install-button';
+import { PAGES, SITE_NAME, SITE_URL, TAGLINE, isDemo } from '@/lib/site';
 import './globals.css';
-
-const display = Bricolage_Grotesque({ subsets: ['latin'], axes: ['opsz'], variable: '--font-bricolage' });
-const body = Figtree({ subsets: ['latin'], variable: '--font-figtree' });
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -27,73 +22,32 @@ export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   viewportFit: 'cover',
-  themeColor: '#0e6a5c',
+  themeColor: '#183b67',
 };
-
-const EXPLORE = [
-  ['/evenings', 'Evenings'],
-  ['/schedule', 'Schedule'],
-  ['/activities', 'Activities'],
-  ['/how-it-works', 'How it works'],
-  ['/safety', 'Safety'],
-  ['/membership', 'Membership'],
-  ['/widgets-while-you-wait', 'Word Rush'],
-  ['/slow-chess', 'Slow Chess'],
-] as const;
-const POLICIES = [
-  ['/rules', 'Community Rules'],
-  ['/terms', 'Terms'],
-  ['/privacy', 'Privacy'],
-] as const;
-
-function FooterNav({
-  label,
-  links,
-  children,
-}: {
-  label: string;
-  links: typeof EXPLORE | typeof POLICIES;
-  children?: ReactNode;
-}) {
-  return (
-    <nav aria-label={label} className="flex flex-wrap gap-x-4.5 gap-y-1.5">
-      {links.map(([href, text]) => (
-        <Link key={href} href={href} className="text-muted hover:text-fg">
-          {text}
-        </Link>
-      ))}
-      {children}
-    </nav>
-  );
-}
 
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
   return (
-    <html lang="en" className={`${display.variable} ${body.variable}`}>
+    <html lang="en">
+      <head>
+        <link rel="preload" href="/fonts/bricolage-grotesque-latin.woff2" as="font" type="font/woff2" crossOrigin="" />
+        <link rel="preload" href="/fonts/dm-sans-latin.woff2" as="font" type="font/woff2" crossOrigin="" />
+      </head>
       <body>
         {isDemo && <Script src="/assets/rt.js" strategy="beforeInteractive" />}
-        <a
-          href="#main"
-          className="absolute -top-16 left-4 z-50 rounded-full bg-fg px-4 py-2.5 font-semibold text-bg no-underline focus:top-3"
-        >
-          Skip to content
-        </a>
-        <div className="mx-auto max-w-site">
-          <SiteHeader />
-          {children}
-          <footer className="mt-section flex flex-wrap items-baseline justify-between gap-x-8 gap-y-3.5 border-t border-line pt-7 text-[0.9rem] text-muted">
-            <div>
-              <Logo />
-              <div>{TAGLINE}</div>
-            </div>
-            <FooterNav label="Explore" links={EXPLORE}>
-              <a href={PROTOTYPE.href} className="text-muted hover:text-fg">
-                {PROTOTYPE.label}
-              </a>
-            </FooterNav>
-            <FooterNav label="Policies" links={POLICIES} />
-          </footer>
-        </div>
+        {children}
+        <footer className="site-footer">
+          <Link className="schedule-mark" href="/" aria-label={`${SITE_NAME} home`}>
+            <span>Meet</span>
+            <span>Do</span>
+            <span>Connect</span>
+          </Link>
+          <nav aria-label="Policies">
+            <Link href="/rules">Community Rules</Link>
+            <Link href="/terms">Terms</Link>
+            <Link href="/privacy">Privacy</Link>
+          </nav>
+          <InstallButton />
+        </footer>
         <RegisterSW />
       </body>
     </html>

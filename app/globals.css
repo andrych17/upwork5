@@ -1,187 +1,68 @@
 @import 'tailwindcss';
+@import './fonts.css';
+/* The Figma redesign (Kelly's Figma Make board), kept as plain CSS so it can be compared with the board
+   one class at a time. Its :root holds the palette: --cream, --ink, --paper, --berry, --navy, --highlight. */
+@import './figma.css';
 
-/* Brand colors live in CSS variables so dark mode, and the dark "ink" panels, swap them in one place.
-   @theme inline below turns each into a utility: bg-surface, text-muted, ring-line, and so on. */
-:root {
-  --bg: #f2f6f2;
-  --band: #e8efe9;
-  --surface: #ffffff;
-  --shell: rgb(255 255 255 / 0.5);
-  --fg: #13241f;
-  --muted: #4d625b;
-  --line: rgb(19 36 31 / 0.1);
-  --line-strong: #a9bdb3;
-  --accent: #0e6a5c;
-  --accent-fg: #ffffff;
-  --accent-soft: #dff3ec;
-  --sun: #e29a2b;
-  --sun-soft: #fbf0d9;
-  --sun-ink: #7a4508;
-  --warn: #8f4510;
-  --warn-bg: #fbeede;
-  --bad: #9c2f1a;
-  --ink: #102a25;
-  --ink-2: #17362f;
-  --ink-fg: #edf5f0;
-  --ink-muted: #a8c0b6;
-  --ink-line: rgb(237 245 240 / 0.12);
-  --lift: 0 1px 2px rgb(19 36 31 / 0.05), 0 18px 40px -24px rgb(19 36 31 / 0.35);
-  --highlight: rgb(255 255 255 / 0.8);
-  /* where sticky panels stop, just below the sticky site header */
-  --sticky-top: 5.75rem;
-  color-scheme: light;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0c1513;
-    --band: #101c19;
-    --surface: #15221f;
-    --shell: rgb(255 255 255 / 0.03);
-    --fg: #e5eee9;
-    --muted: #a0b2aa;
-    --line: rgb(229 238 233 / 0.1);
-    --line-strong: #3d544b;
-    --accent: #5fcdb6;
-    --accent-fg: #07211b;
-    --accent-soft: #14322b;
-    --sun: #f0b454;
-    --sun-soft: #2b2314;
-    --sun-ink: #f3c77f;
-    --warn: #f2b985;
-    --warn-bg: #2d2114;
-    --bad: #f4a392;
-    --ink: #07110f;
-    --ink-2: #0e1d1a;
-    --ink-muted: #9fb5ac;
-    --lift: 0 1px 2px rgb(0 0 0 / 0.4), 0 20px 44px -24px rgb(0 0 0 / 0.8);
-    --highlight: rgb(255 255 255 / 0.05);
-    color-scheme: dark;
-  }
-}
-
+/* Tailwind tokens for the few pieces still written with utilities (text pages, install button),
+   pointed at the Figma palette so they match the rest of the site. */
 @theme inline {
-  --color-bg: var(--bg);
-  --color-band: var(--band);
-  --color-surface: var(--surface);
-  --color-shell: var(--shell);
-  --color-fg: var(--fg);
-  --color-muted: var(--muted);
+  --color-bg: var(--cream);
+  --color-surface: var(--paper);
+  --color-shell: rgb(255 255 255 / 0.5);
+  --color-fg: var(--ink);
+  --color-muted: #55524c;
   --color-line: var(--line);
-  --color-line-strong: var(--line-strong);
-  --color-accent: var(--accent);
-  --color-accent-fg: var(--accent-fg);
-  --color-accent-soft: var(--accent-soft);
-  --color-sun: var(--sun);
-  --color-sun-soft: var(--sun-soft);
-  --color-sun-ink: var(--sun-ink);
-  --color-warn: var(--warn);
-  --color-warn-bg: var(--warn-bg);
-  --color-bad: var(--bad);
-  --color-ink: var(--ink);
-  --color-ink-2: var(--ink-2);
-  --shadow-lift: var(--lift);
-  /* next/font sets --font-bricolage and --font-figtree on <html> */
-  --font-display: var(--font-bricolage), 'Trebuchet MS', sans-serif;
-  --font-sans: var(--font-figtree), 'Segoe UI', system-ui, sans-serif;
+  --color-line-strong: rgb(23 23 23 / 0.45);
+  --color-accent: var(--berry);
+  --color-accent-fg: #ffffff;
+  --color-accent-soft: #fbe0eb;
+  --color-sun: var(--highlight);
+  --color-sun-soft: #ffefba;
+  --color-sun-ink: #5c4300;
+  --color-warn: var(--danger);
+  --color-warn-bg: #f4c4c7;
+  --color-bad: var(--danger);
+  --shadow-lift: 6px 6px 0 var(--ink);
+  /* app/fonts.css */
+  --font-display: 'Bricolage Grotesque', 'Trebuchet MS', sans-serif;
+  --font-sans: 'DM Sans', 'Segoe UI', system-ui, sans-serif;
 }
 
 @theme {
   --radius-shell: 1.75rem;
   --radius-core: 1.375rem; /* shell radius minus its 6px padding, so the corners stay concentric */
-  --radius-card: 1.25rem;
   --ease-spring: cubic-bezier(0.32, 0.72, 0, 1);
-  --container-site: 70rem;
   --container-doc: 47.5rem;
-  --spacing-section: clamp(4rem, 10vw, 8rem);
-
-  --text-hero: clamp(2.5rem, 11vw, 8rem);
-  --text-hero--line-height: 0.9;
-  --text-hero--letter-spacing: -0.055em;
   --text-title: clamp(2.6rem, 8vw, 5.2rem);
   --text-title--line-height: 0.95;
   --text-title--letter-spacing: -0.045em;
-  --text-section: clamp(2rem, 5vw, 3.25rem);
-  --text-section--line-height: 1.06;
-  --text-section--letter-spacing: -0.025em;
-  --text-lead: clamp(1.05rem, 1.6vw, 1.2rem);
-  --text-lead--line-height: 1.6;
-}
-
-/* Dark evening panel (live room, hero card, price card). Re-points the text, line, surface and accent
-   colors so everything inside reads on the dark background without extra classes. */
-@utility ink {
-  --surface: rgb(255 255 255 / 0.08);
-  --fg: var(--ink-fg);
-  --muted: var(--ink-muted);
-  --line: var(--ink-line);
-  --accent: var(--sun);
-  --accent-fg: #1f1405;
-  --warn: var(--sun);
-  --highlight: rgb(255 255 255 / 0.08);
-  color: var(--fg);
-  background: radial-gradient(120% 90% at 100% 0%, rgb(226 154 43 / 0.2), transparent 55%), var(--ink);
 }
 
 @layer base {
   html {
     -webkit-text-size-adjust: 100%;
-    scroll-padding-top: 6rem;
-  }
-  @media (prefers-reduced-motion: no-preference) {
-    html {
-      scroll-behavior: smooth;
-    }
-  }
-  body {
-    min-height: 100dvh;
-    padding-bottom: 3rem;
-    padding-left: max(clamp(1rem, 4vw, 2.5rem), env(safe-area-inset-left, 0px));
-    padding-right: max(clamp(1rem, 4vw, 2.5rem), env(safe-area-inset-right, 0px));
-    background: var(--bg);
-    color: var(--fg);
-    line-height: 1.6;
-  }
-  h1,
-  h2,
-  h3,
-  h4 {
-    font-family: var(--font-display);
-    font-weight: 700;
-    line-height: 1.06;
-    letter-spacing: -0.025em;
-    text-wrap: balance;
-  }
-  a {
-    color: var(--accent);
-    text-underline-offset: 3px;
   }
   /* Tailwind v4 resets buttons to the default cursor */
   button:not(:disabled),
   summary {
     cursor: pointer;
   }
-  :focus-visible {
-    outline: 3px solid var(--accent);
-    outline-offset: 3px;
-    border-radius: 6px;
-  }
-  @media (prefers-reduced-motion: reduce) {
-    *,
-    ::before,
-    ::after {
-      animation-duration: 0.01ms !important;
-      transition-duration: 0.01ms !important;
-    }
-  }
 }
 
-/* Long-form text (rules, terms, privacy, offline, 404). Written as plain CSS because the pages are
-   mostly bare headings, paragraphs and lists. */
+/* Long-form text (rules, terms, privacy, offline, 404). */
 @layer components {
   .doc {
     max-width: var(--container-doc);
-    padding-top: clamp(2rem, 7vw, 5.5rem);
+    margin: 0 auto;
+    padding: clamp(2rem, 7vw, 5.5rem) max(clamp(1rem, 4vw, 2.5rem), env(safe-area-inset-left, 0px)) 4rem;
+    line-height: 1.6;
+  }
+  .doc h1,
+  .doc h2 {
+    font-family: var(--font-display);
+    font-weight: 800;
+    text-wrap: balance;
   }
   .doc h1 {
     margin: 1.1rem 0 0.9rem;
@@ -194,6 +75,7 @@
     padding-top: 1.4rem;
     border-top: 1px solid var(--line);
     font-size: clamp(1.3rem, 2.6vw, 1.6rem);
+    line-height: 1.1;
     letter-spacing: -0.015em;
   }
   .doc p,
@@ -209,6 +91,35 @@
     margin: 0.4rem 0;
   }
   .doc li::marker {
-    color: var(--accent);
+    color: var(--berry);
   }
+  .doc a {
+    color: var(--berry);
+    text-underline-offset: 3px;
+  }
+}
+
+/* Site footer: not on the Figma board, kept so Rules, Terms and Privacy stay one tap away on every page. */
+.site-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px 32px;
+  padding: 28px clamp(16px, 4vw, 54px) max(28px, env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--line);
+  font-size: 14px;
+}
+.site-footer nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+}
+.site-footer a {
+  color: inherit;
+  font-weight: 600;
+  text-decoration: none;
+}
+.site-footer a:hover {
+  text-decoration: underline;
 }

@@ -1,4 +1,4 @@
-import { ACTIVITIES, PASSES_PER_MONTH } from '@/lib/sessions';
+import { prepCards } from '@/lib/session-data';
 import { DEFINITION, PAGES, SITE_NAME, SITE_URL, TAGLINE } from '@/lib/site';
 
 export const dynamic = 'force-static';
@@ -10,7 +10,7 @@ export function GET() {
     '',
     `> ${TAGLINE} ${DEFINITION}`,
     '',
-    `Founding membership is $24 per month with 3 credits every week; one credit books any standard session. Cancel 24 hours or more before the start and the credit comes back. A Bad Hair Day pass (${PASSES_PER_MONTH} a month) lets a member cancel late and keep the credit, or join with the camera off. Times are Central. Sessions are not recorded.`,
+    'Membership is $24 a month or $240 a year, with three sessions every week. Extra sessions are $4 each and never expire. Every session is 60 minutes and uses one credit. Times are Central.',
     '',
     '## Pages',
     '',
@@ -18,10 +18,7 @@ export function GET() {
     '',
     '## Activities',
     '',
-    ...ACTIVITIES.map(
-      (a) =>
-        `- [${a.title}](${SITE_URL}/activities/${a.slug}): ${a.blurb} ${a.mins} minutes, for ${a.who.toLowerCase()}.`,
-    ),
+    ...prepCards.map((a) => `- ${a.title}: for ${a.forWhom.toLowerCase()}. Bring: ${a.prep}`),
   ];
   return new Response(`${lines.join('\n')}\n`, { headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
 }

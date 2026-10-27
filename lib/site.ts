@@ -8,9 +8,9 @@ export const TAGLINE = 'Skip the swiping. Start doing.';
 // DEMO=1 is the Vercel preview build (npm run build:demo). Never set it for the live site.
 export const isDemo = process.env.DEMO === '1';
 
-// The short answer to "what is MeetDoConnect?", used on the home page, in structured data and llms.txt.
+// The short answer to "what is MeetDoConnect?", used in structured data and llms.txt.
 export const DEFINITION =
-  'MeetDoConnect is a membership for live, alcohol-free evenings online. You get 3 credits a week to book sessions where you make something, work beside someone, or wind down. Social sessions split into rooms of about 5, cameras are optional, and afterward you can find activity buddies. It is friendship first, and it is not a sobriety program.';
+  'MeetDoConnect is a membership for live online activities with real people. Members get three sessions a week in small video rooms of about 5 to 12 people: an hour to co-work, cook, craft, write, play or wind down together. Solo people, couples, teens and families are welcome, and two people reconnect only when both choose to be activity buddies.';
 
 export interface PageInfo {
   /** null on the home page, which uses the site-wide default title. */
@@ -18,50 +18,26 @@ export interface PageInfo {
   description: string;
 }
 
-// Every indexable page except the activity pages (those come from lib/sessions.ts).
+// Public pages: indexed, in the sitemap and llms.txt.
 export const PAGES = {
   '/': {
     title: null,
     description:
-      'Live alcohol-free evenings. Make something, work beside someone, or wind down, and find activity buddies.',
+      'Real people. Real activities. Live online. Small video rooms for all ages to co-work, cook, craft, write and play together.',
   },
-  '/evenings': {
-    title: 'This week’s evenings',
+  '/calendar': {
+    title: 'Calendar',
     description:
-      'The example calendar of live alcohol-free sessions: book with weekly credits, open prep cards and see your reminders.',
+      'This week’s live sessions. Pick an hour, see who it is for and what to bring, and book with one credit.',
   },
-  '/schedule': {
-    title: 'Schedule',
+  '/games': {
+    title: 'Games',
+    description: 'Word Rush and Slow Chess, two friendly games to play while you wait for your session.',
+  },
+  '/signup': {
+    title: 'Join',
     description:
-      'Book your weekly sessions with credits, add extra sessions, and use a Bad Hair Day card when you need one. Prototype that saves in your browser.',
-  },
-  '/activities': {
-    title: 'Activities',
-    description:
-      'Every MeetDoConnect session, from Mocktail Studio and Quiet Co-Work to Trivia Showdown, with supplies, cost and the run of show.',
-  },
-  '/how-it-works': {
-    title: 'How it works',
-    description:
-      'Rooms of about 5 run themselves with a shared timer, prompts and rotating roles. Afterward, mutual picks become activity buddies.',
-  },
-  '/safety': {
-    title: 'Safety',
-    description:
-      'Paid and verified members, probation, a code of conduct, rooms that lock, a two-report rule and a weekly review.',
-  },
-  '/membership': {
-    title: 'Membership',
-    description:
-      'Founding member: $24 a month for 3 credits every week. Extra credits, household add-on and answers to common questions.',
-  },
-  '/widgets-while-you-wait': {
-    title: 'Widgets While You Wait',
-    description: 'Word Rush, a free speed word game to play while you wait for your MeetDoConnect session.',
-  },
-  '/slow-chess': {
-    title: 'Slow Chess',
-    description: 'Play chess with a friend over days. Make your move, send the link, come back when you like.',
+      'Join MeetDoConnect in a few short steps: the basics, the community rules, a private Hello Video and your plan.',
   },
   '/rules': {
     title: 'Community Rules',
@@ -73,18 +49,11 @@ export const PAGES = {
 
 export type PagePath = keyof typeof PAGES;
 
-// The earlier calendar is a plain HTML file in public/, not a Next.js route, so it gets a normal <a>.
-export const PROTOTYPE = {
-  href: '/prototypes/lantern-calendar-v1.html',
-  label: 'Lantern Calendar',
-  desc: 'The earlier calendar prototype',
-} as const;
-
 const OG_IMAGE = {
-  url: '/og.png',
+  url: '/og.jpg',
   width: 1200,
   height: 630,
-  alt: `${SITE_NAME}: ${TAGLINE} Live alcohol-free evenings in rooms of about 5.`,
+  alt: `${SITE_NAME}: ${TAGLINE}`,
 };
 
 // Title, description, canonical link and Open Graph for one page.
@@ -106,3 +75,7 @@ export function pageMeta(path: string, info: PageInfo): Metadata {
 }
 
 export const metaFor = (path: PagePath): Metadata => pageMeta(path, PAGES[path]);
+
+// Member screens from the Figma board. They run on example data until accounts arrive (Milestone 2),
+// so search engines are kept out.
+export const memberMeta = (title: string): Metadata => ({ title, robots: { index: false, follow: false } });

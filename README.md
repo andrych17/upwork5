@@ -1,7 +1,7 @@
 # MeetDoConnect
 
 > **Skip the swiping. Start doing.**  
-> Live alcohol-free evenings online: make something, work beside someone, or wind down with friends in small rooms of ~5.
+> Real people. Real activities. Live online. Small video rooms of about 5 to 12 people, for all ages.
 
 **Live Website:** [https://meetdoconnect.com](https://meetdoconnect.com)
 
@@ -9,22 +9,22 @@
 
 ## Overview
 
-MeetDoConnect is a membership-based web application for live, alcohol-free online social evenings. Members receive 3 weekly credits to book interactive sessions (quiet co-working, wind-downs, cooking contests, and social games) hosted in small rooms with rotating roles and optional cameras. Afterward, members can mutual-match for private buddy chats.
+MeetDoConnect is a membership for live online activities. Members get three sessions a week to book 60-minute rooms (quiet co-working, wind-downs, cooking, crafts, writing, games) with about 5 to 12 people. Afterward, two members who both pick each other can chat as activity buddies.
 
-This repository contains the front-end prototype and marketing web app, built with **Next.js 16** (App Router, TypeScript, Tailwind CSS v4). It compiles into a static website (`output: 'export'`) served globally via **Cloudflare Workers Static Assets** with full offline **PWA** support.
+The design follows Kelly's Figma Make board, "Multi-Generational Video Rooms" (version 38). This repository contains the front end, built with **Next.js 16** (App Router, TypeScript, Tailwind CSS v4). It compiles into a static website (`output: 'export'`) served globally via **Cloudflare Workers Static Assets** with full offline **PWA** support.
 
 ---
 
 ## Tech Stack
 
-| Layer | Technology | Details |
-| :--- | :--- | :--- |
-| **Framework** | Next.js 16.4 (App Router) | Static export (`output: 'export'`), SSG |
-| **Language** | TypeScript 6.0 | Strict type safety, typed routes |
-| **Styling** | Tailwind CSS v4 | Native CSS tokens, responsive layout, dark/light mode |
-| **Hosting & CDN** | Cloudflare Workers Assets | Global edge delivery, automated SSL/TLS |
-| **Mobile & Offline** | Progressive Web App (PWA) | Service Worker (`sw.js`), Web App Manifest |
-| **Search & AI Discovery** | SEO, AEO, GEO | Schema.org JSON-LD, `sitemap.xml`, `robots.txt`, `llms.txt` |
+| Layer                     | Technology                             | Details                                                                     |
+| :------------------------ | :------------------------------------- | :-------------------------------------------------------------------------- |
+| **Framework**             | Next.js 16.4 (App Router)              | Static export (`output: 'export'`), SSG                                     |
+| **Language**              | TypeScript 6.0                         | Strict type safety, typed routes                                            |
+| **Styling**               | Plain CSS from Figma + Tailwind CSS v4 | `app/figma.css` is the board's stylesheet; Tailwind only for the text pages |
+| **Hosting & CDN**         | Cloudflare Workers Assets              | Global edge delivery, automated SSL/TLS                                     |
+| **Mobile & Offline**      | Progressive Web App (PWA)              | Service Worker (`sw.js`), Web App Manifest                                  |
+| **Search & AI Discovery** | SEO, AEO, GEO                          | Schema.org JSON-LD, `sitemap.xml`, `robots.txt`, `llms.txt`                 |
 
 ---
 
@@ -32,51 +32,39 @@ This repository contains the front-end prototype and marketing web app, built wi
 
 ```text
 site/
-├── app/                              # Next.js App Router (Pages & Metadata)
-│   ├── (docs)/                       # Legal pages (Rules, Terms, Privacy)
-│   ├── activities/                   # Activity directory & 13 individual slug pages
-│   │   └── [slug]/
-│   ├── evenings/                     # Interactive calendar prototype
-│   ├── how-it-works/                 # Feature breakdown & buddy system explanation
+├── app/                              # Next.js App Router (one folder per route)
+│   ├── (docs)/                       # Rules, Terms, Privacy
+│   ├── calendar/ games/ signup/      # Public pages from the Figma board
+│   ├── membership/ sessions/ book/[slug]/ camera-check/ live-room/ after-session/
+│   │                                 # Member screens from the board, example data until Milestone 2 (noindex)
+│   ├── states/ p2/                   # Board pages for screen states and member/admin tools (noindex)
 │   ├── llms.txt/                     # AI assistant discovery endpoint
-│   ├── membership/                   # Pricing, credit tiers & FAQ
 │   ├── offline/                      # Fallback screen when internet is lost
-│   ├── safety/                       # Community safety, reporting & moderation rules
-│   ├── schedule/                     # Booking calendar (prototype, saves in the browser)
-│   ├── slow-chess/                   # Slow Chess, played over days by sharing a link
-│   ├── widgets-while-you-wait/       # Word Rush standalone game widget
-│   ├── globals.css                   # Tailwind v4 configuration & design tokens
-│   ├── layout.tsx                    # Root HTML shell, fonts, header & footer
+│   ├── figma.css                     # The Figma board's stylesheet, kept as is
+│   ├── fonts.css                     # Self-hosted Bricolage Grotesque + DM Sans (same files as the board)
+│   ├── globals.css                   # Imports the two files above, Tailwind tokens, text pages, footer
+│   ├── layout.tsx                    # Root HTML shell, font preload & footer
 │   ├── not-found.tsx                 # 404 page
-│   ├── page.tsx                      # Homepage & interactive demo widgets
+│   ├── page.tsx                      # Home page + JSON-LD
 │   ├── robots.ts                     # Search engine crawler permissions
-│   └── sitemap.ts                    # Auto-generated XML sitemap
-├── components/                       # Shared UI & Interactive Prototypes
-│   ├── demos.tsx                     # Interactive calendar, room & buddy match demos
-│   ├── install-button.tsx            # PWA install prompt button for mobile & desktop
-│   ├── schedule.tsx                  # Schedule screen and its browser-only store
-│   ├── slow-chess.tsx                # Slow Chess board, game link and saved games
-│   ├── ui.tsx                        # Core UI components (Button, Shell, Card, Badge)
-│   └── word-rush.tsx                 # Word Rush game UI container
-├── lib/                              # Data, Business Logic & Utilities
+│   └── sitemap.ts                    # XML sitemap of the public pages
+├── components/
+│   ├── screens/                      # One file per Figma Make screen (home, calendar, games, ...)
+│   ├── install-button.tsx            # PWA install button (footer)
+│   └── ui.tsx                        # Eyebrow and Button for the text pages
+├── lib/
 │   ├── placeholders.ts               # Legal template blanks (LLC name, email, dates)
-│   ├── schedule/rules.ts             # Booking, credit, cancel, card and payment rules (ported from rules.js)
-│   ├── slow-chess/engine.ts          # Chess rules, notation and the game link format
-│   ├── sessions.ts                   # Mock schedule data, credit rules & cancellation policy
-│   ├── site.ts                       # Metadata, navigation links & SEO configuration
-│   └── word-rush/                    # Game engine rules, tile scoring & dictionary
-├── public/                           # Static Assets
-│   ├── icons/                        # PWA app icons (192x192, 512x512, maskable)
+│   ├── schedule/rules.ts             # Booking, credit, cancel, card and payment rules (ported from rules.js), for Milestone 2
+│   ├── session-data.ts               # The 12 activities and their prep cards, from the board
+│   ├── site.ts                       # Page titles, descriptions & SEO configuration
+│   ├── slow-chess/engine.ts          # Chess rules and the game link format, for the Buddy Room milestone
+│   └── word-rush/                    # Word Rush dictionary and scoring (the Games page checks words with it)
+├── public/
+│   ├── fonts/  images/  icons/       # Fonts, Figma photos (WebP), PWA icons
 │   ├── manifest.webmanifest          # PWA installation manifest
-│   ├── og.png                        # Social share card (1200x630)
+│   ├── og.jpg                        # Social share card (1200x630)
 │   └── sw.js                         # Offline cache service worker
-├── scripts/                          # Build & Quality Assurance Scripts
-│   ├── build-demo.ts                 # Demo build generator with content guard
-│   ├── check.ts                      # Pre-deploy asset & link integrity checker
-│   ├── guard.js                      # DevTools & content protection trap for preview
-│   ├── test-chess.ts                 # Slow Chess engine tests (perft counts, mate, links)
-│   ├── test-engine.ts                # Word Rush game engine automated test suite
-│   └── test-schedule.ts              # Schedule rules tests (credits, cancels, cards, payments)
+├── scripts/                          # Build & checks: build-demo.ts, check.ts, guard.js, test-*.ts
 ├── wrangler.json                     # Cloudflare Workers Static Assets configuration
 └── next.config.ts                    # Next.js build configuration (Static HTML Export)
 ```
@@ -86,8 +74,9 @@ site/
 ## Local Development
 
 ### Prerequisites
-* **Node.js**: `v22.18.0` or newer
-* **npm**: `v10.0.0` or newer
+
+- **Node.js**: `v22.18.0` or newer
+- **npm**: `v10.0.0` or newer
 
 ### Setup & Commands
 
@@ -145,9 +134,9 @@ npx wrangler deploy
 1. **Custom Domain**: Bound to `meetdoconnect.com` and `www.meetdoconnect.com`.
 2. **Worker Route Pattern**: Ensure the route pattern is set to `meetdoconnect.com/*` (with wildcard `/*`) so sub-routes, sitemaps, and PWA manifests route properly.
 3. **SSL / HTTPS**:
-   * **Mode**: Full (or Flexible).
-   * **Always Use HTTPS**: Enabled (redirects `http://` to `https://`).
-   * **Automatic HTTPS Rewrites**: Enabled.
+   - **Mode**: Full (or Flexible).
+   - **Always Use HTTPS**: Enabled (redirects `http://` to `https://`).
+   - **Automatic HTTPS Rewrites**: Enabled.
 
 ---
 
@@ -155,10 +144,10 @@ npx wrangler deploy
 
 MeetDoConnect installs directly to a user's device without requiring an App Store or Google Play Store download.
 
-* **Android (Chrome)**: Tap the in-app "Install the app" button or open Chrome menu (`⋮`) > **Install app** / **Add to Home screen**.
-* **iOS / iPadOS (Safari)**: Tap the **Share** button (`⎋`) > select **Add to Home Screen**.
-* **Desktop (Chrome / Edge)**: Click the **Install** monitor icon on the right side of the address bar.
-* **Offline Support**: When offline, visitors are served `/offline` from cache, while the Word Rush game remains fully playable.
+- **Android (Chrome)**: Tap the in-app "Install the app" button or open Chrome menu (`⋮`) > **Install app** / **Add to Home screen**.
+- **iOS / iPadOS (Safari)**: Tap the **Share** button (`⎋`) > select **Add to Home Screen**.
+- **Desktop (Chrome / Edge)**: Click the **Install** monitor icon on the right side of the address bar.
+- **Offline Support**: Pages already opened stay available offline; anything else shows `/offline`.
 
 ---
 
@@ -166,14 +155,14 @@ MeetDoConnect installs directly to a user's device without requiring an App Stor
 
 The codebase is optimized for traditional search engines, voice assistants, and Generative AI engines:
 
-* **SEO (Search Engine Optimization)**:
-  * Unique meta titles, descriptions, canonical URLs, and Open Graph share cards (`/og.png`) for all 31 routes.
-  * Validated `/sitemap.xml` and `/robots.txt`.
-* **AEO (Answer Engine Optimization)**:
-  * Direct concise answers under each page headline for voice search and answer snippets.
-  * Structured JSON-LD schemas: `Organization`, `WebSite`, `FAQPage`, `ItemList`, `BreadcrumbList`, `HowTo`, and `WebApplication`.
-* **GEO (Generative Engine Optimization)**:
-  * Dedicated [`/llms.txt`](https://meetdoconnect.com/llms.txt) plain-text reference summarizing the community model, credit system, and session rules so AI models (ChatGPT, Claude, Perplexity, Gemini) can accurately recommend the platform.
+- **SEO (Search Engine Optimization)**:
+  - Unique meta titles, descriptions, canonical URLs, and an Open Graph share card (`/og.jpg`) for the public pages. Member screens are noindex.
+  - Validated `/sitemap.xml` and `/robots.txt`.
+- **AEO (Answer Engine Optimization)**:
+  - Direct concise answers under each page headline for voice search and answer snippets.
+  - Structured JSON-LD on the home page: `Organization` and `WebSite`.
+- **GEO (Generative Engine Optimization)**:
+  - Dedicated [`/llms.txt`](https://meetdoconnect.com/llms.txt) plain-text reference summarizing the community model, credit system, and session rules so AI models (ChatGPT, Claude, Perplexity, Gemini) can accurately recommend the platform.
 
 ---
 
@@ -182,12 +171,12 @@ The codebase is optimized for traditional search engines, voice assistants, and 
 Before opening the site to real paid members:
 
 1. **Fill in Placeholders**:
-   * Edit `lib/placeholders.ts` to provide the legal business entity name, registration state, support email, and effective date.
-   * `npm run build` will flag any remaining `[BRACKET]` placeholders.
+   - Edit `lib/placeholders.ts` to provide the legal business entity name, registration state, support email, and effective date.
+   - `npm run build` will flag any remaining `[BRACKET]` placeholders.
 2. **Legal Review**:
-   * Have a licensed attorney review the Community Rules, Terms of Service, and Privacy Policy templates.
+   - Have a licensed attorney review the Community Rules, Terms of Service, and Privacy Policy templates.
 3. **Pricing & Times**:
-   * Verify session credit costs and subscription prices in `app/membership/page.tsx` and `lib/sessions.ts`.
+   - Verify prices and session times in `components/screens/` (home, calendar, membership) and `lib/session-data.ts`.
 
 ---
 
@@ -196,17 +185,17 @@ Before opening the site to real paid members:
 The current front end is built to seamlessly graduate into a full-stack SaaS application:
 
 1. **Authentication & Member Accounts**:
-   * Integration with Supabase or PostgreSQL for secure member login, passwordless magic links, and profile management.
+   - Integration with Supabase or PostgreSQL for secure member login, passwordless magic links, and profile management.
 2. **Booking & Credit Engine**:
-   * Backend persistence for 3 weekly credits, the 24-hour cancellation cutoff, and "Bad Hair Day" cards.
+   - Backend persistence for 3 weekly credits, the 24-hour cancellation cutoff, and "Bad Hair Day" cards.
 3. **Payment Processing**:
-   * Stripe Checkout & Customer Portal for recurring monthly memberships ($24/mo) and add-on credit packs.
+   - Square, Braintree or Helcim (not Stripe) for $24/month or $240/year memberships and extra sessions ($4 each, $15 for 5).
 4. **Live Video Rooms**:
-   * Embedded rooms via Jitsi as a Service (JaaS) or Daily.co, authenticated so only booked members can join.
+   - Daily.co rooms for 60-minute sessions of up to 12 people, open only to members who booked.
 5. **Real-Time Buddy Chat**:
-   * WebSocket/Supabase Realtime messaging unlocked when two session attendees mutually select each other.
+   - WebSocket/Supabase Realtime messaging unlocked when two session attendees mutually select each other.
 6. **Automated Reminders**:
-   * Email/SMS reminders (48-hour supply card notice, 24-hour lock-in, 1-hour room link).
+   - Email/SMS reminders (48-hour supply card notice, 24-hour lock-in, 1-hour room link).
 
 ---
 

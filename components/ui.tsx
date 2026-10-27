@@ -1,6 +1,4 @@
 // Small building blocks shared by every page. Colors come from the tokens in app/globals.css.
-import type { Route } from 'next';
-import Link from 'next/link';
 import type { ComponentProps, ReactNode } from 'react';
 import { extendTailwindMerge } from 'tailwind-merge';
 
@@ -17,22 +15,6 @@ const merge = extendTailwindMerge({
   },
 });
 export const cn = (...classes: (string | false | null | undefined)[]) => merge(classes);
-
-export function Logo({ href }: { href?: Route }) {
-  const word = (
-    <>
-      Meet<b className="text-accent">Do</b>Connect
-    </>
-  );
-  const style = 'font-display text-[1.45rem] font-bold tracking-[-0.035em] text-fg no-underline';
-  return href ? (
-    <Link href={href} className={style}>
-      {word}
-    </Link>
-  ) : (
-    <div className={style}>{word}</div>
-  );
-}
 
 export function Eyebrow({ children, className }: { children: ReactNode; className?: string }) {
   return (
@@ -96,126 +78,4 @@ export function Button({
   );
 }
 
-export function ButtonLink({
-  variant,
-  size,
-  arrow,
-  className,
-  children,
-  href,
-}: ButtonStyle & { href: Route; className?: string; children: ReactNode }) {
-  return (
-    <Link href={href} className={buttonClass({ variant, size, arrow }, className)}>
-      {children}
-      <ButtonArrow arrow={arrow} />
-    </Link>
-  );
-}
-
-// Double bezel: a thin outer shell with a hairline ring holding an inner core with concentric corners.
-export function Shell({
-  ink,
-  as: Tag = 'div',
-  className,
-  coreClassName,
-  children,
-  ...aria
-}: {
-  ink?: boolean;
-  as?: 'div' | 'aside' | 'section';
-  className?: string;
-  coreClassName?: string;
-  children: ReactNode;
-  'aria-label'?: string;
-}) {
-  return (
-    <Tag className={cn('min-w-0 rounded-shell bg-shell p-1.5 shadow-lift ring-1 ring-line', className)} {...aria}>
-      <div
-        className={cn(
-          'grid min-w-0 content-start gap-3.5 rounded-core p-[clamp(18px,3vw,28px)] shadow-[inset_0_1px_0_var(--highlight)]',
-          ink ? 'ink' : 'bg-surface ring-1 ring-line',
-          coreClassName,
-        )}
-      >
-        {children}
-      </div>
-    </Tag>
-  );
-}
-
-export function Section({ className, children, ...props }: ComponentProps<'section'>) {
-  return (
-    <section className={cn('grid gap-[clamp(20px,3vw,32px)] pt-section', className)} {...props}>
-      {children}
-    </section>
-  );
-}
-
-export function SectionHead({
-  eyebrow,
-  title,
-  id,
-  children,
-}: {
-  eyebrow?: string;
-  title: ReactNode;
-  id?: string;
-  children?: ReactNode;
-}) {
-  return (
-    <div className="grid max-w-[46rem] gap-3.5">
-      {eyebrow && <Eyebrow>{eyebrow}</Eyebrow>}
-      <h2 id={id} className="text-section">
-        {title}
-      </h2>
-      {children}
-    </div>
-  );
-}
-
-export function PageHead({ eyebrow, title, children }: { eyebrow: string; title: ReactNode; children?: ReactNode }) {
-  return (
-    <header className="grid max-w-[52rem] gap-4 pt-[clamp(32px,7vw,88px)]">
-      <Eyebrow>{eyebrow}</Eyebrow>
-      <h1 className="text-title">{title}</h1>
-      {children}
-    </header>
-  );
-}
-
-export function Lead({ children, className }: { children: ReactNode; className?: string }) {
-  return <p className={cn('max-w-prose text-lead text-muted', className)}>{children}</p>;
-}
-
-export function Note({ children }: { children: ReactNode }) {
-  return (
-    <p className="max-w-prose justify-self-start rounded-xl bg-warn-bg px-3.5 py-2.5 text-[0.9rem] text-warn">
-      {children}
-    </p>
-  );
-}
-
-export function CheckList({ items, className }: { items: readonly string[]; className?: string }) {
-  return (
-    <ul className={cn('grid gap-1.5', className)}>
-      {items.map((item) => (
-        <li
-          key={item}
-          className="relative pl-7 before:absolute before:top-[5px] before:left-1.5 before:h-[11px] before:w-1.5 before:rotate-45 before:border-r-2 before:border-b-2 before:border-accent before:content-['']"
-        >
-          {item}
-        </li>
-      ))}
-    </ul>
-  );
-}
-
 // A sun light with a slow ring, for "live" things.
-export function LiveDot() {
-  return (
-    <span aria-hidden="true" className="relative flex size-2.5 shrink-0">
-      <span className="absolute inline-flex size-full rounded-full bg-sun opacity-60 motion-safe:animate-ping" />
-      <span className="relative inline-flex size-2.5 rounded-full bg-sun" />
-    </span>
-  );
-}
