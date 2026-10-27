@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
+import MenuToggle from '@/components/menu-toggle';
 
 const participants = [
   { name: 'Maya', image: '/images/community-painting.webp', activity: 'Writing & quiet co-work' },
@@ -40,6 +41,7 @@ export default function AfterSessionPage() {
         <Link className="member-avatar" href="/membership" aria-label="Open account">
           KC
         </Link>
+        <MenuToggle />
       </header>
 
       {chatOpen ? (

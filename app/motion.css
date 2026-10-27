@@ -1,0 +1,222 @@
+/* Motion and small UX touches on top of the Figma board. A page at rest looks exactly like the board:
+   this only changes how things arrive and respond. prefers-reduced-motion turns all of it off. */
+
+:root {
+  --motion-ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  /* Each page eases in when you arrive (pages are separate <main> elements, so this runs on every navigation). */
+  main {
+    animation: motion-page 0.45s var(--motion-ease) both;
+  }
+
+  /* Home hero: photos settle in one by one, then the wordmark, tagline and button. */
+  .hero .photo {
+    animation: motion-photo 1s var(--motion-ease) both;
+  }
+  .hero .photo-2 {
+    animation-delay: 0.08s;
+  }
+  .hero .photo-3 {
+    animation-delay: 0.16s;
+  }
+  .hero .photo-4 {
+    animation-delay: 0.24s;
+  }
+  .hero .photo-5 {
+    animation-delay: 0.32s;
+  }
+  .hero-copy .eyebrow,
+  .hero-copy h1 span,
+  .hero-copy .tagline,
+  .hero-cta {
+    animation: motion-rise 0.8s var(--motion-ease) both;
+  }
+  .hero-copy .eyebrow {
+    animation-delay: 0.2s;
+  }
+  .hero-copy h1 span:nth-child(1) {
+    animation-delay: 0.3s;
+  }
+  .hero-copy h1 span:nth-child(2) {
+    animation-delay: 0.4s;
+  }
+  .hero-copy h1 span:nth-child(3) {
+    animation-delay: 0.5s;
+  }
+  .hero-copy .tagline {
+    animation-delay: 0.65s;
+  }
+  .hero-cta {
+    animation-delay: 0.8s;
+  }
+
+  /* Scroll reveal (components/reveal.tsx marks the blocks). `translate` is separate from `transform`,
+     so blocks that already have a transform keep it. */
+  [data-reveal] {
+    transition:
+      opacity 0.7s var(--motion-ease),
+      translate 0.7s var(--motion-ease);
+    transition-delay: calc(var(--reveal-i, 0) * 70ms);
+  }
+  [data-reveal]:not([data-shown]) {
+    opacity: 0;
+    translate: 0 28px;
+  }
+
+  /* Buttons and button-like links answer a tap. Zero specificity, so any rule from the board still wins. */
+  :where(button, a[class], select) {
+    transition:
+      scale 0.18s var(--motion-ease),
+      background-color 0.2s,
+      color 0.2s,
+      border-color 0.2s,
+      box-shadow 0.2s,
+      opacity 0.2s;
+  }
+  :where(button, a[class]):not(:disabled):active {
+    scale: 0.97;
+  }
+
+  /* Things that appear after a tap slide in instead of popping. */
+  .session-detail,
+  .signup-step,
+  .round-finished,
+  .move-status,
+  [role='status'] {
+    animation: motion-in 0.35s var(--motion-ease) both;
+  }
+  .found-words span {
+    animation: motion-pop 0.35s var(--motion-ease) both;
+  }
+  .letter-rack button {
+    transition:
+      scale 0.18s var(--motion-ease),
+      opacity 0.2s,
+      translate 0.2s var(--motion-ease);
+  }
+  .letter-rack button:not(:disabled):hover {
+    translate: 0 -3px;
+  }
+}
+
+@keyframes motion-page {
+  from {
+    opacity: 0;
+    translate: 0 10px;
+  }
+}
+@keyframes motion-photo {
+  from {
+    opacity: 0;
+    scale: 1.06;
+  }
+}
+@keyframes motion-rise {
+  from {
+    opacity: 0;
+    translate: 0 26px;
+  }
+}
+@keyframes motion-in {
+  from {
+    opacity: 0;
+    translate: 0 -6px;
+  }
+}
+@keyframes motion-pop {
+  from {
+    opacity: 0;
+    scale: 0.6;
+  }
+}
+
+/* Mobile menu (components/menu-toggle.tsx). Hidden where the board shows its own header links. */
+/* A 44px circle, the size of the member avatar on the board, so the header keeps its height on phones. */
+.menu-toggle {
+  display: none;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 2px solid var(--ink);
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+}
+.site-header .menu-toggle {
+  border: 1px solid #ffffff6b;
+  background: #00000029;
+  color: #fff;
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+.schedule-nav {
+  position: relative;
+}
+@media (max-width: 980px) {
+  .site-header {
+    grid-template-columns: 1fr auto auto;
+    gap: 8px;
+  }
+  .site-header .menu-toggle {
+    display: inline-grid;
+  }
+}
+@media (max-width: 960px) {
+  .schedule-nav:has(.menu-toggle) {
+    grid-template-columns: 1fr auto auto;
+    gap: 8px;
+  }
+  .schedule-nav .menu-toggle {
+    display: inline-grid;
+  }
+  .schedule-nav > a:not(:first-child) {
+    white-space: nowrap;
+  }
+}
+header[data-open] {
+  z-index: 40;
+}
+header[data-open] nav {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 16px;
+  left: 16px;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px;
+  border: 2px solid var(--ink);
+  border-radius: var(--radius-card);
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: 6px 6px 0 var(--ink);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  animation: motion-in 0.25s var(--motion-ease) both;
+}
+.site-header[data-open] nav {
+  top: calc(100% - 4px);
+}
+header[data-open] nav a {
+  padding: 14px 16px;
+  border-radius: 12px;
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+header[data-open] nav a:hover,
+header[data-open] nav a:focus-visible,
+header[data-open] nav a.active {
+  background: var(--cream);
+}
+@media print {
+  [data-reveal] {
+    opacity: 1 !important;
+    translate: none !important;
+  }
+}

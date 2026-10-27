@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
+import MenuToggle from '@/components/menu-toggle';
 
 const creditOptions = [
   { amount: 1, price: 4, label: 'A little more room' },
@@ -32,6 +33,7 @@ export default function MembershipPage() {
         <Link className="member-avatar" href="/membership" aria-label="Open account">
           KC
         </Link>
+        <MenuToggle />
       </header>
 
       <section className="membership-page-hero">

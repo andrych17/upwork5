@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { getSession } from '@/lib/session-data';
+import MenuToggle from '@/components/menu-toggle';
 
 function threeHoursBefore(time: string) {
   const match = time.match(/(\d+):(\d+)\s(am|pm)/);
@@ -38,6 +39,7 @@ export default function BookPage({ slug }: { slug: string }) {
           <Link className="schedule-signin" href="/membership">
             My account
           </Link>
+          <MenuToggle />
         </header>
 
         <section className="confirmation-screen" aria-live="polite">
@@ -101,6 +103,7 @@ export default function BookPage({ slug }: { slug: string }) {
         <Link className="schedule-signin" href="/signup">
           Sign in
         </Link>
+        <MenuToggle />
       </header>
 
       <div className="booking-back">

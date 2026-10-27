@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { prepCards, type SessionContent } from '@/lib/session-data';
+import MenuToggle from '@/components/menu-toggle';
 
 const photos = [
   { src: '/images/guitar-duo.webp', alt: 'Two people sharing music with a guitar and tablet' },
@@ -149,6 +150,7 @@ export default function Home() {
           <Link className="sign-in" href="/signup">
             Join
           </Link>
+          <MenuToggle />
         </header>
         <div className="hero-copy" id="top">
           <p className="eyebrow">Real people. Real activities. Live online.</p>
@@ -188,8 +190,18 @@ export default function Home() {
           </div>
         </div>
         <div className="purpose-collage" aria-label="People connecting through shared activities">
-          <img src="/images/community-painting.webp" alt="A woman smiling while painting" />
-          <img src="/images/community-crafting.webp" alt="A man concentrating on a hands-on craft project" />
+          <img
+            loading="lazy"
+            decoding="async"
+            src="/images/community-painting.webp"
+            alt="A woman smiling while painting"
+          />
+          <img
+            loading="lazy"
+            decoding="async"
+            src="/images/community-crafting.webp"
+            alt="A man concentrating on a hands-on craft project"
+          />
           <span className="collage-note">
             Come alone.
             <br />
@@ -258,8 +270,18 @@ export default function Home() {
           </div>
         </div>
         <div className="works-collage">
-          <img src="/images/purpose-together.webp" alt="Two women working creatively together" />
-          <img src="/images/purpose-solo.webp" alt="A man working independently on an architectural model" />
+          <img
+            loading="lazy"
+            decoding="async"
+            src="/images/purpose-together.webp"
+            alt="Two women working creatively together"
+          />
+          <img
+            loading="lazy"
+            decoding="async"
+            src="/images/purpose-solo.webp"
+            alt="A man working independently on an architectural model"
+          />
           <span>
             Three sessions
             <br />

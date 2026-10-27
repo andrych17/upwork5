@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
+import MenuToggle from '@/components/menu-toggle';
 
 type Session = {
   slug: string;
@@ -199,6 +200,7 @@ export default function SchedulePage() {
         <Link className="schedule-signin" href="/signup">
           Sign in
         </Link>
+        <MenuToggle />
       </header>
 
       <section className="schedule-hero">

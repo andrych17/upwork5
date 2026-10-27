@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { isValidWord } from '@/lib/word-rush/engine';
+import MenuToggle from '@/components/menu-toggle';
 
 const board = [
   ['R', 'N', 'B', 'Q', 'K', 'B', 'N', 'R'],
@@ -166,6 +167,7 @@ export default function GamesPage() {
         <Link className="schedule-signin" href="/sessions">
           My sessions
         </Link>
+        <MenuToggle />
       </header>
 
       <section className="games-hero">

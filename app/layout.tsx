@@ -3,6 +3,7 @@ import Link from 'next/link';
 import Script from 'next/script';
 import type { ReactNode } from 'react';
 import RegisterSW from '@/components/register-sw';
+import Reveal from '@/components/reveal';
 import InstallButton from '@/components/install-button';
 import { PAGES, SITE_NAME, SITE_URL, TAGLINE, isDemo } from '@/lib/site';
 import './globals.css';
@@ -27,7 +28,9 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
   return (
-    <html lang="en">
+    // data-scroll-behavior: the board scrolls smoothly; this lets Next.js open each new page at the top instead
+    // of gliding up from where you were. In-page links (Find something to do) stay smooth.
+    <html lang="en" data-scroll-behavior="smooth">
       <head>
         <link rel="preload" href="/fonts/bricolage-grotesque-latin.woff2" as="font" type="font/woff2" crossOrigin="" />
         <link rel="preload" href="/fonts/dm-sans-latin.woff2" as="font" type="font/woff2" crossOrigin="" />
@@ -49,6 +52,7 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
           <InstallButton />
         </footer>
         <RegisterSW />
+        <Reveal />
       </body>
     </html>
   );

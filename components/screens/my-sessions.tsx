@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { getSession } from '@/lib/session-data';
+import MenuToggle from '@/components/menu-toggle';
 
 const bookings = [
   {
@@ -57,6 +58,7 @@ export default function MySessionsPage() {
         <Link className="member-avatar" href="/membership" aria-label="Open account">
           KC
         </Link>
+        <MenuToggle />
       </header>
 
       <section className="sessions-hero">

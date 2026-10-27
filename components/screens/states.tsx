@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
+import MenuToggle from '@/components/menu-toggle';
 
 const membershipStates = {
   active: {
@@ -79,6 +80,7 @@ export default function P1StatesPage() {
         <Link className="schedule-signin" href="/">
           Exit preview
         </Link>
+        <MenuToggle />
       </header>
 
       <section className="states-hero">

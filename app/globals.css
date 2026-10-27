@@ -3,6 +3,8 @@
 /* The Figma redesign (Kelly's Figma Make board), kept as plain CSS so it can be compared with the board
    one class at a time. Its :root holds the palette: --cream, --ink, --paper, --berry, --navy, --highlight. */
 @import './figma.css';
+/* Transitions, scroll reveal and the mobile menu, layered on top of the board. */
+@import './motion.css';
 
 /* Tailwind tokens for the few pieces still written with utilities (text pages, install button),
    pointed at the Figma palette so they match the rest of the site. */
