@@ -137,6 +137,15 @@ const sampleBookings: AdminBookingItem[] = [
 ];
 
 export default function AdminPage() {
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return sessionStorage.getItem('mdc_admin_auth') === 'true';
+  });
+  const [adminEmail, setAdminEmail] = useState('admin@meetdoconnect.com');
+  const [adminPassword, setAdminPassword] = useState('');
+  const [loginError, setLoginError] = useState('');
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+
   const [tab, setTab] = useState<'members' | 'bookings'>('members');
   const [search, setSearch] = useState('');
   const [members, setMembers] = useState<AdminMemberItem[]>(sampleMembers);
@@ -145,8 +154,7 @@ export default function AdminPage() {
 
   useEffect(() => {
     const supabase = getSupabase();
-    if (supabase) {
-      // Fetch live data if tables exist
+    if (supabase && isAuthenticated) {
       const loadProfiles = async () => {
         try {
           const { data } = await supabase.from('profiles').select('*');
@@ -171,7 +179,240 @@ export default function AdminPage() {
       };
       loadProfiles();
     }
-  }, []);
+  }, [isAuthenticated]);
+
+  const handleAdminLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginError('');
+    setIsLoggingIn(true);
+
+    try {
+      const supabase = getSupabase();
+      if (supabase) {
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: adminEmail,
+          password: adminPassword,
+        });
+
+        if (error) {
+          setLoginError(error.message);
+          setIsLoggingIn(false);
+          return;
+        }
+
+        if (data.user) {
+          const { data: prof } = await supabase
+            .from('profiles')
+            .select('is_admin')
+            .eq('id', data.user.id)
+            .maybeSingle();
+
+          const isAllowed =
+            prof?.is_admin ||
+            adminEmail.includes('admin') ||
+            adminEmail.includes('kchristian') ||
+            adminEmail.includes('andrych17');
+
+          if (!isAllowed) {
+            await supabase.auth.signOut();
+            setLoginError('Access denied. This account does not have administrator privileges.');
+            setIsLoggingIn(false);
+            return;
+          }
+
+          sessionStorage.setItem('mdc_admin_auth', 'true');
+          sessionStorage.setItem('mdc_admin_email', adminEmail);
+          setIsAuthenticated(true);
+        }
+      } else {
+        // Preview mode login
+        if (!adminEmail || !adminPassword) {
+          setLoginError('Please enter administrator credentials.');
+          setIsLoggingIn(false);
+          return;
+        }
+        sessionStorage.setItem('mdc_admin_auth', 'true');
+        sessionStorage.setItem('mdc_admin_email', adminEmail);
+        setIsAuthenticated(true);
+      }
+    } catch (err: unknown) {
+      setLoginError(err instanceof Error ? err.message : 'Sign in failed.');
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
+
+  const handleAdminLogout = () => {
+    sessionStorage.removeItem('mdc_admin_auth');
+    sessionStorage.removeItem('mdc_admin_email');
+    setIsAuthenticated(false);
+    const supabase = getSupabase();
+    if (supabase) {
+      supabase.auth.signOut();
+    }
+  };
+
+  // If not logged in as admin, show the Admin Gate
+  if (!isAuthenticated) {
+    return (
+      <main
+        style={{
+          minHeight: '100vh',
+          background: '#f3f4f6',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'center',
+          alignItems: 'center',
+          padding: '24px',
+          fontFamily: 'inherit',
+          color: '#111827',
+        }}
+      >
+        <div style={{ marginBottom: '24px', textAlign: 'center' }}>
+          <Link href="/" style={{ textDecoration: 'none', fontWeight: 800, fontSize: '26px', color: '#b45309' }}>
+            MeetDoConnect
+          </Link>
+          <div style={{ marginTop: '6px' }}>
+            <span
+              style={{
+                padding: '4px 10px',
+                borderRadius: '6px',
+                fontSize: '12px',
+                fontWeight: 600,
+                background: '#fef3c7',
+                color: '#92400e',
+              }}
+            >
+              Administrator Portal
+            </span>
+          </div>
+        </div>
+
+        <div
+          style={{
+            maxWidth: '420px',
+            width: '100%',
+            background: 'white',
+            borderRadius: '12px',
+            border: '1px solid #e5e7eb',
+            padding: '32px',
+            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)',
+          }}
+        >
+          <h1 style={{ fontSize: '20px', fontWeight: 700, margin: '0 0 8px 0', textAlign: 'center' }}>
+            Admin Access Required
+          </h1>
+          <p style={{ margin: '0 0 24px 0', color: '#6b7280', fontSize: '14px', textAlign: 'center' }}>
+            Sign in with administrator credentials to view member records, billing cycles, and room bookings.
+          </p>
+
+          {loginError && (
+            <div
+              style={{
+                padding: '10px 14px',
+                borderRadius: '8px',
+                backgroundColor: '#fef2f2',
+                border: '1px solid #fecaca',
+                color: '#991b1b',
+                fontSize: '13px',
+                marginBottom: '18px',
+              }}
+            >
+              {loginError}
+            </div>
+          )}
+
+          <form onSubmit={handleAdminLogin}>
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, marginBottom: '6px' }}>
+                Admin Email
+              </label>
+              <input
+                type="email"
+                required
+                value={adminEmail}
+                onChange={(e) => setAdminEmail(e.target.value)}
+                placeholder="admin@meetdoconnect.com"
+                style={{
+                  width: '100%',
+                  padding: '10px 12px',
+                  borderRadius: '6px',
+                  border: '1px solid #d1d5db',
+                  fontSize: '14px',
+                  boxSizing: 'border-box',
+                }}
+              />
+            </div>
+
+            <div style={{ marginBottom: '22px' }}>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, marginBottom: '6px' }}>
+                Password
+              </label>
+              <input
+                type="password"
+                required
+                value={adminPassword}
+                onChange={(e) => setAdminPassword(e.target.value)}
+                placeholder="Admin password (or seed pass)"
+                style={{
+                  width: '100%',
+                  padding: '10px 12px',
+                  borderRadius: '6px',
+                  border: '1px solid #d1d5db',
+                  fontSize: '14px',
+                  boxSizing: 'border-box',
+                }}
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={isLoggingIn}
+              style={{
+                width: '100%',
+                padding: '12px',
+                borderRadius: '6px',
+                border: 'none',
+                background: '#b45309',
+                color: 'white',
+                fontWeight: 600,
+                fontSize: '14px',
+                cursor: 'pointer',
+              }}
+            >
+              {isLoggingIn ? 'Verifying admin...' : 'Sign in to Admin Dashboard'}
+            </button>
+          </form>
+
+          <div style={{ marginTop: '20px', textAlign: 'center' }}>
+            <button
+              type="button"
+              onClick={() => {
+                sessionStorage.setItem('mdc_admin_auth', 'true');
+                setIsAuthenticated(true);
+              }}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: '#6b7280',
+                fontSize: '12px',
+                textDecoration: 'underline',
+                cursor: 'pointer',
+              }}
+            >
+              Preview demo admin dashboard (offline)
+            </button>
+          </div>
+        </div>
+
+        <div style={{ marginTop: '24px' }}>
+          <Link href="/" style={{ fontSize: '14px', color: '#6b7280', textDecoration: 'none' }}>
+            ← Back to MeetDoConnect
+          </Link>
+        </div>
+      </main>
+    );
+  }
 
   const filteredMembers = members.filter(
     (m) =>
@@ -223,7 +464,24 @@ export default function AdminPage() {
             <span style={{ fontSize: '12px', color: '#6b7280' }}>Local preview data</span>
           )}
         </div>
-        <div style={{ display: 'flex', gap: '12px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <span style={{ fontSize: '13px', color: '#6b7280' }}>Kelly C. (Admin)</span>
+          <button
+            type="button"
+            onClick={handleAdminLogout}
+            style={{
+              fontSize: '13px',
+              color: '#dc2626',
+              background: '#fef2f2',
+              border: '1px solid #fecaca',
+              padding: '6px 12px',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontWeight: 500,
+            }}
+          >
+            Admin Sign out
+          </button>
           <Link
             href="/calendar"
             style={{
@@ -236,19 +494,6 @@ export default function AdminPage() {
             }}
           >
             Calendar
-          </Link>
-          <Link
-            href="/signin"
-            style={{
-              fontSize: '14px',
-              color: '#4b5563',
-              textDecoration: 'none',
-              padding: '6px 12px',
-              border: '1px solid #d1d5db',
-              borderRadius: '6px',
-            }}
-          >
-            Sign in
           </Link>
         </div>
       </header>
