@@ -64,7 +64,7 @@ export default function MembershipPage() {
             <strong>$24</strong>
             <span>/ month</span>
           </div>
-          <p>Three live sessions every week, resetting each Sunday. Cancel any time.</p>
+          <p>Three live sessions every week, resetting each Monday. Cancel any time.</p>
           <div className="plan-includes">
             <span>3 weekly sessions</span>
             <span>3 Bad Hair Day cards monthly</span>
@@ -85,7 +85,7 @@ export default function MembershipPage() {
               <i />
               <i className="empty" />
             </div>
-            <p>Resets Sunday, May 25</p>
+            <p>Resets Monday, May 25</p>
           </article>
           <article>
             <span>Extra sessions</span>

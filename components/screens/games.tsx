@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { isValidWord } from '@/lib/word-rush/engine';
 import MenuToggle from '@/components/menu-toggle';
 
@@ -66,9 +66,14 @@ export default function GamesPage() {
   const [words, setWords] = useState<{ word: string; player: 1 | 2 }[]>([]);
   const [scores, setScores] = useState<[number, number]>([0, 0]);
   const [currentPlayer, setCurrentPlayer] = useState<1 | 2>(1);
-  const [rack, setRack] = useState<string[]>(() => randomRack());
+  // Fixed until Start: a random rack here would differ between the prerendered page and the browser.
+  const [rack, setRack] = useState<string[]>(() => [...'WORDRUSH']);
   const [selectedTiles, setSelectedTiles] = useState<number[]>([]);
   const [moveSent, setMoveSent] = useState(false);
+  const [feedback, setFeedback] = useState('');
+  const feedbackTimer = useRef<number | undefined>(undefined);
+
+  useEffect(() => () => window.clearTimeout(feedbackTimer.current), []);
 
   useEffect(() => {
     if (!running || seconds === 0) return;
@@ -86,16 +91,20 @@ export default function GamesPage() {
     });
   };
 
+  // Kelly: a word that doesn't count clears itself with a short reason, so the player can keep going.
+  const rejectWord = (reason: string) => {
+    clearTiles();
+    setFeedback(reason);
+    window.clearTimeout(feedbackTimer.current);
+    feedbackTimer.current = window.setTimeout(() => setFeedback(''), 1500);
+  };
+
   const addWord = () => {
     const clean = word.trim().toLowerCase();
-    if (
-      clean.length < 3 ||
-      words.some((entry) => entry.word === clean) ||
-      seconds === 0 ||
-      !canBuild(clean) ||
-      !isValidWord(clean)
-    )
-      return;
+    if (!running || seconds === 0 || !clean) return;
+    if (clean.length < 3) return rejectWord('Use at least 3 letters');
+    if (words.some((entry) => entry.word === clean)) return rejectWord('Already played');
+    if (!canBuild(clean) || !isValidWord(clean)) return rejectWord('Not a word');
     const player = wordMode === 'solo' ? 1 : currentPlayer;
     setWords((current) => [...current, { word: clean, player }]);
     setScores((current) => {
@@ -144,7 +153,7 @@ export default function GamesPage() {
     setWord('');
   };
 
-  const randomizeTiles = () => {
+  const scrambleTiles = () => {
     setRack(randomRack());
     clearTiles();
   };
@@ -246,8 +255,8 @@ export default function GamesPage() {
               <button type="button" onClick={clearTiles} disabled={!word}>
                 Clear
               </button>
-              <button type="button" onClick={randomizeTiles}>
-                Randomize tiles
+              <button type="button" onClick={scrambleTiles}>
+                Scramble Tiles
               </button>
             </div>
             <p>
@@ -283,7 +292,7 @@ export default function GamesPage() {
                 </div>
               )}
             </div>
-            <label className="word-entry">
+            <label className={`word-entry ${feedback ? 'word-rejected' : ''}`}>
               <span className="sr-only">Type a word or choose tiles</span>
               <input
                 value={word}
@@ -301,6 +310,9 @@ export default function GamesPage() {
                 Play word
               </button>
             </label>
+            <p className="word-feedback" role="status">
+              {feedback}
+            </p>
             {!running && seconds > 0 && (
               <button className="start-game" type="button" onClick={startWordRound}>
                 Start 60-second round

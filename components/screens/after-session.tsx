@@ -3,27 +3,69 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import MenuToggle from '@/components/menu-toggle';
+import { MAX_PICKS, updateBuddyDemo, useBuddyDemo } from '@/lib/buddy-demo';
+import { getSession } from '@/lib/session-data';
 
+// Sample people until real rooms arrive (Milestone 4). picksYouBack stands in for the other member's private pick.
 const participants = [
-  { name: 'Maya', image: '/images/community-painting.webp', activity: 'Writing & quiet co-work' },
-  { name: 'Jon', image: '/images/guy-chair.webp', activity: 'Music & idea sessions' },
-  { name: 'Nina', image: '/images/girl-glasses-guitar.webp', activity: 'Music & creative nights' },
-  { name: 'Alex', image: '/images/purpose-solo.webp', activity: 'Models, sketching & co-work' },
-  { name: 'Sam', image: '/images/guitar-duo.webp', activity: 'Reading & music' },
+  {
+    name: 'Maya',
+    image: '/images/community-painting.webp',
+    activity: 'Writing & quiet co-work',
+    picksYouBack: true,
+    hello: 'That was exactly the push I needed today. Thanks for the company.',
+  },
+  {
+    name: 'Jon',
+    image: '/images/guy-chair.webp',
+    activity: 'Music & idea sessions',
+    picksYouBack: true,
+    hello: 'Good session. I got more done in that hour than all week.',
+  },
+  {
+    name: 'Nina',
+    image: '/images/girl-glasses-guitar.webp',
+    activity: 'Music & creative nights',
+    picksYouBack: true,
+    hello: 'I liked hearing about your project. Let me know how it turns out.',
+  },
+  {
+    name: 'Alex',
+    image: '/images/purpose-solo.webp',
+    activity: 'Models, sketching & co-work',
+    picksYouBack: false,
+    hello: '',
+  },
+  { name: 'Sam', image: '/images/guitar-duo.webp', activity: 'Reading & music', picksYouBack: false, hello: '' },
 ];
 
 export default function AfterSessionPage() {
-  const [picked, setPicked] = useState<string[]>([]);
-  const [submitted, setSubmitted] = useState(false);
-  const [chatOpen, setChatOpen] = useState(false);
-  const [chatPerson, setChatPerson] = useState(participants[0]);
+  const demo = useBuddyDemo();
   const [message, setMessage] = useState('');
-  const [sentMessages, setSentMessages] = useState<string[]>([]);
-  const [gameInvite, setGameInvite] = useState('');
 
-  const toggle = (name: string) => {
-    setPicked((current) => (current.includes(name) ? current.filter((item) => item !== name) : [...current, name]));
+  const picked = demo.picks;
+  const full = picked.length >= MAX_PICKS;
+  const rooms = demo.saved ? participants.filter((person) => person.picksYouBack && picked.includes(person.name)) : [];
+  const chatPerson = rooms.find((person) => person.name === demo.chat);
+
+  const toggle = (name: string) =>
+    updateBuddyDemo((current) => {
+      if (current.picks.includes(name)) return { ...current, picks: current.picks.filter((item) => item !== name) };
+      if (current.picks.length >= MAX_PICKS) return current;
+      return { ...current, picks: [...current.picks, name] };
+    });
+  const openChat = (name: string | null) => updateBuddyDemo((current) => ({ ...current, chat: name }));
+  const send = (name: string) => {
+    const text = message.trim();
+    if (!text) return;
+    updateBuddyDemo((current) => ({
+      ...current,
+      messages: { ...current.messages, [name]: [...(current.messages[name] ?? []), text] },
+    }));
+    setMessage('');
   };
+  const inviteToGame = (name: string, game: string) =>
+    updateBuddyDemo((current) => ({ ...current, gameInvites: { ...current.gameInvites, [name]: game } }));
 
   return (
     <main className="after-page">
@@ -44,8 +86,24 @@ export default function AfterSessionPage() {
         <MenuToggle />
       </header>
 
-      {chatOpen ? (
+      {chatPerson ? (
         <section className="buddy-chat">
+          {rooms.length > 1 && (
+            <nav className="buddy-room-tabs" aria-label="Your Buddy Rooms">
+              {rooms.map((person) => (
+                <button
+                  className={person.name === chatPerson.name ? 'active' : ''}
+                  type="button"
+                  aria-current={person.name === chatPerson.name ? 'true' : undefined}
+                  key={person.name}
+                  onClick={() => openChat(person.name)}
+                >
+                  <img src={person.image} alt="" />
+                  {person.name}
+                </button>
+              ))}
+            </nav>
+          )}
           <div className="chat-heading">
             <img src={chatPerson.image} alt="" />
             <div>
@@ -60,24 +118,27 @@ export default function AfterSessionPage() {
             </div>
             <div className="their-message">
               <strong>{chatPerson.name}</strong>
-              <p>That was exactly the push I needed today. Thanks for the company.</p>
+              <p>{chatPerson.hello}</p>
             </div>
             <div className="your-message">
               <strong>You</strong>
-              <p>Same here. I’d happily do another quiet work session together.</p>
+              <p>Same here. I’d happily do another session together.</p>
             </div>
-            {sentMessages.map((sent, index) => (
+            {(demo.messages[chatPerson.name] ?? []).map((sent, index) => (
               <div className="your-message" key={`${sent}-${index}`}>
                 <strong>You</strong>
                 <p>{sent}</p>
               </div>
             ))}
-            {gameInvite && (
+            {demo.sessionInvites[chatPerson.name] && (
+              <SessionInvite name={chatPerson.name} slug={demo.sessionInvites[chatPerson.name]} />
+            )}
+            {demo.gameInvites[chatPerson.name] && (
               <div className="game-invite-message" role="status">
                 <div>
                   <span>Game invitation sent</span>
                   <strong>
-                    {gameInvite} with {chatPerson.name}
+                    {demo.gameInvites[chatPerson.name]} with {chatPerson.name}
                   </strong>
                   <p>{chatPerson.name} was notified and can accept from this Buddy Room.</p>
                 </div>
@@ -97,13 +158,16 @@ export default function AfterSessionPage() {
                 </p>
               </div>
               <div className="buddy-invite-actions">
-                <Link href="/calendar">
+                <Link
+                  href="/calendar"
+                  onClick={() => updateBuddyDemo((current) => ({ ...current, inviting: chatPerson.name }))}
+                >
                   Choose a session <span aria-hidden="true">↗</span>
                 </Link>
-                <button type="button" onClick={() => setGameInvite('Word Rush')}>
+                <button type="button" onClick={() => inviteToGame(chatPerson.name, 'Word Rush')}>
                   Invite to Word Rush
                 </button>
-                <button type="button" onClick={() => setGameInvite('Slow Chess')}>
+                <button type="button" onClick={() => inviteToGame(chatPerson.name, 'Slow Chess')}>
                   Invite to Slow Chess
                 </button>
               </div>
@@ -118,33 +182,23 @@ export default function AfterSessionPage() {
                 placeholder="Write a friendly message…"
                 onChange={(event) => setMessage(event.target.value)}
                 onKeyDown={(event) => {
-                  if (event.key === 'Enter' && message.trim()) {
-                    setSentMessages((current) => [...current, message.trim()]);
-                    setMessage('');
-                  }
+                  if (event.key === 'Enter') send(chatPerson.name);
                 }}
               />
             </label>
-            <button
-              type="button"
-              onClick={() => {
-                if (!message.trim()) return;
-                setSentMessages((current) => [...current, message.trim()]);
-                setMessage('');
-              }}
-            >
+            <button type="button" onClick={() => send(chatPerson.name)}>
               Send
             </button>
           </div>
           <div className="chat-safety">
             <button type="button">Block</button>
-            <button type="button" onClick={() => setChatOpen(false)}>
-              Back to activity-buddy picks
+            <button type="button" onClick={() => openChat(null)}>
+              {rooms.length > 1 ? 'All my Buddy Rooms' : 'Back to activity-buddy picks'}
             </button>
             <Link href="/sessions">Back to my sessions</Link>
           </div>
         </section>
-      ) : !submitted ? (
+      ) : !demo.saved ? (
         <>
           <section className="after-hero">
             <p className="section-label">Quiet Co-Work complete</p>
@@ -154,15 +208,17 @@ export default function AfterSessionPage() {
               to do this with <span>again?</span>
             </h1>
             <p>
-              Choose anyone whose company you enjoyed. Your picks stay private unless they choose you too. There is no
-              score, ranking, or awkward notification.
+              Choose up to three people whose company you enjoyed. Your picks stay private unless they choose you too.
+              There is no score, ranking, or awkward notification.
             </p>
           </section>
 
           <section className="buddy-picker">
             <div className="picker-note">
-              <strong>{picked.length} selected</strong>
-              <span>Picks stay open for 24 hours</span>
+              <strong>
+                {picked.length} of {MAX_PICKS} selected
+              </strong>
+              <span>{full ? 'That’s the most you can choose' : 'Picks stay open for 24 hours'}</span>
             </div>
             <div className="participant-grid">
               {participants.map((person) => {
@@ -172,12 +228,9 @@ export default function AfterSessionPage() {
                     className={selected ? 'selected' : ''}
                     type="button"
                     aria-pressed={selected}
+                    disabled={!selected && full}
                     key={person.name}
-                    onClick={() => {
-                      toggle(person.name);
-                      setChatPerson(person);
-                      setChatOpen(true);
-                    }}
+                    onClick={() => toggle(person.name)}
                   >
                     <img src={person.image} alt="" />
                     <span className="pick-check" aria-hidden="true">
@@ -191,7 +244,11 @@ export default function AfterSessionPage() {
               })}
             </div>
             <div className="picker-actions">
-              <button className="save-picks" type="button" onClick={() => setSubmitted(true)}>
+              <button
+                className="save-picks"
+                type="button"
+                onClick={() => updateBuddyDemo((current) => ({ ...current, saved: true }))}
+              >
                 Save private picks <span aria-hidden="true">→</span>
               </button>
               <Link href="/sessions">Skip for now</Link>
@@ -213,33 +270,55 @@ export default function AfterSessionPage() {
             If anyone you chose also chooses you, a private activity-buddy room will open. One-sided picks are never
             shared.
           </p>
-          {picked.includes('Maya') && (
-            <div className="buddy-opened">
-              <img src="/images/community-painting.webp" alt="" />
-              <div>
-                <span>Activity buddy room opened</span>
-                <strong>You and Maya both chose each other.</strong>
-                <p>Say hello or invite Maya to another session when you are ready.</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  const person =
-                    participants.find((participant) => picked.includes(participant.name)) ?? participants[0];
-                  setChatPerson(person);
-                  setChatOpen(true);
-                }}
-              >
-                Open private chat
-              </button>
+          {rooms.length > 0 && (
+            <div className="buddy-opened-list">
+              {rooms.map((person) => (
+                <div className="buddy-opened" key={person.name}>
+                  <img src={person.image} alt="" />
+                  <div>
+                    <span>Activity buddy room opened</span>
+                    <strong>You and {person.name} both chose each other.</strong>
+                    <p>Say hello or invite {person.name} to another session when you are ready.</p>
+                  </div>
+                  <button type="button" onClick={() => openChat(person.name)}>
+                    Open private chat
+                  </button>
+                </div>
+              ))}
             </div>
           )}
           <div className="saved-actions">
             <Link href="/calendar">Book another session</Link>
             <Link href="/sessions">Back to my sessions</Link>
+            <button
+              type="button"
+              onClick={() => updateBuddyDemo((current) => ({ ...current, saved: false, chat: null }))}
+            >
+              Change my picks
+            </button>
           </div>
         </section>
       )}
     </main>
+  );
+}
+
+function SessionInvite({ name, slug }: { name: string; slug: string }) {
+  const session = getSession(slug);
+  return (
+    <div className="game-invite-message session-invite-message" role="status">
+      <div>
+        <span>Session invitation sent</span>
+        <strong>
+          {session.title} · {session.day}, {session.month} {session.date} · {session.time}
+        </strong>
+        <p>
+          Your seat is booked. Waiting for {name} to accept or decline. {name} confirms with their own credit.
+        </p>
+      </div>
+      <Link href={`/book/${session.slug}`}>
+        View session <span aria-hidden="true">→</span>
+      </Link>
+    </div>
   );
 }

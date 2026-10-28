@@ -1,0 +1,247 @@
+/* Changes from Kelly's review of the redesign (28 Oct): Buddy Room picks and invites, room safety steps,
+   Word Rush feedback. Same palette and shapes as the board. */
+
+/* Buddy invite banner on Calendar and Book */
+.invite-banner {
+  border: 2px solid var(--ink);
+  background: var(--info);
+  box-shadow: 5px 6px 0 var(--ink);
+  border-radius: 18px;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  padding: 18px 22px;
+  display: flex;
+}
+
+.invite-banner-calendar {
+  margin: 0 clamp(20px, 6vw, 90px) 40px;
+}
+
+.invite-banner-book {
+  margin-bottom: 22px;
+}
+
+.invite-banner span {
+  text-transform: uppercase;
+  font-size: 0.65rem;
+  font-weight: 800;
+}
+
+.invite-banner strong {
+  margin-top: 4px;
+  font-size: 1.05rem;
+  display: block;
+}
+
+.invite-banner p {
+  margin: 5px 0 0;
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.invite-banner button {
+  border: 1.5px solid var(--ink);
+  cursor: pointer;
+  background: var(--paper);
+  border-radius: 999px;
+  flex: none;
+  min-height: 40px;
+  padding: 0 15px;
+  font-size: 0.7rem;
+  font-weight: 800;
+}
+
+/* Buddy picker: up to three picks */
+.participant-grid button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* One Buddy Room per mutual pick */
+.buddy-opened-list {
+  flex-direction: column;
+  gap: 14px;
+  width: min(760px, 100%);
+  display: flex;
+}
+
+.buddy-opened button {
+  cursor: pointer;
+}
+
+.saved-actions button {
+  border: 1.5px solid var(--ink);
+  cursor: pointer;
+  background: none;
+  border-radius: 999px;
+  padding: 13px 17px;
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.buddy-room-tabs {
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 30px;
+  display: flex;
+}
+
+.buddy-room-tabs button {
+  border: 1.5px solid var(--ink);
+  cursor: pointer;
+  background: var(--paper);
+  border-radius: 999px;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 4px 16px 4px 4px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  display: flex;
+}
+
+.buddy-room-tabs button.active {
+  background: var(--highlight);
+  box-shadow: 3px 4px 0 var(--ink);
+}
+
+.buddy-room-tabs img {
+  object-fit: cover;
+  border-radius: 50%;
+  width: 34px;
+  height: 34px;
+}
+
+.session-invite-message {
+  background: var(--highlight);
+}
+
+/* Room safety steps */
+.safety-popover {
+  width: min(320px, calc(100vw - 44px));
+  max-height: calc(100vh - 120px);
+  overflow-y: auto;
+}
+
+.safety-popover button {
+  cursor: pointer;
+}
+
+.safety-popover button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.safety-list {
+  flex-direction: column;
+  max-height: 240px;
+  margin-top: 4px;
+  display: flex;
+  overflow-y: auto;
+}
+
+.safety-list button {
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 16px;
+  display: flex;
+}
+
+.safety-list button.safety-picked {
+  background: var(--ink);
+  color: #fff;
+}
+
+.safety-field {
+  border: 0;
+  flex-direction: column;
+  gap: 6px;
+  margin: 12px 0 0;
+  padding: 0;
+  font-size: 0.72rem;
+  font-weight: 800;
+  display: flex;
+}
+
+.safety-field select,
+.safety-field textarea {
+  border: 1.5px solid var(--ink);
+  background: var(--paper);
+  border-radius: 12px;
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 10px;
+  font: inherit;
+  font-weight: 500;
+}
+
+.safety-reason {
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+  display: flex;
+}
+
+.safety-popover .safety-primary {
+  background: var(--ink);
+  color: #fff;
+  margin-top: 14px;
+}
+
+.safety-leave {
+  background: var(--danger);
+  color: #fff;
+  text-align: center;
+  border-radius: 999px;
+  margin-top: 7px;
+  padding: 12px;
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-decoration: none;
+  display: block;
+}
+
+/* Word Rush: a word that doesn't count shakes and clears itself */
+.word-feedback {
+  color: var(--danger);
+  min-height: 1.3em;
+  margin: 8px 0 0;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.word-rejected input {
+  border-color: var(--danger);
+  animation: word-shake 0.35s;
+}
+
+@keyframes word-shake {
+  25% {
+    transform: translateX(-6px);
+  }
+  50% {
+    transform: translateX(5px);
+  }
+  75% {
+    transform: translateX(-3px);
+  }
+}
+
+@media (max-width: 650px) {
+  .invite-banner {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .saved-actions {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .word-rejected input {
+    animation: none;
+  }
+}

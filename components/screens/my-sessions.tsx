@@ -8,25 +8,25 @@ import MenuToggle from '@/components/menu-toggle';
 const bookings = [
   {
     session: getSession('quiet-co-work'),
-    fullDate: 'Sunday, May 18',
+    fullDate: 'Monday, May 18',
     time: '10:00–11:00 am',
-    deadline: 'Sunday at 7:00 am',
+    deadline: 'Monday at 7:00 am',
     joinState: 'open',
     attending: 7,
   },
   {
     session: getSession('botanical-sketch-night'),
-    fullDate: 'Tuesday, May 20',
+    fullDate: 'Wednesday, May 20',
     time: '7:00–8:00 pm',
-    deadline: 'Tuesday at 4:00 pm',
+    deadline: 'Wednesday at 4:00 pm',
     joinState: 'waiting',
     attending: 8,
   },
   {
     session: getSession('share-a-song'),
-    fullDate: 'Saturday, May 24',
+    fullDate: 'Sunday, May 24',
     time: '6:30–7:30 pm',
-    deadline: 'Saturday at 3:30 pm',
+    deadline: 'Sunday at 3:30 pm',
     joinState: 'waiting',
     attending: 5,
   },
@@ -84,7 +84,7 @@ export default function MySessionsPage() {
             <i />
             <i className="used" />
           </div>
-          <small>Resets Sunday</small>
+          <small>Resets Monday</small>
         </div>
         <div>
           <span>Extra sessions</span>

@@ -3,6 +3,8 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { getSession } from '@/lib/session-data';
+import { updateBuddyDemo, useBuddyDemo } from '@/lib/buddy-demo';
+import InviteBanner from '@/components/invite-banner';
 import MenuToggle from '@/components/menu-toggle';
 
 function threeHoursBefore(time: string) {
@@ -19,7 +21,21 @@ function threeHoursBefore(time: string) {
 export default function BookPage({ slug }: { slug: string }) {
   const [cameraOff, setCameraOff] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
+  const [invited, setInvited] = useState<string | null>(null);
+  const { inviting } = useBuddyDemo();
   const session = getSession(slug);
+
+  const confirm = () => {
+    if (inviting) {
+      updateBuddyDemo((demo) => ({
+        ...demo,
+        inviting: null,
+        sessionInvites: { ...demo.sessionInvites, [inviting]: session.slug },
+      }));
+      setInvited(inviting);
+    }
+    setConfirmed(true);
+  };
 
   if (confirmed) {
     return (
@@ -70,9 +86,19 @@ export default function BookPage({ slug }: { slug: string }) {
           </div>
           <p className="confirmation-note">
             We’ll send your prep card now, a reminder 24 hours before, and a Join link one hour before.
+            {invited && ` ${invited} gets the invitation in your Buddy Room and confirms with their own credit.`}
           </p>
           <div className="confirmation-actions">
-            <Link className="primary-booking-action" href="/sessions">
+            {invited && (
+              <Link
+                className="primary-booking-action"
+                href="/after-session"
+                onClick={() => updateBuddyDemo((demo) => ({ ...demo, chat: invited }))}
+              >
+                Back to chat with {invited}
+              </Link>
+            )}
+            <Link className={invited ? 'secondary-booking-action' : 'primary-booking-action'} href="/sessions">
               View my sessions
             </Link>
             <Link className="secondary-booking-action" href="/calendar">
@@ -184,6 +210,7 @@ export default function BookPage({ slug }: { slug: string }) {
         </div>
 
         <aside className="booking-checkout">
+          <InviteBanner place="book" />
           <div className="checkout-card">
             <p className="section-label">Confirm your seat</p>
             <div className="checkout-time">
@@ -228,8 +255,8 @@ export default function BookPage({ slug }: { slug: string }) {
               </div>
             </div>
 
-            <button className="confirm-booking" type="button" onClick={() => setConfirmed(true)}>
-              Confirm with 1 credit <span aria-hidden="true">→</span>
+            <button className="confirm-booking" type="button" onClick={confirm}>
+              {inviting ? `Confirm & invite ${inviting}` : 'Confirm with 1 credit'} <span aria-hidden="true">→</span>
             </button>
             <p className="cancel-copy">
               Free cancellation until {session.day} at {threeHoursBefore(session.time)}—three hours before the session

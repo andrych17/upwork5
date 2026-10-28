@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
+import InviteBanner from '@/components/invite-banner';
 import MenuToggle from '@/components/menu-toggle';
 
 type Session = {
@@ -19,7 +20,7 @@ type Session = {
 const sessions: Session[] = [
   {
     slug: 'quiet-co-work',
-    day: 'Sun',
+    day: 'Mon',
     date: '18',
     time: '10:00 am',
     title: 'Quiet Co-Work',
@@ -30,7 +31,7 @@ const sessions: Session[] = [
   },
   {
     slug: 'wind-down',
-    day: 'Sun',
+    day: 'Mon',
     date: '18',
     time: '7:00 pm',
     title: 'Wind-Down',
@@ -41,7 +42,7 @@ const sessions: Session[] = [
   },
   {
     slug: 'write-together',
-    day: 'Mon',
+    day: 'Tue',
     date: '19',
     time: '6:30 pm',
     title: 'Write Together',
@@ -52,7 +53,7 @@ const sessions: Session[] = [
   },
   {
     slug: 'botanical-sketch-night',
-    day: 'Tue',
+    day: 'Wed',
     date: '20',
     time: '7:00 pm',
     title: 'Botanical Sketch Night',
@@ -63,7 +64,7 @@ const sessions: Session[] = [
   },
   {
     slug: 'skin-ritual',
-    day: 'Tue',
+    day: 'Wed',
     date: '20',
     time: '8:30 pm',
     title: 'Skin Ritual',
@@ -74,7 +75,7 @@ const sessions: Session[] = [
   },
   {
     slug: 'cards-and-collage-night',
-    day: 'Wed',
+    day: 'Thu',
     date: '21',
     time: '5:30 pm',
     title: 'Cards & Collage',
@@ -85,7 +86,7 @@ const sessions: Session[] = [
   },
   {
     slug: 'idea-lab',
-    day: 'Thu',
+    day: 'Fri',
     date: '22',
     time: '7:30 pm',
     title: 'Idea Lab',
@@ -96,7 +97,7 @@ const sessions: Session[] = [
   },
   {
     slug: 'mocktail-studio',
-    day: 'Fri',
+    day: 'Sat',
     date: '23',
     time: '7:00 pm',
     title: 'Mocktail Studio',
@@ -107,7 +108,7 @@ const sessions: Session[] = [
   },
   {
     slug: 'byo-dad-jokes',
-    day: 'Fri',
+    day: 'Sat',
     date: '23',
     time: '8:30 pm',
     title: 'BYO Dad Jokes (a really punny session...)',
@@ -118,7 +119,7 @@ const sessions: Session[] = [
   },
   {
     slug: 'dont-spill-the-tea',
-    day: 'Sat',
+    day: 'Sun',
     date: '24',
     time: '4:00 pm',
     title: "(Don't) Spill the Tea",
@@ -129,7 +130,7 @@ const sessions: Session[] = [
   },
   {
     slug: 'share-a-song',
-    day: 'Sat',
+    day: 'Sun',
     date: '24',
     time: '6:30 pm',
     title: 'Share a Song',
@@ -140,7 +141,7 @@ const sessions: Session[] = [
   },
   {
     slug: 'trivia-trivier-triviest',
-    day: 'Sat',
+    day: 'Sun',
     date: '24',
     time: '8:00 pm',
     title: 'Trivia, Trivier, Triviest',
@@ -152,7 +153,7 @@ const sessions: Session[] = [
 ];
 
 const monthDays = Array.from({ length: 35 }, (_, index) => {
-  const number = index - 2;
+  const number = index - 3;
   return number > 0 && number <= 31 ? number : null;
 });
 
@@ -221,12 +222,14 @@ export default function SchedulePage() {
         </div>
       </section>
 
+      <InviteBanner place="calendar" />
+
       <section className="schedule-shell">
         <aside className="schedule-sidebar">
           <div className="membership-status">
             <p className="section-label">Weekly sessions</p>
             <strong>3 included</strong>
-            <p>Membership includes three live sessions every Sunday–Saturday.</p>
+            <p>Membership includes three live sessions every Monday–Sunday.</p>
             <Link href="/membership">
               See membership <span aria-hidden="true">↗</span>
             </Link>
@@ -356,7 +359,7 @@ export default function SchedulePage() {
           ) : (
             <div className="month-view">
               <div className="weekday-row">
-                {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
+                {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => (
                   <span key={day}>{day}</span>
                 ))}
               </div>
