@@ -4,37 +4,60 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { getSession } from '@/lib/session-data';
 import { updateBuddyDemo, useBuddyDemo } from '@/lib/buddy-demo';
+import { getSupabase } from '@/lib/supabase';
 import InviteBanner from '@/components/invite-banner';
 import MenuToggle from '@/components/menu-toggle';
-
-function threeHoursBefore(time: string) {
-  const match = time.match(/(\d+):(\d+)\s(am|pm)/);
-  if (!match) return time;
-  let hour = Number(match[1]) % 12;
-  if (match[3] === 'pm') hour += 12;
-  hour = (hour - 3 + 24) % 24;
-  const suffix = hour >= 12 ? 'pm' : 'am';
-  const displayHour = hour % 12 || 12;
-  return `${displayHour}:${match[2]} ${suffix}`;
-}
 
 export default function BookPage({ slug }: { slug: string }) {
   const [cameraOff, setCameraOff] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [invited, setInvited] = useState<string | null>(null);
+  const [bookingError, setBookingError] = useState<string | null>(null);
+  const [isBooking, setIsBooking] = useState(false);
   const { inviting } = useBuddyDemo();
   const session = getSession(slug);
 
-  const confirm = () => {
-    if (inviting) {
-      updateBuddyDemo((demo) => ({
-        ...demo,
-        inviting: null,
-        sessionInvites: { ...demo.sessionInvites, [inviting]: session.slug },
-      }));
-      setInvited(inviting);
+  const confirm = async () => {
+    setBookingError(null);
+    setIsBooking(true);
+
+    try {
+      const supabase = getSupabase();
+      if (supabase) {
+        const { data: sessionData } = await supabase
+          .from('sessions')
+          .select('id')
+          .eq('slug', slug)
+          .maybeSingle();
+
+        if (sessionData?.id) {
+          const { data: rpcRes, error: rpcErr } = await supabase.rpc('book_session', {
+            p_session_id: sessionData.id,
+            p_camera_off: cameraOff,
+          });
+
+          if (rpcErr || (rpcRes && !rpcRes.success)) {
+            setBookingError(rpcErr?.message || rpcRes?.error || 'Unable to book session.');
+            setIsBooking(false);
+            return;
+          }
+        }
+      }
+
+      if (inviting) {
+        updateBuddyDemo((demo) => ({
+          ...demo,
+          inviting: null,
+          sessionInvites: { ...demo.sessionInvites, [inviting]: session.slug },
+        }));
+        setInvited(inviting);
+      }
+      setConfirmed(true);
+    } catch (err: unknown) {
+      setBookingError(err instanceof Error ? err.message : 'An error occurred while booking.');
+    } finally {
+      setIsBooking(false);
     }
-    setConfirmed(true);
   };
 
   if (confirmed) {
@@ -256,12 +279,32 @@ export default function BookPage({ slug }: { slug: string }) {
               </div>
             </div>
 
-            <button className="confirm-booking" type="button" onClick={confirm}>
-              {inviting ? `Confirm & invite ${inviting}` : 'Confirm with 1 credit'} <span aria-hidden="true">→</span>
+            {bookingError && (
+              <div
+                style={{
+                  padding: '10px 14px',
+                  borderRadius: '8px',
+                  backgroundColor: '#fef2f2',
+                  border: '1px solid #fecaca',
+                  color: '#991b1b',
+                  fontSize: '13px',
+                  marginBottom: '16px',
+                }}
+              >
+                {bookingError}
+              </div>
+            )}
+
+            <button
+              className="confirm-booking"
+              type="button"
+              onClick={confirm}
+              disabled={isBooking}
+            >
+              {isBooking ? 'Saving seat...' : inviting ? `Confirm & invite ${inviting}` : 'Confirm with 1 credit'} <span aria-hidden="true">→</span>
             </button>
             <p className="cancel-copy">
-              Free cancellation until {session.day} at {threeHoursBefore(session.time)}—three hours before the session
-              starts. After that, you can release the seat but the credit is used.
+              Free cancellation until 24 hours before the session starts. After that, you can release the seat but the credit is used.
             </p>
           </div>
           <div className="booking-help">

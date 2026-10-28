@@ -206,9 +206,9 @@ export default function MySessionsPage() {
           <h2>Your seat can become someone else’s good evening.</h2>
         </div>
         <p>
-          We hope you can make it—the room is better with you in it. If plans change, cancel before the deadline and
-          your weekly credit returns automatically. After the deadline, you can still release the seat, but the credit
-          is used.
+          We hope you can make it—the room is better with you in it. If plans change, cancel at least 24 hours before
+          the session and your session credit returns automatically. Within 24 hours, you can still release the seat,
+          but the credit is used.
         </p>
       </section>
     </main>
