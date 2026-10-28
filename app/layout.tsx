@@ -5,7 +5,7 @@ import type { ReactNode } from 'react';
 import RegisterSW from '@/components/register-sw';
 import Reveal from '@/components/reveal';
 import InstallButton from '@/components/install-button';
-import { PAGES, SITE_NAME, SITE_URL, TAGLINE, isDemo } from '@/lib/site';
+import { PAGES, SITE_NAME, SITE_URL, TAGLINE, isDemo, noindex } from '@/lib/site';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -16,7 +16,7 @@ export const metadata: Metadata = {
   manifest: '/manifest.webmanifest',
   icons: { icon: { url: '/icons/icon.svg', type: 'image/svg+xml' }, apple: '/icons/icon-192.png' },
   twitter: { card: 'summary_large_image' },
-  robots: isDemo ? { index: false, follow: false, noarchive: true } : undefined,
+  robots: noindex ? { index: false, follow: false, noarchive: true } : undefined,
 };
 
 export const viewport: Viewport = {

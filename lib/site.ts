@@ -7,6 +7,8 @@ export const SITE_NAME = 'MeetDoConnect';
 export const TAGLINE = 'Skip the swiping. Start doing.';
 // DEMO=1 is the Vercel preview build (npm run build:demo). Never set it for the live site.
 export const isDemo = process.env.DEMO === '1';
+// NOINDEX=1 is the dev.meetdoconnect.com build (wrangler.dev.json): real code, hidden from search engines.
+export const noindex = isDemo || process.env.NOINDEX === '1';
 
 // The short answer to "what is MeetDoConnect?", used in structured data and llms.txt.
 export const DEFINITION =

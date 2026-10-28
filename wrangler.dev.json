@@ -1,0 +1,11 @@
+{
+  "name": "meetdoconnect-dev",
+  "compatibility_date": "2024-09-23",
+  "workers_dev": true,
+  "preview_urls": false,
+  "routes": [{ "pattern": "dev.meetdoconnect.com", "custom_domain": true }],
+  "assets": {
+    "directory": "./out",
+    "not_found_handling": "404-page"
+  }
+}
