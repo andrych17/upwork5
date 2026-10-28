@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict';
 import {
   LIST,
+  MIN_LENGTH,
   RACK_SIZE,
   TRADE_COST,
   TileStream,
@@ -24,6 +25,7 @@ assert.notDeepEqual(newPlayer(new TileStream('ZZZZZ')).rack, a.rack);
 assert.ok(LIST.length > 30000);
 assert.ok(isValidWord('cat'));
 assert.ok(!isValidWord('qzx'));
+assert.ok(!isValidWord('at')); // the board asks for three letters or more
 assert.equal(scoreWord('cat'), 5); // C3 + A1 + T1, no bonus under 4 letters
 assert.equal(scoreWord('quiz'), 9 + 1 + 1 + 9 + 1); // plus the 4-letter bonus
 
@@ -37,8 +39,9 @@ const ok = playWord(p, idxs);
 assert.equal(ok.ok, true);
 assert.equal(p.score, best.pts);
 assert.equal(p.rack.length, RACK_SIZE);
-const short = playWord(p, [0]);
+const short = playWord(p, [0, 1]);
 assert.ok(!short.ok && short.reason === 'short');
+assert.ok(findPlays(p).every((x) => x.word.length >= MIN_LENGTH));
 
 // Trading costs points but never drops the score below zero.
 const t = newPlayer(new TileStream('TRADE'));

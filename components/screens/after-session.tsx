@@ -140,9 +140,14 @@ export default function AfterSessionPage() {
                   <strong>
                     {demo.gameInvites[chatPerson.name]} with {chatPerson.name}
                   </strong>
-                  <p>{chatPerson.name} was notified and can accept from this Buddy Room.</p>
+                  <p>
+                    {chatPerson.name} was notified and can accept from this Buddy Room. Open the game to make the first
+                    move or send the deal.
+                  </p>
                 </div>
-                <Link href="/games">
+                <Link
+                  href={`/games#play=${demo.gameInvites[chatPerson.name] === 'Slow Chess' ? 'chess' : 'word'}&with=${chatPerson.name}`}
+                >
                   Open game <span aria-hidden="true">→</span>
                 </Link>
               </div>

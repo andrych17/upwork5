@@ -85,6 +85,7 @@ export const VALUE: Record<string, number> = {
 };
 const LENGTH_BONUS: Record<number, number> = { 2: 0, 3: 0, 4: 1, 5: 3, 6: 6, 7: 10 };
 export const TRADE_COST = 2;
+export const MIN_LENGTH = 3; // the board's rule: words of three letters or more
 export const RACK_SIZE = 7;
 // Seconds between House moves.
 export const LEVELS: Record<Level, { min: number; max: number }> = {
@@ -151,7 +152,7 @@ export function scoreWord(word: string): number {
 }
 
 export function isValidWord(word: string): boolean {
-  return word.length >= 2 && DICT.has(word) && !BLOCKED.has(word);
+  return word.length >= MIN_LENGTH && DICT.has(word) && !BLOCKED.has(word);
 }
 
 // Play the tiles at these rack positions as a word.
@@ -160,7 +161,7 @@ export function playWord(player: Player, idxs: readonly number[]): PlayResult {
     .map((i) => player.rack[i])
     .join('')
     .toLowerCase();
-  if (word.length < 2) return { ok: false, reason: 'short', word };
+  if (word.length < MIN_LENGTH) return { ok: false, reason: 'short', word };
   if (player.played.has(word)) return { ok: false, reason: 'repeat', word };
   if (!isValidWord(word)) return { ok: false, reason: 'invalid', word };
   const pts = scoreWord(word);
@@ -183,7 +184,8 @@ export function findPlays(player: Player): Play[] {
   for (const letter of player.rack) base[letter.charCodeAt(0) - 65] += 1;
   const out: Play[] = [];
   for (const word of LIST) {
-    if (word.length > player.rack.length || player.played.has(word) || BLOCKED.has(word)) continue;
+    if (word.length < MIN_LENGTH || word.length > player.rack.length || player.played.has(word) || BLOCKED.has(word))
+      continue;
     const left = base.slice();
     let ok = true;
     for (let k = 0; k < word.length; k++) {

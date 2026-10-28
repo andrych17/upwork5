@@ -5,6 +5,8 @@
 // '' is empty.
 
 export type Color = 'w' | 'b';
+export type AiLevel = 'easy' | 'medium' | 'hard';
+export const AI_LEVELS: readonly AiLevel[] = ['easy', 'medium', 'hard'];
 export type Flag = '' | 'dbl' | 'ep' | 'oo' | 'ooo';
 export interface Move {
   from: number;
@@ -369,6 +371,8 @@ export interface GameRef {
   w: string;
   b: string;
   tokens: string[];
+  /** set for a game against the computer, which plays Black */
+  ai?: AiLevel;
 }
 
 /** Player names: letters, digits, space and . ' - only, up to 20 characters. */
@@ -386,7 +390,7 @@ export function newId(random: () => number = Math.random): string {
 }
 
 export const gameHash = (g: GameRef) =>
-  `#g=${g.id}&w=${encodeURIComponent(g.w)}&b=${encodeURIComponent(g.b)}&m=${g.tokens.join('.')}`;
+  `#g=${g.id}&w=${encodeURIComponent(g.w)}&b=${encodeURIComponent(g.b)}&m=${g.tokens.join('.')}${g.ai ? `&ai=${g.ai}` : ''}`;
 
 /** Reads a game link hash. Returns null if it isn't one. */
 export function parseGameHash(hash: string): GameRef | null {
@@ -401,10 +405,12 @@ export function parseGameHash(hash: string): GameRef | null {
     }
   }
   if (!o.g) return null;
+  const ai = AI_LEVELS.find((level) => level === o.ai);
   return {
     id: o.g.replace(/[^a-z0-9]/gi, '').slice(0, 12),
     w: cleanName(o.w, 'White'),
     b: cleanName(o.b, 'Black'),
     tokens: o.m ? o.m.split('.').filter(Boolean) : [],
+    ...(ai ? { ai } : {}),
   };
 }

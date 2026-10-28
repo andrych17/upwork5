@@ -1,162 +1,49 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useRef, useState } from 'react';
-import { isValidWord } from '@/lib/word-rush/engine';
+import { useState, useSyncExternalStore } from 'react';
+import SlowChess from '@/components/games/slow-chess';
+import WordRush from '@/components/games/word-rush';
 import MenuToggle from '@/components/menu-toggle';
+import { cleanName } from '@/lib/slow-chess/engine';
 
-const board = [
-  ['R', 'N', 'B', 'Q', 'K', 'B', 'N', 'R'],
-  ['P', 'P', 'P', 'P', 'P', 'P', 'P', 'P'],
-  ['', '', '', '', '', '', '', ''],
-  ['', '', '', '', '', '', '', ''],
-  ['', '', '', '', 'p', '', '', ''],
-  ['', '', '', '', '', 'n', '', ''],
-  ['p', 'p', 'p', 'p', '', 'p', 'p', 'p'],
-  ['r', 'n', 'b', 'q', 'k', 'b', '', 'r'],
-];
+type GameName = 'word' | 'chess';
 
-const vowels = ['A', 'A', 'A', 'E', 'E', 'E', 'E', 'I', 'I', 'I', 'O', 'O', 'U'];
-const consonants = [
-  'B',
-  'C',
-  'C',
-  'D',
-  'D',
-  'F',
-  'G',
-  'H',
-  'L',
-  'M',
-  'N',
-  'N',
-  'P',
-  'R',
-  'R',
-  'S',
-  'S',
-  'T',
-  'T',
-  'V',
-  'W',
-  'Y',
-];
+// Links into this page: #deal=CODE (a Word Rush deal), #g=… (a Slow Chess game) and #play=word|chess&with=Name
+// from the Buddy Room invite buttons. The hash is read when the page opens and on hashchange only, because
+// Slow Chess rewrites it with history.replaceState as the game goes on.
+let openedHash: string | null = null;
+function subscribeHash(onChange: () => void) {
+  const read = () => {
+    openedHash = location.hash;
+    onChange();
+  };
+  read();
+  window.addEventListener('hashchange', read);
+  return () => {
+    window.removeEventListener('hashchange', read);
+    openedHash = null;
+  };
+}
+const getHash = () => (openedHash ??= location.hash);
 
-function randomRack() {
-  const pick = (pool: string[]) => pool[Math.floor(Math.random() * pool.length)];
-  const letters = [
-    pick(vowels),
-    pick(vowels),
-    pick(vowels),
-    pick(consonants),
-    pick(consonants),
-    pick(consonants),
-    pick(consonants),
-    pick(consonants),
-  ];
-  return letters.sort(() => Math.random() - 0.5);
+function readLink(hash: string): { game: GameName; deal: string; buddy: string } {
+  const params = new URLSearchParams(hash.replace(/^#/, ''));
+  const deal = (params.get('deal') ?? '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9-]/g, '')
+    .slice(0, 20);
+  const buddy = cleanName(params.get('with'), '');
+  const game = params.has('g') || params.get('play') === 'chess' ? 'chess' : 'word';
+  return { game, deal, buddy };
 }
 
 export default function GamesPage() {
-  const [game, setGame] = useState<'word' | 'chess'>('word');
-  const [wordMode, setWordMode] = useState<'solo' | 'duo'>('solo');
-  const [seconds, setSeconds] = useState(60);
-  const [running, setRunning] = useState(false);
-  const [word, setWord] = useState('');
-  const [words, setWords] = useState<{ word: string; player: 1 | 2 }[]>([]);
-  const [scores, setScores] = useState<[number, number]>([0, 0]);
-  const [currentPlayer, setCurrentPlayer] = useState<1 | 2>(1);
-  // Fixed until Start: a random rack here would differ between the prerendered page and the browser.
-  const [rack, setRack] = useState<string[]>(() => [...'WORDRUSH']);
-  const [selectedTiles, setSelectedTiles] = useState<number[]>([]);
-  const [moveSent, setMoveSent] = useState(false);
-  const [feedback, setFeedback] = useState('');
-  const feedbackTimer = useRef<number | undefined>(undefined);
-
-  useEffect(() => () => window.clearTimeout(feedbackTimer.current), []);
-
-  useEffect(() => {
-    if (!running || seconds === 0) return;
-    const timer = window.setInterval(() => setSeconds((current) => current - 1), 1000);
-    return () => window.clearInterval(timer);
-  }, [running, seconds]);
-
-  const canBuild = (candidate: string) => {
-    const available = [...rack];
-    return [...candidate.toUpperCase()].every((letter) => {
-      const index = available.indexOf(letter);
-      if (index === -1) return false;
-      available.splice(index, 1);
-      return true;
-    });
-  };
-
-  // Kelly: a word that doesn't count clears itself with a short reason, so the player can keep going.
-  const rejectWord = (reason: string) => {
-    clearTiles();
-    setFeedback(reason);
-    window.clearTimeout(feedbackTimer.current);
-    feedbackTimer.current = window.setTimeout(() => setFeedback(''), 1500);
-  };
-
-  const addWord = () => {
-    const clean = word.trim().toLowerCase();
-    if (!running || seconds === 0 || !clean) return;
-    if (clean.length < 3) return rejectWord('Use at least 3 letters');
-    if (words.some((entry) => entry.word === clean)) return rejectWord('Already played');
-    if (!canBuild(clean) || !isValidWord(clean)) return rejectWord('Not a word');
-    const player = wordMode === 'solo' ? 1 : currentPlayer;
-    setWords((current) => [...current, { word: clean, player }]);
-    setScores((current) => {
-      const next: [number, number] = [...current];
-      next[player - 1] += clean.length;
-      return next;
-    });
-    setRack(randomRack());
-    setSelectedTiles([]);
-    if (wordMode === 'duo') setCurrentPlayer((current) => (current === 1 ? 2 : 1));
-    setWord('');
-  };
-
-  const startWordRound = () => {
-    setRunning(true);
-    setSeconds(60);
-    setWords([]);
-    setScores([0, 0]);
-    setCurrentPlayer(1);
-    setRack(randomRack());
-    setSelectedTiles([]);
-    setWord('');
-  };
-
-  const selectTile = (letter: string, index: number) => {
-    if (!running || seconds === 0 || selectedTiles.includes(index)) return;
-    setSelectedTiles((current) => [...current, index]);
-    setWord((current) => current + letter.toLowerCase());
-  };
-
-  // Kelly: typing works as well as tapping tiles. Each typed letter takes the first unused matching tile,
-  // and letters that are not on the rack are ignored.
-  const typeWord = (value: string) => {
-    if (!running || seconds === 0) return;
-    const used: number[] = [];
-    for (const letter of value.toUpperCase()) {
-      const index = rack.findIndex((tile, i) => tile === letter && !used.includes(i));
-      if (index !== -1) used.push(index);
-    }
-    setSelectedTiles(used);
-    setWord(used.map((i) => rack[i].toLowerCase()).join(''));
-  };
-
-  const clearTiles = () => {
-    setSelectedTiles([]);
-    setWord('');
-  };
-
-  const scrambleTiles = () => {
-    setRack(randomRack());
-    clearTiles();
-  };
+  const hash = useSyncExternalStore(subscribeHash, getHash, () => '');
+  const link = readLink(hash);
+  // A tab picked by hand holds until another link is opened.
+  const [picked, setPicked] = useState<{ hash: string; game: GameName } | null>(null);
+  const game = picked?.hash === hash ? picked.game : link.game;
 
   return (
     <main className="games-page">
@@ -198,213 +85,32 @@ export default function GamesPage() {
       </section>
 
       <nav className="game-switch" aria-label="Choose a game">
-        <button className={game === 'word' ? 'selected' : ''} type="button" onClick={() => setGame('word')}>
+        <button
+          className={game === 'word' ? 'selected' : ''}
+          type="button"
+          aria-pressed={game === 'word'}
+          onClick={() => setPicked({ hash, game: 'word' })}
+        >
           <span>01</span>
           <strong>Word Rush</strong>
-          <small>Same letters · two timed turns</small>
+          <small>Same tiles · computer, solo or a buddy</small>
         </button>
-        <button className={game === 'chess' ? 'selected' : ''} type="button" onClick={() => setGame('chess')}>
+        <button
+          className={game === 'chess' ? 'selected' : ''}
+          type="button"
+          aria-pressed={game === 'chess'}
+          onClick={() => setPicked({ hash, game: 'chess' })}
+        >
           <span>02</span>
           <strong>Slow Chess</strong>
-          <small>Two players · one thoughtful move</small>
+          <small>Computer or a buddy · one move at a time</small>
         </button>
       </nav>
 
       {game === 'word' ? (
-        <section className="word-game">
-          <div className="word-instructions">
-            <p className="section-label">Word Rush</p>
-            <h2>{wordMode === 'solo' ? 'Race your own best score.' : 'Two players. One shared clock.'}</h2>
-            <div className="word-mode-switch" aria-label="Word Rush mode">
-              <button
-                className={wordMode === 'solo' ? 'selected' : ''}
-                type="button"
-                onClick={() => {
-                  setWordMode('solo');
-                  startWordRound();
-                }}
-              >
-                Solo
-              </button>
-              <button
-                className={wordMode === 'duo' ? 'selected' : ''}
-                type="button"
-                onClick={() => {
-                  setWordMode('duo');
-                  startWordRound();
-                }}
-              >
-                Duo
-              </button>
-            </div>
-            <div className="letter-rack" aria-label={`Letters ${rack.join(' ')}`}>
-              {rack.map((letter, index) => (
-                <button
-                  className={selectedTiles.includes(index) ? 'tile-used' : ''}
-                  type="button"
-                  disabled={!running || selectedTiles.includes(index)}
-                  key={`${letter}-${index}`}
-                  onClick={() => selectTile(letter, index)}
-                  aria-label={`${letter}${selectedTiles.includes(index) ? ', selected' : ''}`}
-                >
-                  {letter}
-                </button>
-              ))}
-            </div>
-            <div className="tile-actions">
-              <button type="button" onClick={clearTiles} disabled={!word}>
-                Clear
-              </button>
-              <button type="button" onClick={scrambleTiles}>
-                Scramble Tiles
-              </button>
-            </div>
-            <p>
-              Make a word of at least three letters. Each accepted word scores one point per letter and immediately
-              refreshes the rack. In Duo mode, players alternate plays until the shared timer ends.
-            </p>
-            {wordMode === 'duo' && (
-              <div className="game-buddy-status">
-                <div className="opponent-mark">MP</div>
-                <div>
-                  <strong>Playing with Maya</strong>
-                  <span>{seconds === 0 ? 'The round is complete.' : `Player ${currentPlayer}'s turn`}</span>
-                </div>
-              </div>
-            )}
-          </div>
-          <div className="word-play">
-            <div className="timer-score word-scores">
-              <div>
-                <span>Time</span>
-                <strong>
-                  {String(Math.floor(seconds / 60)).padStart(2, '0')}:{String(seconds % 60).padStart(2, '0')}
-                </strong>
-              </div>
-              <div>
-                <span>{wordMode === 'solo' ? 'Your score' : 'Player 1 · You'}</span>
-                <strong>{scores[0]}</strong>
-              </div>
-              {wordMode === 'duo' && (
-                <div>
-                  <span>Player 2 · Maya</span>
-                  <strong>{scores[1]}</strong>
-                </div>
-              )}
-            </div>
-            <label className={`word-entry ${feedback ? 'word-rejected' : ''}`}>
-              <span className="sr-only">Type a word or choose tiles</span>
-              <input
-                value={word}
-                onChange={(event) => typeWord(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') addWord();
-                }}
-                readOnly={!running || seconds === 0}
-                autoComplete="off"
-                autoCapitalize="off"
-                spellCheck={false}
-                placeholder={running ? 'Choose tiles to build a word…' : 'Press start when ready'}
-              />
-              <button type="button" onClick={addWord} disabled={!running || word.length < 3}>
-                Play word
-              </button>
-            </label>
-            <p className="word-feedback" role="status">
-              {feedback}
-            </p>
-            {!running && seconds > 0 && (
-              <button className="start-game" type="button" onClick={startWordRound}>
-                Start 60-second round
-              </button>
-            )}
-            {seconds === 0 && (
-              <div className="round-finished" role="status">
-                <strong>
-                  {wordMode === 'solo'
-                    ? `Round complete · ${scores[0]} points`
-                    : scores[0] === scores[1]
-                      ? `Tie game · ${scores[0]} points each`
-                      : `${scores[0] > scores[1] ? 'You win' : 'Maya wins'} · ${Math.max(...scores)} points`}
-                </strong>
-                <span>
-                  {words.length} accepted words.{' '}
-                  {wordMode === 'duo'
-                    ? 'Both scores and the winner were posted to your Buddy Room.'
-                    : 'Try again to beat your score.'}
-                </span>
-                <button type="button" onClick={startWordRound}>
-                  Play again
-                </button>
-              </div>
-            )}
-            <div className="found-words">
-              {words.map((item, index) => (
-                <span className={item.player === 2 ? 'player-two-word' : ''} key={`${item.word}-${index}`}>
-                  {wordMode === 'duo' ? `P${item.player} · ` : ''}
-                  {item.word}
-                </span>
-              ))}
-            </div>
-          </div>
-        </section>
+        <WordRush key={hash} deal={link.deal} buddy={link.buddy} />
       ) : (
-        <section className="chess-game">
-          <div className="chess-copy">
-            <p className="section-label">Slow Chess</p>
-            <h2>One move now. Another whenever you return.</h2>
-            <p>
-              This is two-player correspondence chess without the pressure. You each have 24 hours per move. Every
-              confirmed move notifies the other player in the Buddy Room and through their enabled channels.
-            </p>
-            <div className="chess-opponent">
-              <div className="opponent-mark">MP</div>
-              <div>
-                <strong>Maya P.</strong>
-                <span>Last move · 2 hours ago</span>
-              </div>
-            </div>
-            <div className="move-status" role="status">
-              {moveSent ? (
-                <>
-                  <strong>Move sent.</strong>
-                  <span>Maya will be notified. Your clock is paused.</span>
-                </>
-              ) : (
-                <>
-                  <strong>Your turn</strong>
-                  <span>21 hours, 14 minutes remaining</span>
-                </>
-              )}
-            </div>
-          </div>
-          <div className="chess-board-wrap">
-            <div className="chess-board" aria-label="Slow Chess board">
-              {board.flatMap((row, rowIndex) =>
-                row.map((piece, colIndex) => (
-                  <button
-                    className={(rowIndex + colIndex) % 2 ? 'dark' : 'light'}
-                    type="button"
-                    key={`${rowIndex}-${colIndex}`}
-                    aria-label={`${piece || 'Empty'} square ${rowIndex + 1}, ${colIndex + 1}`}
-                  >
-                    <span className={piece === piece.toUpperCase() ? 'white-piece' : 'black-piece'}>
-                      {piece.toUpperCase()}
-                    </span>
-                  </button>
-                )),
-              )}
-            </div>
-            <button className="send-move" type="button" disabled={moveSent} onClick={() => setMoveSent(true)}>
-              {moveSent ? 'Waiting for Maya' : 'Confirm move'} <span aria-hidden="true">→</span>
-            </button>
-            {moveSent && (
-              <p className="move-notification" role="status">
-                Maya was notified that it is her turn. You’ll be notified when she moves.
-              </p>
-            )}
-          </div>
-        </section>
+        <SlowChess key={hash} buddy={link.buddy} />
       )}
     </main>
   );

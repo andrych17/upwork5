@@ -1,0 +1,559 @@
+/* Playable Word Rush and Slow Chess (Kelly, 28 Oct): the pieces the board did not draw, in its palette
+   and shapes. */
+
+/* Word Rush: options, tiles and the round panel */
+.word-mode-switch button:disabled:not(.selected) {
+  opacity: 0.45;
+}
+
+.word-mode-switch button:disabled {
+  cursor: not-allowed;
+}
+
+.word-level {
+  margin-top: 10px;
+}
+
+.word-level button {
+  min-width: 76px;
+  min-height: 36px;
+}
+
+.letter-rack button {
+  position: relative;
+}
+
+.letter-rack button:disabled:not(.tile-used) {
+  cursor: default;
+}
+
+.letter-rack sup {
+  font-family: var(--font-sans, inherit);
+  font-size: 0.68rem;
+  font-weight: 800;
+  line-height: 1;
+  position: absolute;
+  top: auto;
+  bottom: 6px;
+  right: 7px;
+}
+
+.letter-rack button.tile-trade {
+  background: var(--info);
+  transform: translateY(-6px);
+}
+
+.trade-panel {
+  border: 1.5px solid var(--ink);
+  background: var(--paper);
+  border-radius: 14px;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  margin: -10px 0 20px;
+  padding: 12px 14px;
+  font-size: 0.78rem;
+  display: flex;
+}
+
+.trade-panel button,
+.word-deal button,
+.word-share button,
+.round-copy,
+.new-deal,
+.end-round {
+  border: 1.5px solid var(--ink);
+  cursor: pointer;
+  background: var(--paper);
+  border-radius: 999px;
+  flex: none;
+  min-height: 40px;
+  padding: 0 15px;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.timer-score small {
+  min-height: 1.2em;
+  margin-top: 2px;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.timer-score strong.time-low {
+  color: var(--danger);
+}
+
+.word-entry {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.word-entry input {
+  min-width: 0;
+}
+
+.word-feedback-ok {
+  color: var(--navy);
+}
+
+.end-round {
+  margin-top: 6px;
+}
+
+.word-setup {
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 25px;
+  display: flex;
+}
+
+.word-deal {
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  display: flex;
+}
+
+.word-deal label {
+  text-transform: uppercase;
+  flex-basis: 100%;
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
+.word-deal input,
+.word-share input,
+.chess-names input,
+.chess-share input {
+  border: 1.5px solid var(--ink);
+  background: var(--paper);
+  border-radius: 999px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 15px;
+  font: inherit;
+}
+
+.word-deal input {
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  width: 15ch;
+  font-weight: 800;
+}
+
+.word-timer {
+  margin-top: 0;
+}
+
+.word-share {
+  background: var(--info);
+  border-radius: 12px;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  display: flex;
+}
+
+.word-share button {
+  align-self: flex-start;
+}
+
+.round-finished span {
+  line-height: 1.45;
+}
+
+.round-finished textarea {
+  border: 1px solid var(--ink);
+  background: var(--paper);
+  resize: vertical;
+  border-radius: 10px;
+  width: 100%;
+  min-height: 92px;
+  padding: 10px;
+  font: inherit;
+  font-size: 0.78rem;
+}
+
+.round-finished .round-copy {
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.new-deal {
+  width: 100%;
+  min-height: 46px;
+  margin-top: 8px;
+}
+
+/* Slow Chess: a real board */
+.chess-board button,
+.chess-board > span {
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  position: relative;
+}
+
+.chess-board > span {
+  place-items: center;
+  display: grid;
+}
+
+.chess-board button {
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.chess-board .white-piece,
+.chess-board .black-piece {
+  z-index: 1;
+  font-family: 'Segoe UI Symbol', 'Noto Sans Symbols 2', 'DejaVu Sans', 'Apple Symbols', sans-serif;
+  font-size: clamp(1rem, 3.3vw, 1.9rem);
+  font-weight: 400;
+  line-height: 1;
+  position: relative;
+}
+
+.chess-board .sq-last {
+  background-image: linear-gradient(#ffcf468c, #ffcf468c);
+}
+
+.chess-board .sq-selected {
+  box-shadow: inset 0 0 0 4px var(--highlight);
+}
+
+.chess-board .sq-check {
+  background-image: radial-gradient(circle, #d91f68d9 0%, transparent 72%);
+}
+
+.sq-dot,
+.sq-ring {
+  z-index: 2;
+  pointer-events: none;
+  border-radius: 50%;
+  position: absolute;
+}
+
+.sq-dot {
+  background: #d91f68a6;
+  width: 26%;
+  height: 26%;
+}
+
+.sq-ring {
+  border: 4px solid #d91f68b3;
+  width: 88%;
+  height: 88%;
+}
+
+.sq-rank,
+.sq-file {
+  pointer-events: none;
+  font-family: var(--font-sans, inherit);
+  font-size: 0.6rem;
+  font-weight: 800;
+  position: absolute;
+}
+
+.sq-rank {
+  top: 2px;
+  left: 4px;
+}
+
+.sq-file {
+  bottom: 1px;
+  right: 4px;
+}
+
+.chess-board .light .sq-rank,
+.chess-board .light .sq-file {
+  color: #315b59;
+}
+
+.chess-board .dark .sq-rank,
+.chess-board .dark .sq-file {
+  color: #f4e4c5;
+}
+
+.chess-note,
+.chess-error {
+  margin: 12px 0 0;
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.chess-error {
+  color: var(--danger);
+  font-weight: 800;
+}
+
+.chess-names {
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 20px;
+  display: flex;
+}
+
+.chess-names label {
+  flex-direction: column;
+  flex: 1 1 180px;
+  gap: 6px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  display: flex;
+}
+
+.chess-players {
+  flex-wrap: wrap;
+  gap: 10px 26px;
+  margin-top: 30px;
+  display: flex;
+}
+
+.chess-players .chess-opponent {
+  border-radius: 999px;
+  margin-top: 0;
+  padding: 4px 16px 4px 4px;
+}
+
+.chess-players .chess-to-move {
+  background: var(--highlight);
+  box-shadow: 0 0 0 1.5px var(--ink);
+}
+
+.opponent-mark.mark-white {
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.opponent-mark {
+  font-size: 0.78rem;
+}
+
+.move-status strong {
+  display: block;
+}
+
+.move-status-alert strong {
+  color: var(--berry);
+}
+
+.chess-actions {
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 18px;
+  display: flex;
+}
+
+.chess-actions button,
+.chess-saved button,
+.chess-share button {
+  border: 1px solid var(--ink);
+  cursor: pointer;
+  background: none;
+  border-radius: 999px;
+  min-height: 40px;
+  padding: 0 13px;
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
+.chess-actions button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.chess-moves h3,
+.chess-saved h3 {
+  margin: 28px 0 8px;
+  font-size: 0.85rem;
+}
+
+.chess-moves ol {
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  max-height: 150px;
+  margin: 0;
+  padding: 0;
+  font-size: 0.8rem;
+  list-style: none;
+  display: flex;
+  overflow-y: auto;
+}
+
+.chess-moves b {
+  opacity: 0.55;
+}
+
+.chess-saved > div {
+  border-top: 1px solid var(--line);
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0;
+  display: flex;
+}
+
+.chess-saved > div > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.chess-saved strong,
+.chess-saved span {
+  font-size: 0.78rem;
+  display: block;
+}
+
+.chess-saved span {
+  margin-top: 2px;
+  font-size: 0.7rem;
+}
+
+.chess-promo {
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+  font-size: 0.75rem;
+  font-weight: 800;
+  display: flex;
+}
+
+.chess-promo button {
+  border: 2px solid var(--ink);
+  cursor: pointer;
+  background: var(--paper);
+  border-radius: 12px;
+  width: 52px;
+  height: 52px;
+  font-family: 'Segoe UI Symbol', 'Noto Sans Symbols 2', 'DejaVu Sans', 'Apple Symbols', sans-serif;
+  font-size: 1.8rem;
+}
+
+.send-move {
+  cursor: pointer;
+}
+
+.send-move:disabled {
+  cursor: not-allowed;
+}
+
+.chess-share {
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 14px;
+  display: flex;
+}
+
+.chess-share label {
+  font-weight: 800;
+}
+
+.chess-share > div {
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  display: flex;
+}
+
+.chess-share button {
+  background: var(--paper);
+}
+
+.chess-share p {
+  margin: 0;
+}
+
+/* One column on small screens: keep the play area right under the tiles and the board right under the
+   status, with the rules, actions and move list after them. */
+@media (max-width: 850px) {
+  .word-game,
+  .chess-game {
+    flex-direction: column;
+    gap: 0;
+    display: flex;
+  }
+
+  .word-instructions,
+  .chess-copy {
+    display: contents;
+  }
+
+  .word-play,
+  .chess-board-wrap {
+    order: 1;
+    width: 100%;
+    margin-top: 24px;
+  }
+
+  .word-instructions > p:last-child,
+  .chess-actions,
+  .chess-moves,
+  .chess-saved {
+    order: 2;
+  }
+
+  .word-instructions > p:last-child {
+    margin-top: 36px;
+  }
+
+  .letter-rack {
+    margin: 32px 0;
+  }
+}
+
+@media (max-width: 650px) {
+  .letter-rack {
+    flex-wrap: nowrap;
+    gap: 5px;
+  }
+
+  .letter-rack button {
+    flex: 1 1 0;
+    width: auto;
+    max-width: 58px;
+    height: 58px;
+    font-size: 1.55rem;
+  }
+
+  .letter-rack sup {
+    font-size: 0.58rem;
+    bottom: 4px;
+    right: 5px;
+  }
+
+  .word-play {
+    padding: 20px;
+  }
+
+  .timer-score strong {
+    font-size: 2.5rem;
+  }
+
+  .timer-score > div:not(:first-child) {
+    padding-left: 14px;
+  }
+
+  .word-entry button {
+    white-space: nowrap;
+  }
+
+  .trade-panel {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .chess-board .white-piece,
+  .chess-board .black-piece {
+    width: 72%;
+    height: 72%;
+    font-size: clamp(0.95rem, 5.4vw, 1.5rem);
+  }
+
+  .sq-rank,
+  .sq-file {
+    font-size: 0.5rem;
+  }
+}
