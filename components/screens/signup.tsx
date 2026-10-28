@@ -1,7 +1,9 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { getSupabase, setDemoUser } from '@/lib/supabase';
 
 const interests = [
   'Quiet co-work',
@@ -19,11 +21,19 @@ const interests = [
 ];
 
 export default function SignupPage() {
+  const router = useRouter();
   const [step, setStep] = useState(1);
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [tier, setTier] = useState<'individual' | 'household'>('individual');
   const [plan, setPlan] = useState<'monthly' | 'annual'>('monthly');
   const [selectedInterests, setSelectedInterests] = useState<string[]>([]);
   const [profileFile, setProfileFile] = useState('');
   const [videoFile, setVideoFile] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
 
   const toggleInterest = (interest: string) => {
     setSelectedInterests((current) =>
@@ -31,8 +41,51 @@ export default function SignupPage() {
     );
   };
 
-  const next = () => setStep((current) => Math.min(6, current + 1));
-  const back = () => setStep((current) => Math.max(1, current - 1));
+  const next = () => {
+    setErrorMsg('');
+    setStep((current) => Math.min(6, current + 1));
+  };
+  const back = () => {
+    setErrorMsg('');
+    setStep((current) => Math.max(1, current - 1));
+  };
+
+  const handleFinish = async () => {
+    setLoading(true);
+    setErrorMsg('');
+    try {
+      const supabase = getSupabase();
+      if (supabase && email && password) {
+        await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            data: {
+              first_name: firstName,
+              last_name: lastName,
+              tier,
+              billing_interval: plan,
+            },
+          },
+        });
+      }
+      setDemoUser({
+        id: 'user-' + Date.now(),
+        email: email || 'member@example.com',
+        first_name: firstName || 'Member',
+        last_name: lastName || '',
+        plan: tier,
+        billing_interval: plan,
+        monthly_credits: 13,
+        payment_status: 'active',
+      });
+      router.push('/calendar');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to complete registration.';
+      setErrorMsg(msg);
+      setLoading(false);
+    }
+  };
 
   return (
     <main className="signup-page">
@@ -70,6 +123,21 @@ export default function SignupPage() {
         </aside>
 
         <section className="signup-card">
+          {errorMsg && (
+            <div
+              style={{
+                margin: '16px 20px 0',
+                padding: '10px 14px',
+                borderRadius: '8px',
+                backgroundColor: '#fef2f2',
+                border: '1px solid #fecaca',
+                color: '#991b1b',
+                fontSize: '14px',
+              }}
+            >
+              {errorMsg}
+            </div>
+          )}
           {step === 1 && (
             <div className="signup-step">
               <p className="step-count">Step 1 of 6</p>
@@ -80,25 +148,51 @@ export default function SignupPage() {
               <div className="form-grid">
                 <label>
                   <span>First name</span>
-                  <input type="text" placeholder="Your first name" />
+                  <input
+                    type="text"
+                    placeholder="Your first name"
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                  />
                 </label>
                 <label>
                   <span>Last name</span>
-                  <input type="text" placeholder="Your last name" />
+                  <input
+                    type="text"
+                    placeholder="Your last name"
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                  />
                 </label>
                 <label className="full-field">
                   <span>Email</span>
-                  <input type="email" placeholder="you@example.com" />
+                  <input
+                    type="email"
+                    placeholder="you@example.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                  />
                 </label>
                 <label className="full-field">
                   <span>Create a password</span>
-                  <input type="password" placeholder="At least 8 characters" />
+                  <input
+                    type="password"
+                    placeholder="At least 8 characters"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                  />
                 </label>
               </div>
               <label className="check-row">
-                <input type="checkbox" />
+                <input type="checkbox" defaultChecked />
                 <span>I am at least 12 years old. Children under 12 will attend only with a responsible adult.</span>
               </label>
+              <div style={{ marginTop: '16px', fontSize: '14px' }}>
+                <span>Already have an account? </span>
+                <Link href="/signin" style={{ color: 'var(--amber-700, #b45309)', fontWeight: 600 }}>
+                  Sign in
+                </Link>
+              </div>
             </div>
           )}
 
@@ -107,8 +201,45 @@ export default function SignupPage() {
               <p className="step-count">Step 2 of 6</p>
               <h2>Choose your membership.</h2>
               <p className="step-intro">
-                Both plans include three sessions each week and three Bad Hair Day cards each month.
+                13 sessions per month, up to 4 per week. Your cycle starts on your sign-up date, and unused sessions don’t carry over.
               </p>
+              <div style={{ marginBottom: '16px' }}>
+                <span style={{ fontSize: '14px', fontWeight: 600, display: 'block', marginBottom: '8px' }}>
+                  Select tier
+                </span>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setTier('individual')}
+                    style={{
+                      padding: '12px',
+                      borderRadius: '8px',
+                      border: tier === 'individual' ? '2px solid #b45309' : '1px solid #d1d5db',
+                      background: tier === 'individual' ? '#fffbeb' : '#fff',
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                    }}
+                  >
+                    <strong>Individual</strong>
+                    <div style={{ fontSize: '12px', color: '#6b7280' }}>$26/mo · $260/yr</div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTier('household')}
+                    style={{
+                      padding: '12px',
+                      borderRadius: '8px',
+                      border: tier === 'household' ? '2px solid #b45309' : '1px solid #d1d5db',
+                      background: tier === 'household' ? '#fffbeb' : '#fff',
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                    }}
+                  >
+                    <strong>Household</strong>
+                    <div style={{ fontSize: '12px', color: '#6b7280' }}>$34/mo · $340/yr</div>
+                  </button>
+                </div>
+              </div>
               <div className="signup-plans">
                 <button
                   className={plan === 'monthly' ? 'selected' : ''}
@@ -116,12 +247,16 @@ export default function SignupPage() {
                   onClick={() => setPlan('monthly')}
                 >
                   <span>Monthly</span>
-                  <strong>$24</strong>
+                  <strong>{tier === 'individual' ? '$26' : '$34'}</strong>
                   <small>per month · cancel anytime</small>
                 </button>
-                <button className={plan === 'annual' ? 'selected' : ''} type="button" onClick={() => setPlan('annual')}>
+                <button
+                  className={plan === 'annual' ? 'selected' : ''}
+                  type="button"
+                  onClick={() => setPlan('annual')}
+                >
                   <span>Annual</span>
-                  <strong>$240</strong>
+                  <strong>{tier === 'individual' ? '$260' : '$340'}</strong>
                   <small>per year · two months included</small>
                 </button>
               </div>
@@ -330,9 +465,14 @@ export default function SignupPage() {
                 Continue <span aria-hidden="true">→</span>
               </button>
             ) : (
-              <Link className="signup-next" href="/calendar">
-                Finish & see the Calendar <span aria-hidden="true">→</span>
-              </Link>
+              <button
+                className="signup-next"
+                type="button"
+                onClick={handleFinish}
+                disabled={loading}
+              >
+                {loading ? 'Creating account...' : 'Finish & see the Calendar'} <span aria-hidden="true">→</span>
+              </button>
             )}
           </footer>
         </section>

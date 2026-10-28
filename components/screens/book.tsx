@@ -126,7 +126,7 @@ export default function BookPage({ slug }: { slug: string }) {
           <Link href="/#rooms">Rooms</Link>
           <Link href="/membership">Membership</Link>
         </nav>
-        <Link className="schedule-signin" href="/signup">
+        <Link className="schedule-signin" href="/signin">
           Sign in
         </Link>
         <MenuToggle />
@@ -226,10 +226,11 @@ export default function BookPage({ slug }: { slug: string }) {
             </div>
             <div className="credit-balance">
               <div>
-                <span>Your week</span>
-                <strong>3 of 3 credits left</strong>
+                <span>Your month</span>
+                <strong>13 of 13 credits left</strong>
               </div>
-              <div className="credit-pips" aria-label="Three of three weekly credits remaining">
+              <div className="credit-pips" aria-label="13 monthly credits, up to 4 per week">
+                <span />
                 <span />
                 <span />
                 <span />

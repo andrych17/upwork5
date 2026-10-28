@@ -44,17 +44,19 @@ export default function Terms() {
       <h2>4. Membership, credits and payment</h2>
       <ul>
         <li>
-          Membership costs {ph('PRICE', '$24')} per {ph('BILLING PERIOD', 'month')} and includes {ph('NUMBER', '3')}{' '}
-          credits each week.
+          Membership costs {ph('PRICE', '$26')} per month for individuals ({ph('PRICE', '$260')} annual) or {ph('PRICE', '$34')} per month for households ({ph('PRICE', '$340')} annual), and includes {ph('NUMBER', '13')}{' '}
+          session credits each billing month (up to 4 per week).
         </li>
         <li>
-          One credit books one standard session. Extra credits cost {ph('PRICE', '$4 each, or $15 for a 5-pack')}.
+          One credit books one standard session. Extra credits cost {ph('PRICE', '$4 each, or $15 for a 5-pack')} and never expire.
         </li>
         <li>
-          Unused weekly credits expire at {ph('DAY AND TIME', 'Sunday at 11:59 pm Central')}, except{' '}
-          {ph('CARRY-OVER RULE', 'extra credits you bought, which last 90 days')}.
+          Unused monthly credits expire at the end of each billing cycle (your sign-up date each month). They do not carry over.
         </li>
-        <li>Payments are handled by {ph('PAYMENT PROCESSOR', 'Stripe')}. We do not store full card numbers.</li>
+        <li>
+          If a renewal payment fails, credits are paused and already-booked sessions are held for a 3-day grace period before being released.
+        </li>
+        <li>Payments are handled securely by {ph('PAYMENT PROCESSOR', 'our payment partner')}. We do not store full card numbers.</li>
         <li>
           Membership renews automatically until you cancel. You can cancel at any time from{' '}
           {ph('WHERE', 'your account settings')}, and it ends at the close of the current billing period.

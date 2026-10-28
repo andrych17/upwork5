@@ -107,7 +107,7 @@ function MembershipCard({
             <strong>02</strong> Record a quick Hello Video, seen only by our admin.
           </span>
           <span className="join-step">
-            <strong>03</strong> Choose your plan, then book up to three sessions a week.
+            <strong>03</strong> Choose your plan, then book up to 13 sessions a month (up to four a week).
           </span>
           <Link className="plan-join" href="/signup">
             Join with the {label.toLowerCase()} plan <span aria-hidden="true">→</span>
@@ -145,7 +145,7 @@ export default function Home() {
             <Link href="/calendar">Calendar</Link>
             <Link href="/games">Games</Link>
             <Link href="/membership">Membership</Link>
-            <Link href="/signup">Sign in</Link>
+            <Link href="/signin">Sign in</Link>
           </nav>
           <Link className="sign-in" href="/signup">
             Join
@@ -246,7 +246,7 @@ export default function Home() {
             <div>
               <span>01</span>
               <p>
-                <strong>Choose</strong> an activity and book with one weekly credit.
+                <strong>Choose</strong> an activity and book with one session credit.
               </p>
             </div>
             <div>
@@ -298,11 +298,11 @@ export default function Home() {
             <br />
             Start doing.
           </h2>
-          <p>Both plans include three sessions each week. Extra sessions are available whenever you want more.</p>
+          <p>Both plans include 13 sessions each month (up to 4 per week). Extra sessions are available whenever you want more.</p>
         </div>
         <div className="membership-grid">
-          <MembershipCard label="Monthly" price="$24" detail="per month · cancel anytime" accent="monthly" />
-          <MembershipCard label="Annual" price="$240" detail="per year · two months on us" accent="annual" />
+          <MembershipCard label="Monthly" price="$26" detail="per month · cancel anytime" accent="monthly" />
+          <MembershipCard label="Annual" price="$260" detail="per year · two months on us" accent="annual" />
         </div>
       </section>
 

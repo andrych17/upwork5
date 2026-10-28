@@ -198,7 +198,7 @@ export default function SchedulePage() {
           <Link href="/#rooms">Rooms</Link>
           <Link href="/membership">Membership</Link>
         </nav>
-        <Link className="schedule-signin" href="/signup">
+        <Link className="schedule-signin" href="/signin">
           Sign in
         </Link>
         <MenuToggle />

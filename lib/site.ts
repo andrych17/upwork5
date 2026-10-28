@@ -12,7 +12,7 @@ export const noindex = isDemo || process.env.NOINDEX === '1';
 
 // The short answer to "what is MeetDoConnect?", used in structured data and llms.txt.
 export const DEFINITION =
-  'MeetDoConnect is a membership for live online activities with real people. Members get three sessions a week in small video rooms of about 5 to 12 people: an hour to co-work, cook, craft, write, play or wind down together. Solo people, couples, teens and families are welcome, and two people reconnect only when both choose to be activity buddies.';
+  'MeetDoConnect is a membership for live online activities with real people. Members get 13 live sessions a month (up to four a week) in small video rooms of about 5 to 12 people: an hour to co-work, cook, craft, write, play or wind down together. Solo people, couples, teens and families are welcome, and two people reconnect only when both choose to be activity buddies.';
 
 export interface PageInfo {
   /** null on the home page, which uses the site-wide default title. */
@@ -40,6 +40,10 @@ export const PAGES = {
     title: 'Join',
     description:
       'Join MeetDoConnect in a few short steps: the basics, the community rules, a private Hello Video and your plan.',
+  },
+  '/signin': {
+    title: 'Sign in',
+    description: 'Sign in to your MeetDoConnect account to see your sessions and book upcoming activities.',
   },
   '/rules': {
     title: 'Community Rules',

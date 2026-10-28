@@ -61,31 +61,32 @@ export default function MembershipPage() {
             <span>Monthly</span>
           </div>
           <div className="plan-price">
-            <strong>$24</strong>
-            <span>/ month</span>
+            <strong>$26</strong>
+            <span>/ month (Individual)</span>
           </div>
-          <p>Three live sessions every week, resetting each Monday. Cancel any time.</p>
+          <p>13 live sessions per month, up to 4 per week. Resets on your billing date. Cancel any time.</p>
           <div className="plan-includes">
-            <span>3 weekly sessions</span>
+            <span>13 monthly sessions (up to 4/week)</span>
             <span>3 Bad Hair Day cards monthly</span>
             <span>Activity buddy picks</span>
             <span>Member-only rooms</span>
           </div>
-          <button type="button">Switch to annual · $240</button>
+          <button type="button">Switch to annual · $260</button>
         </article>
 
         <div className="credit-overview">
           <article>
-            <span>Weekly sessions</span>
+            <span>Monthly sessions</span>
             <strong>
-              2 <small>of 3 left</small>
+              10 <small>of 13 left</small>
             </strong>
-            <div className="large-pips" aria-label="Two of three weekly sessions remaining">
+            <div className="large-pips" aria-label="Ten of 13 monthly sessions remaining">
+              <i />
               <i />
               <i />
               <i className="empty" />
             </div>
-            <p>Resets Monday, May 25</p>
+            <p>Resets on billing date · max 4/week</p>
           </article>
           <article>
             <span>Extra sessions</span>

@@ -10,7 +10,7 @@ export function GET() {
     '',
     `> ${TAGLINE} ${DEFINITION}`,
     '',
-    'Membership is $24 a month or $240 a year, with three sessions every week. Extra sessions are $4 each and never expire. Every session is 60 minutes and uses one credit. Times are Central.',
+    'Membership is $26 a month or $260 a year for individuals ($34 a month or $340 a year for households), with 13 sessions every month (up to four a week). Extra sessions are $4 each and never expire. Unused monthly sessions do not carry over. Every session is 60 minutes and uses one credit. Times are Central.',
     '',
     '## Pages',
     '',
