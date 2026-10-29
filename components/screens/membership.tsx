@@ -2,16 +2,16 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
+import HouseholdCard from '@/components/household-card';
 import MenuToggle from '@/components/menu-toggle';
 
 const creditOptions = [
   { amount: 1, price: 4, label: 'A little more room' },
-  { amount: 3, price: 12, label: 'A full extra week' },
-  { amount: 5, price: 20, label: 'Keep a few handy' },
+  { amount: 5, price: 15, label: 'Keep a few handy' },
 ];
 
 export default function MembershipPage() {
-  const [selectedCredits, setSelectedCredits] = useState(3);
+  const [selectedCredits, setSelectedCredits] = useState(5);
   const [purchased, setPurchased] = useState(false);
   const selected = creditOptions.find((option) => option.amount === selectedCredits) ?? creditOptions[1];
 
@@ -91,7 +91,7 @@ export default function MembershipPage() {
           <article>
             <span>Extra sessions</span>
             <strong>
-              {purchased ? 4 : 1} <small>available</small>
+              {purchased ? 1 + selected.amount : 1} <small>available</small>
             </strong>
             <div className="extra-credit-icon" aria-hidden="true">
               +
@@ -113,6 +113,8 @@ export default function MembershipPage() {
         </div>
       </section>
 
+      <HouseholdCard />
+
       <section className="buy-credits" id="credits">
         <div className="buy-copy">
           <p className="section-label">Want another session?</p>
@@ -122,15 +124,15 @@ export default function MembershipPage() {
             hour in your pocket.
           </h2>
           <p>
-            Extra sessions are used only after your three weekly sessions. They never expire and stay with your account
-            until you need them.
+            Extra sessions are used after your monthly sessions, or once you have booked 4 sessions in a week. They
+            never expire and stay with your account until you need them.
           </p>
         </div>
         <div className="credit-shop">
           {purchased && (
             <div className="purchase-success" role="status">
-              <strong>Three sessions added.</strong>
-              Your new balance is 4 extra sessions.
+              <strong>{selected.amount === 1 ? 'One session added.' : 'Five sessions added.'}</strong>
+              Your new balance is {1 + selected.amount} extra sessions.
             </div>
           )}
           <div className="credit-options" role="radiogroup" aria-label="Choose extra sessions">
@@ -185,7 +187,7 @@ export default function MembershipPage() {
           <article className="next-payment">
             <div>
               <span>Next payment</span>
-              <strong>$24 on June 8</strong>
+              <strong>$26 on June 8</strong>
               <small>Your membership renews automatically.</small>
             </div>
             <button type="button">View receipt settings</button>
@@ -201,21 +203,21 @@ export default function MembershipPage() {
             <span>
               <b>May 8, 2026</b> Monthly membership
             </span>
-            <strong>$24.00</strong>
+            <strong>$26.00</strong>
             <button type="button">Receipt</button>
           </div>
           <div>
             <span>
               <b>April 8, 2026</b> Monthly membership
             </span>
-            <strong>$24.00</strong>
+            <strong>$26.00</strong>
             <button type="button">Receipt</button>
           </div>
           <div>
             <span>
-              <b>March 24, 2026</b> 3 extra sessions
+              <b>March 24, 2026</b> 5 extra sessions
             </span>
-            <strong>$12.00</strong>
+            <strong>$15.00</strong>
             <button type="button">Receipt</button>
           </div>
         </div>

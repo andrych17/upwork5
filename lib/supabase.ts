@@ -49,11 +49,37 @@ export interface SessionItem {
   booked_count?: number;
 }
 
+/** What get_my_membership() returns (supabase/schema.sql, section 14). */
+export interface MembershipSummary {
+  tier: 'individual' | 'household';
+  billing_interval: 'monthly' | 'annual';
+  payment_status: 'active' | 'past_due' | 'paused' | 'canceled';
+  role: 'individual' | 'owner' | 'member';
+  monthly_left: number;
+  monthly_total: number;
+  addon_left: number;
+  week_used: number;
+  /** null = no weekly limit */
+  week_limit: number | null;
+  bhd_left: number;
+  bhd_total: number;
+  /** YYYY-MM-DD, when the next month's credits arrive */
+  next_refill: string;
+  household: {
+    max_people: number;
+    owner_name: string;
+    people: { id: string; name: string; email: string | null; is_owner: boolean }[];
+    /** pending invite emails, only for the account holder */
+    invites: string[] | null;
+  } | null;
+}
+
 export interface BookingItem {
   id: string;
   session_id: string;
   user_id: string;
-  status: 'confirmed' | 'cancelled' | 'attended';
+  charged_to: string;
+  status: 'confirmed' | 'cancelled' | 'late_cancelled' | 'attended';
   created_at: string;
   session?: SessionItem;
 }

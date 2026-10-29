@@ -9,7 +9,7 @@
 
 ## Overview
 
-MeetDoConnect is a membership for live online activities. Members get three sessions a week to book 60-minute rooms (quiet co-working, wind-downs, cooking, crafts, writing, games) with about 5 to 12 people. Afterward, two members who both pick each other can chat as activity buddies.
+MeetDoConnect is a membership for live online activities. Members get 13 sessions a month (up to 4 a week, Monday to Sunday) to book 60-minute rooms (quiet co-working, wind-downs, cooking, crafts, writing, games) with about 5 to 12 people. Afterward, two members who both pick each other can chat as activity buddies.
 
 The design follows Kelly's Figma Make board, "Multi-Generational Video Rooms" (version 38). This repository contains the front end, built with **Next.js 16** (App Router, TypeScript, Tailwind CSS v4). It compiles into a static website (`output: 'export'`) served globally via **Cloudflare Workers Static Assets** with full offline **PWA** support.
 
@@ -187,9 +187,9 @@ The current front end is built to seamlessly graduate into a full-stack SaaS app
 1. **Authentication & Member Accounts**:
    - Integration with Supabase or PostgreSQL for secure member login, passwordless magic links, and profile management.
 2. **Booking & Credit Engine**:
-   - Backend persistence for 3 weekly credits, the 24-hour cancellation cutoff, and "Bad Hair Day" cards.
+   - Backend persistence for 13 monthly credits (16 shared for a Household of up to 4 people), the weekly limit, the 24-hour cancellation cutoff, and "Bad Hair Day" cards.
 3. **Payment Processing**:
-   - Square, Braintree or Helcim (not Stripe) for $24/month or $240/year memberships and extra sessions ($4 each, $15 for 5).
+   - Square, Braintree or Helcim (not Stripe) for $26/month or $260/year (Individual) and $34/month or $340/year (Household) memberships and extra sessions ($4 each, $15 for 5).
 4. **Live Video Rooms**:
    - Daily.co rooms for 60-minute sessions of up to 12 people, open only to members who booked.
 5. **Real-Time Buddy Chat**:

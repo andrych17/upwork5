@@ -1,13 +1,13 @@
 -- ========================================================================
--- MeetDoConnect Supabase Database Seeder & Dummy Data (Milestone 2)
--- Run this in Supabase SQL Editor after running schema.sql.
+-- MeetDoConnect Supabase Seeder & Dummy Data (Milestone 2)
+-- DEV PROJECT ONLY. Run in the Supabase SQL Editor after schema.sql.
 -- ========================================================================
 
 -- 1. Seed Official Live Sessions
 insert into public.sessions (id, slug, title, blurb, host, prep, starts_at, minutes, capacity, published)
 values
   (
-    's0000000-0000-0000-0000-000000000001',
+    'a0000000-0000-0000-0000-000000000001',
     'quiet-co-work',
     'Quiet Co-Work',
     'Solos, couples, adults & teens working alongside each other.',
@@ -19,7 +19,7 @@ values
     true
   ),
   (
-    's0000000-0000-0000-0000-000000000002',
+    'a0000000-0000-0000-0000-000000000002',
     'write-together',
     'Write Together',
     'Solos, couples, adults & teens sharing creative writing time.',
@@ -31,7 +31,7 @@ values
     true
   ),
   (
-    's0000000-0000-0000-0000-000000000003',
+    'a0000000-0000-0000-0000-000000000003',
     'botanical-sketch-night',
     'Botanical Sketch Night',
     'Mindful observation and sketching of botanicals with friends.',
@@ -43,7 +43,7 @@ values
     true
   ),
   (
-    's0000000-0000-0000-0000-000000000004',
+    'a0000000-0000-0000-0000-000000000004',
     'skin-ritual',
     'Skin Ritual',
     'Slow down with a natural mask and tea mist routine.',
@@ -55,7 +55,7 @@ values
     true
   ),
   (
-    's0000000-0000-0000-0000-000000000005',
+    'a0000000-0000-0000-0000-000000000005',
     'wind-down',
     'Wind-Down',
     'Gentle stretches, slow breathing, and journaling for everyone.',
@@ -67,7 +67,7 @@ values
     true
   ),
   (
-    's0000000-0000-0000-0000-000000000006',
+    'a0000000-0000-0000-0000-000000000006',
     'idea-lab',
     'Idea Lab',
     'Pitch a project or story and receive thoughtful "yes, and" feedback.',
@@ -79,7 +79,7 @@ values
     true
   ),
   (
-    's0000000-0000-0000-0000-000000000007',
+    'a0000000-0000-0000-0000-000000000007',
     'mocktail-studio',
     'Mocktail Studio',
     'Build two alcohol-free drinks while learning flavors and balance.',
@@ -91,7 +91,7 @@ values
     true
   ),
   (
-    's0000000-0000-0000-0000-000000000008',
+    'a0000000-0000-0000-0000-000000000008',
     'cards-and-collage-night',
     'Cards & Collage Night',
     'Hands-on craft and collage building on cardstock.',
@@ -103,7 +103,7 @@ values
     true
   ),
   (
-    's0000000-0000-0000-0000-000000000009',
+    'a0000000-0000-0000-0000-000000000009',
     'byo-dad-jokes',
     'BYO Dad Jokes',
     'Families, solos, couples: share groan-worthy one-liners and stories.',
@@ -115,7 +115,7 @@ values
     true
   ),
   (
-    's0000000-0000-0000-0000-000000000010',
+    'a0000000-0000-0000-0000-000000000010',
     'dont-spill-the-tea',
     '(Don''t) Spill the Tea',
     'Slow down over a blind tasting of three teas and calm conversation.',
@@ -127,7 +127,7 @@ values
     true
   ),
   (
-    's0000000-0000-0000-0000-000000000011',
+    'a0000000-0000-0000-0000-000000000011',
     'share-a-song',
     'Share a Song',
     'Get to know people through the music they love. Share or listen.',
@@ -139,7 +139,7 @@ values
     true
   ),
   (
-    's0000000-0000-0000-0000-000000000012',
+    'a0000000-0000-0000-0000-000000000012',
     'trivia-trivier-triviest',
     'Trivia, Trivier, Triviest',
     'Proprietary trivia game to reveal who is Quizzy, Quizzier, and Quizziest.',
@@ -158,6 +158,9 @@ on conflict (slug) do update set
   starts_at = excluded.starts_at;
 
 -- 2. Seed Dummy Users into auth.users (Pass: AdminPass123! or MemberPass123!)
+-- DEV PROJECT ONLY. Never run this file on the production project: the passwords are public.
+-- The empty-string token columns and the auth.identities rows are what Supabase Auth needs
+-- for email + password sign-in on users created with SQL.
 insert into auth.users (
   id,
   instance_id,
@@ -166,230 +169,112 @@ insert into auth.users (
   email,
   encrypted_password,
   email_confirmed_at,
+  confirmation_token,
+  recovery_token,
+  email_change_token_new,
+  email_change_token_current,
+  email_change,
+  phone_change,
+  phone_change_token,
+  reauthentication_token,
   raw_app_meta_data,
   raw_user_meta_data,
   created_at,
   updated_at
 )
-values
-  -- Admin User
-  (
-    'u0000000-0000-0000-0000-000000000001',
-    '00000000-0000-0000-0000-000000000000',
-    'authenticated',
-    'authenticated',
-    'admin@meetdoconnect.com',
-    crypt('AdminPass123!', gen_salt('bf')),
-    now(),
-    '{"provider":"email","providers":["email"]}',
-    '{"first_name":"Kelly","last_name":"Christian"}',
-    now(),
-    now()
-  ),
-  -- Member: Maya Lin
-  (
-    'u0000000-0000-0000-0000-000000000002',
-    '00000000-0000-0000-0000-000000000000',
-    'authenticated',
-    'authenticated',
-    'maya.lin@example.com',
-    crypt('MemberPass123!', gen_salt('bf')),
-    now(),
-    '{"provider":"email","providers":["email"]}',
-    '{"first_name":"Maya","last_name":"Lin"}',
-    now() - interval '45 days',
-    now()
-  ),
-  -- Member: Jonah Vance
-  (
-    'u0000000-0000-0000-0000-000000000003',
-    '00000000-0000-0000-0000-000000000000',
-    'authenticated',
-    'authenticated',
-    'jonah.vance@example.com',
-    crypt('MemberPass123!', gen_salt('bf')),
-    now(),
-    '{"provider":"email","providers":["email"]}',
-    '{"first_name":"Jonah","last_name":"Vance"}',
-    now() - interval '80 days',
-    now()
-  ),
-  -- Member: Nina Patel
-  (
-    'u0000000-0000-0000-0000-000000000004',
-    '00000000-0000-0000-0000-000000000000',
-    'authenticated',
-    'authenticated',
-    'nina.patel@example.com',
-    crypt('MemberPass123!', gen_salt('bf')),
-    now(),
-    '{"provider":"email","providers":["email"]}',
-    '{"first_name":"Nina","last_name":"Patel"}',
-    now() - interval '90 days',
-    now()
-  ),
-  -- Member: Robert Hayes (Past due renewal with 3-day grace)
-  (
-    'u0000000-0000-0000-0000-000000000005',
-    '00000000-0000-0000-0000-000000000000',
-    'authenticated',
-    'authenticated',
-    'robert.hayes@example.com',
-    crypt('MemberPass123!', gen_salt('bf')),
-    now(),
-    '{"provider":"email","providers":["email"]}',
-    '{"first_name":"Robert","last_name":"Hayes"}',
-    now() - interval '120 days',
-    now()
-  )
+select
+  u.id::uuid,
+  '00000000-0000-0000-0000-000000000000'::uuid,
+  'authenticated',
+  'authenticated',
+  u.email,
+  crypt(u.pass, gen_salt('bf')),
+  now(),
+  '', '', '', '', '', '', '', '',
+  '{"provider":"email","providers":["email"]}'::jsonb,
+  jsonb_build_object('first_name', u.first_name, 'last_name', u.last_name),
+  now() - u.age,
+  now()
+from (values
+  ('d0000000-0000-0000-0000-000000000001', 'admin@meetdoconnect.com', 'AdminPass123!', 'Kelly', 'Christian', interval '0 days'),
+  ('d0000000-0000-0000-0000-000000000002', 'maya.lin@example.com', 'MemberPass123!', 'Maya', 'Lin', interval '45 days'),
+  ('d0000000-0000-0000-0000-000000000003', 'jonah.vance@example.com', 'MemberPass123!', 'Jonah', 'Vance', interval '80 days'),
+  -- Nina holds a Household; Sam is a second person on it (own sign-in, shared credits)
+  ('d0000000-0000-0000-0000-000000000004', 'nina.patel@example.com', 'MemberPass123!', 'Nina', 'Patel', interval '90 days'),
+  ('d0000000-0000-0000-0000-000000000006', 'sam.patel@example.com', 'MemberPass123!', 'Sam', 'Patel', interval '60 days'),
+  -- Robert's renewal failed yesterday (inside the 3-day grace period)
+  ('d0000000-0000-0000-0000-000000000005', 'robert.hayes@example.com', 'MemberPass123!', 'Robert', 'Hayes', interval '120 days')
+) as u(id, email, pass, first_name, last_name, age)
 on conflict (id) do nothing;
 
--- 3. Upsert Profile Details for Dummy Users
-insert into public.profiles (
-  id,
-  email,
-  first_name,
-  last_name,
-  tier,
-  billing_interval,
-  billing_date,
-  monthly_credits,
-  addon_credits,
-  bhd_cards_remaining,
-  payment_status,
-  is_admin,
-  created_at
-)
-values
-  (
-    'u0000000-0000-0000-0000-000000000001',
-    'admin@meetdoconnect.com',
-    'Kelly',
-    'Christian',
-    'individual',
-    'annual',
-    1,
-    13,
-    10,
-    3,
-    'active',
-    true,
-    now()
-  ),
-  (
-    'u0000000-0000-0000-0000-000000000002',
-    'maya.lin@example.com',
-    'Maya',
-    'Lin',
-    'individual',
-    'monthly',
-    12,
-    9,
-    2,
-    2,
-    'active',
-    false,
-    now() - interval '45 days'
-  ),
-  (
-    'u0000000-0000-0000-0000-000000000003',
-    'jonah.vance@example.com',
-    'Jonah',
-    'Vance',
-    'individual',
-    'annual',
-    4,
-    12,
-    0,
-    3,
-    'active',
-    false,
-    now() - interval '80 days'
-  ),
-  (
-    'u0000000-0000-0000-0000-000000000004',
-    'nina.patel@example.com',
-    'Nina',
-    'Patel',
-    'household',
-    'monthly',
-    28,
-    4,
-    5,
-    3,
-    'active',
-    false,
-    now() - interval '90 days'
-  ),
-  (
-    'u0000000-0000-0000-0000-000000000005',
-    'robert.hayes@example.com',
-    'Robert',
-    'Hayes',
-    'individual',
-    'monthly',
-    25,
-    0,
-    0,
-    1,
-    'past_due',
-    false,
-    now() - interval '120 days'
-  )
-on conflict (id) do update set
-  is_admin = excluded.is_admin,
-  tier = excluded.tier,
-  monthly_credits = excluded.monthly_credits,
-  addon_credits = excluded.addon_credits,
-  billing_date = excluded.billing_date,
-  payment_status = excluded.payment_status;
+insert into auth.identities (provider_id, user_id, identity_data, provider, last_sign_in_at, created_at, updated_at)
+select
+  u.id::text,
+  u.id,
+  jsonb_build_object('sub', u.id::text, 'email', u.email, 'email_verified', true),
+  'email',
+  now(),
+  u.created_at,
+  now()
+from auth.users u
+where u.id::text like 'd0000000-0000-0000-0000-%'
+on conflict (provider_id, provider) do nothing;
 
--- Set Robert's payment failed timestamp to 1 day ago (within 3-day grace)
+-- 3. Profile Details for Dummy Users (the sign-up trigger created the rows; this sets the plans)
+update public.profiles p
+set tier = v.tier,
+    billing_interval = v.billing_interval,
+    billing_date = v.billing_date,
+    monthly_credits = v.monthly_credits,
+    addon_credits = v.addon_credits,
+    payment_status = v.payment_status,
+    is_admin = v.is_admin,
+    household_owner_id = v.household_owner_id::uuid,
+    credits_cycle_start = cycle_start(v.billing_date, (now() at time zone 'America/Chicago')::date),
+    created_at = now() - v.age
+from (values
+  ('d0000000-0000-0000-0000-000000000001', 'individual', 'annual', 1, 13, 3, 'active', true, null, interval '0 days'),
+  ('d0000000-0000-0000-0000-000000000002', 'individual', 'monthly', 12, 9, 2, 'active', false, null, interval '45 days'),
+  ('d0000000-0000-0000-0000-000000000003', 'individual', 'annual', 4, 12, 0, 'active', false, null, interval '80 days'),
+  ('d0000000-0000-0000-0000-000000000004', 'household', 'monthly', 28, 14, 5, 'active', false, null, interval '90 days'),
+  ('d0000000-0000-0000-0000-000000000006', 'household', 'monthly', 28, 0, 0, 'active', false,
+    'd0000000-0000-0000-0000-000000000004', interval '60 days'),
+  ('d0000000-0000-0000-0000-000000000005', 'individual', 'monthly', 25, 0, 1, 'past_due', false, null, interval '120 days')
+) as v(id, tier, billing_interval, billing_date, monthly_credits, addon_credits, payment_status, is_admin,
+       household_owner_id, age)
+where p.id = v.id::uuid;
+
 update public.profiles
-set payment_failed_at = now() - interval '1 day'
-where email = 'robert.hayes@example.com';
+set payment_failed_at = now() - interval '1 day',
+    credits_cycle_start = null
+where id = 'd0000000-0000-0000-0000-000000000005';
 
--- 4. Seed Sample Bookings
-insert into public.bookings (id, session_id, user_id, credit_type, camera_off, status, created_at)
+-- Nina has one open invite for a third person
+insert into public.household_invites (email, owner_id)
+values ('leo.patel@example.com', 'd0000000-0000-0000-0000-000000000004')
+on conflict (email) do nothing;
+
+-- 4. Seed Sample Bookings (charged_to = whose credits paid)
+insert into public.bookings (id, session_id, user_id, charged_to, credit_type, camera_off, status, created_at)
 values
   -- Maya booked Quiet Co-Work
-  (
-    'b0000000-0000-0000-0000-000000000001',
-    's0000000-0000-0000-0000-000000000001',
-    'u0000000-0000-0000-0000-000000000002',
-    'monthly',
-    false,
-    'confirmed',
-    now() - interval '2 days'
-  ),
+  ('b0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000001',
+   'd0000000-0000-0000-0000-000000000002', 'd0000000-0000-0000-0000-000000000002',
+   'monthly', false, 'confirmed', now() - interval '2 days'),
   -- Jonah booked Quiet Co-Work
-  (
-    'b0000000-0000-0000-0000-000000000002',
-    's0000000-0000-0000-0000-000000000001',
-    'u0000000-0000-0000-0000-000000000003',
-    'monthly',
-    false,
-    'confirmed',
-    now() - interval '1 day'
-  ),
-  -- Nina booked Botanical Sketch Night
-  (
-    'b0000000-0000-0000-0000-000000000003',
-    's0000000-0000-0000-0000-000000000003',
-    'u0000000-0000-0000-0000-000000000004',
-    'monthly',
-    true,
-    'confirmed',
-    now() - interval '12 hours'
-  ),
+  ('b0000000-0000-0000-0000-000000000002', 'a0000000-0000-0000-0000-000000000001',
+   'd0000000-0000-0000-0000-000000000003', 'd0000000-0000-0000-0000-000000000003',
+   'monthly', false, 'confirmed', now() - interval '1 day'),
+  -- Nina booked Botanical Sketch Night with a Bad Hair Day card
+  ('b0000000-0000-0000-0000-000000000003', 'a0000000-0000-0000-0000-000000000003',
+   'd0000000-0000-0000-0000-000000000004', 'd0000000-0000-0000-0000-000000000004',
+   'monthly', true, 'confirmed', now() - interval '12 hours'),
+  -- Sam joined the same session on Nina's Household credits
+  ('b0000000-0000-0000-0000-000000000005', 'a0000000-0000-0000-0000-000000000003',
+   'd0000000-0000-0000-0000-000000000006', 'd0000000-0000-0000-0000-000000000004',
+   'monthly', false, 'confirmed', now() - interval '10 hours'),
   -- Maya booked Write Together
-  (
-    'b0000000-0000-0000-0000-000000000004',
-    's0000000-0000-0000-0000-000000000002',
-    'u0000000-0000-0000-0000-000000000002',
-    'monthly',
-    false,
-    'confirmed',
-    now() - interval '6 hours'
-  )
+  ('b0000000-0000-0000-0000-000000000004', 'a0000000-0000-0000-0000-000000000002',
+   'd0000000-0000-0000-0000-000000000002', 'd0000000-0000-0000-0000-000000000002',
+   'monthly', false, 'confirmed', now() - interval '6 hours')
 on conflict (id) do nothing;

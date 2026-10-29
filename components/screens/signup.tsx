@@ -56,7 +56,7 @@ export default function SignupPage() {
     try {
       const supabase = getSupabase();
       if (supabase && email && password) {
-        await supabase.auth.signUp({
+        const { error } = await supabase.auth.signUp({
           email,
           password,
           options: {
@@ -68,6 +68,11 @@ export default function SignupPage() {
             },
           },
         });
+        if (error) {
+          setErrorMsg(error.message);
+          setLoading(false);
+          return;
+        }
       }
       setDemoUser({
         id: 'user-' + Date.now(),
@@ -76,7 +81,7 @@ export default function SignupPage() {
         last_name: lastName || '',
         plan: tier,
         billing_interval: plan,
-        monthly_credits: 13,
+        monthly_credits: tier === 'household' ? 16 : 13,
         payment_status: 'active',
       });
       router.push('/calendar');
@@ -201,7 +206,10 @@ export default function SignupPage() {
               <p className="step-count">Step 2 of 6</p>
               <h2>Choose your membership.</h2>
               <p className="step-intro">
-                13 sessions per month, up to 4 per week. Your cycle starts on your sign-up date, and unused sessions don’t carry over.
+                Individual gets 13 sessions a month. Household is for up to 4 people, each with their own sign-in,
+                sharing 16 sessions a month. Everyone can book up to 4 a week. Your month starts on your sign-up date,
+                and unused sessions don’t carry over. Invited to someone’s Household? Sign up with the email they
+                invited, and you join it automatically.
               </p>
               <div style={{ marginBottom: '16px' }}>
                 <span style={{ fontSize: '14px', fontWeight: 600, display: 'block', marginBottom: '8px' }}>
@@ -222,6 +230,7 @@ export default function SignupPage() {
                   >
                     <strong>Individual</strong>
                     <div style={{ fontSize: '12px', color: '#6b7280' }}>$26/mo · $260/yr</div>
+                    <div style={{ fontSize: '12px', color: '#6b7280' }}>1 person · 13 sessions/mo</div>
                   </button>
                   <button
                     type="button"
@@ -237,6 +246,7 @@ export default function SignupPage() {
                   >
                     <strong>Household</strong>
                     <div style={{ fontSize: '12px', color: '#6b7280' }}>$34/mo · $340/yr</div>
+                    <div style={{ fontSize: '12px', color: '#6b7280' }}>Up to 4 people · 16 sessions/mo</div>
                   </button>
                 </div>
               </div>
@@ -250,11 +260,7 @@ export default function SignupPage() {
                   <strong>{tier === 'individual' ? '$26' : '$34'}</strong>
                   <small>per month · cancel anytime</small>
                 </button>
-                <button
-                  className={plan === 'annual' ? 'selected' : ''}
-                  type="button"
-                  onClick={() => setPlan('annual')}
-                >
+                <button className={plan === 'annual' ? 'selected' : ''} type="button" onClick={() => setPlan('annual')}>
                   <span>Annual</span>
                   <strong>{tier === 'individual' ? '$260' : '$340'}</strong>
                   <small>per year · two months included</small>
@@ -465,12 +471,7 @@ export default function SignupPage() {
                 Continue <span aria-hidden="true">→</span>
               </button>
             ) : (
-              <button
-                className="signup-next"
-                type="button"
-                onClick={handleFinish}
-                disabled={loading}
-              >
+              <button className="signup-next" type="button" onClick={handleFinish} disabled={loading}>
                 {loading ? 'Creating account...' : 'Finish & see the Calendar'} <span aria-hidden="true">→</span>
               </button>
             )}

@@ -38,25 +38,36 @@ export default function Terms() {
       <h2>3. Your account</h2>
       <p>
         Give accurate information and keep your sign-in details private. You are responsible for activity on your
-        account. Each person needs their own account unless you have a household add-on.
+        account. Each person needs their own sign-in. A household membership covers up to {ph('NUMBER', '4')} people,
+        each with their own sign-in, and the account holder is responsible for everyone on it.
       </p>
 
       <h2>4. Membership, credits and payment</h2>
       <ul>
         <li>
-          Membership costs {ph('PRICE', '$26')} per month for individuals ({ph('PRICE', '$260')} annual) or {ph('PRICE', '$34')} per month for households ({ph('PRICE', '$340')} annual), and includes {ph('NUMBER', '13')}{' '}
-          session credits each billing month (up to 4 per week).
+          Membership costs {ph('PRICE', '$26')} per month for individuals ({ph('PRICE', '$260')} annual) or{' '}
+          {ph('PRICE', '$34')} per month for households ({ph('PRICE', '$340')} annual), and includes{' '}
+          {ph('NUMBER', '13')} session credits each billing month for individuals or {ph('NUMBER', '16')} shared credits
+          for households (up to 4 sessions per person per week, Monday to Sunday). Annual memberships receive their
+          credits each month on the billing date.
         </li>
         <li>
-          One credit books one standard session. Extra credits cost {ph('PRICE', '$4 each, or $15 for a 5-pack')} and never expire.
+          One credit books one seat in one standard session. Extra credits cost{' '}
+          {ph('PRICE', '$4 each, or $15 for a 5-pack')}, never expire, and can be used beyond the weekly limit.
         </li>
         <li>
-          Unused monthly credits expire at the end of each billing cycle (your sign-up date each month). They do not carry over.
+          Unused monthly credits expire at the end of each billing cycle (your sign-up date each month). They do not
+          carry over.
         </li>
         <li>
-          If a renewal payment fails, credits are paused and already-booked sessions are held for a 3-day grace period before being released.
+          If a renewal payment fails, credits are paused and already-booked sessions are held for a 3-day grace period
+          before being released. Your billing date stays the same, and your credits return as soon as the payment goes
+          through.
         </li>
-        <li>Payments are handled securely by {ph('PAYMENT PROCESSOR', 'our payment partner')}. We do not store full card numbers.</li>
+        <li>
+          Payments are handled securely by {ph('PAYMENT PROCESSOR', 'our payment partner')}. We do not store full card
+          numbers.
+        </li>
         <li>
           Membership renews automatically until you cancel. You can cancel at any time from{' '}
           {ph('WHERE', 'your account settings')}, and it ends at the close of the current billing period.

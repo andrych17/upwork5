@@ -77,14 +77,15 @@ export default function MySessionsPage() {
 
       <section className="member-balance" aria-label="Member balances">
         <div>
-          <span>Weekly sessions</span>
-          <strong>2 of 3 left</strong>
+          <span>This week</span>
+          <strong>1 of 4 left</strong>
           <div className="balance-pips" aria-hidden="true">
             <i />
-            <i />
+            <i className="used" />
+            <i className="used" />
             <i className="used" />
           </div>
-          <small>Resets Monday</small>
+          <small>Week resets Monday · 10 of 13 left this month</small>
         </div>
         <div>
           <span>Extra sessions</span>

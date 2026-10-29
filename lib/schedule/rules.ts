@@ -1,6 +1,7 @@
 // Booking, credit, cancel, card and payment rules for the Schedule page, ported from assets/rules.js.
-// The same rules are written again in supabase/schema.sql so the database can enforce them later. If you
-// change a rule here, change it there too: rules that only run in the browser can be bypassed by anyone.
+// The database enforces the same rules in supabase/schema.sql (book_session, cancel_booking). If you change a
+// rule here, change it there too: rules that only run in the browser can be bypassed by anyone. In the database
+// a Household member spends the account holder's credits; here one Member record holds the balance.
 //
 // Times are milliseconds since 1970 (Date.now()). "Week" and "month" are counted in the business time zone
 // (cfg.tz), and a week runs Monday to Sunday, so every member shares the same week. Every function is pure:
@@ -12,8 +13,11 @@ export const DAY = 86_400_000;
 
 export interface Config {
   tz: string;
-  /** sessions included per week with membership */
-  weeklyCredits: number;
+  /** sessions included each billing month: Individual and Household (shared by everyone on it) */
+  monthlyCredits: number;
+  householdCredits: number;
+  /** most monthly-credit sessions one person can book in one week; null = no weekly limit */
+  maxWeeklySessions: number | null;
   /** free cancel up to this many hours before the start */
   cancelHours: number;
   /** after the cancel deadline: no cancel at all, or cancel with the credit and card used up */
@@ -34,9 +38,11 @@ export interface Config {
 // Change these numbers to change the policy. Everything below reads from here.
 export const DEFAULT_CONFIG: Config = {
   tz: 'America/Chicago',
-  weeklyCredits: 3,
+  monthlyCredits: 13,
+  householdCredits: 16,
+  maxWeeklySessions: 4,
   cancelHours: 24,
-  lateCancel: 'blocked',
+  lateCancel: 'forfeit',
   bookingClosesMinutes: 15,
   bookAheadDays: 14,
   bhdPerMonth: 3,
@@ -47,7 +53,7 @@ export const DEFAULT_CONFIG: Config = {
 export const cfgOf = (c?: Partial<Config>): Config => ({ ...DEFAULT_CONFIG, ...c });
 
 export type BookingStatus = 'booked' | 'cancelled' | 'late_cancelled' | 'payment_lapsed' | 'attended' | 'no_show';
-export type CreditSource = 'weekly' | 'purchased';
+export type CreditSource = 'monthly' | 'purchased';
 
 export interface Booking {
   id: string;
@@ -78,6 +84,9 @@ export interface Subscription {
 export interface Member {
   id: string;
   name: string;
+  plan: 'individual' | 'household';
+  /** monthly credits left in this billing month (refilled on the billing date, not carried over) */
+  monthlyLeft: number;
   sub: Subscription;
   ledger: LedgerRow[];
   bookings: Booking[];
@@ -90,7 +99,7 @@ export interface Session {
   capacity: number;
 }
 
-// Bookings that still count against the weekly allowance and the monthly card limit.
+// Bookings that still count against the weekly limit and the monthly card limit.
 // Cancelled and payment_lapsed bookings are refunded, so they do not count.
 const COUNTED: ReadonlySet<BookingStatus> = new Set(['booked', 'late_cancelled', 'attended', 'no_show']);
 
@@ -148,14 +157,24 @@ export function monthKey(ts: number, c?: Partial<Config>): string {
 /* ---------- member record ---------- */
 
 export function emptyMember(id: string, name = ''): Member {
-  return { id, name, sub: { status: 'none', paidThrough: null, pastDueSince: null }, ledger: [], bookings: [] };
+  return {
+    id,
+    name,
+    plan: 'individual',
+    monthlyLeft: 0,
+    sub: { status: 'none', paidThrough: null, pastDueSince: null },
+    ledger: [],
+    bookings: [],
+  };
 }
+export const planCredits = (member: Member, c?: Partial<Config>) =>
+  member.plan === 'household' ? cfgOf(c).householdCredits : cfgOf(c).monthlyCredits;
 const nextId = (prefix: string, list: readonly unknown[]) =>
   `${prefix}${list.length + 1}-${Math.random().toString(36).slice(2, 7)}`;
 
 export const extraBalance = (member: Member) => member.ledger.reduce((n, r) => n + r.delta, 0);
 function weeklyUsed(member: Member, wk: string, cfg: Config) {
-  return member.bookings.filter((b) => COUNTED.has(b.status) && b.source === 'weekly' && weekKey(b.start, cfg) === wk)
+  return member.bookings.filter((b) => COUNTED.has(b.status) && b.source === 'monthly' && weekKey(b.start, cfg) === wk)
     .length;
 }
 function bhdUsed(member: Member, mk: string, cfg: Config, exceptId?: string) {
@@ -166,7 +185,7 @@ function bhdUsed(member: Member, mk: string, cfg: Config, exceptId?: string) {
 export const cancelDeadline = (start: number, c?: Partial<Config>) => start - cfgOf(c).cancelHours * HOUR;
 
 /* ---------- membership and payment ----------
- * Weekly credits only exist while the membership is paid. A session can use a weekly credit only if the
+ * Credits only work while the membership is paid. A session can be booked only if the
  * member is "active" and the session starts before sub.paidThrough (the end of the period the last payment
  * covered). That ties the calendar to the money: no payment, no new bookings.
  */
@@ -191,7 +210,9 @@ export function summary(member: Member, now: number, c?: Partial<Config>) {
     membership: membership(member, now, cfg),
     weekKey: wk,
     weeklyUsed: weeklyUsed(member, wk, cfg),
-    weeklyTotal: cfg.weeklyCredits,
+    weeklyLimit: cfg.maxWeeklySessions,
+    monthlyLeft: member.monthlyLeft,
+    monthlyTotal: planCredits(member, cfg),
     extra: extraBalance(member),
     bhdUsed: bhdUsed(member, monthKey(now, cfg), cfg),
     bhdTotal: cfg.bhdPerMonth,
@@ -209,6 +230,7 @@ export type BookingCode =
   | 'full'
   | 'payment'
   | 'beyond_paid'
+  | 'week_full'
   | 'no_credit'
   | 'no_bhd';
 
@@ -271,14 +293,17 @@ export function checkBooking(
     );
   }
 
-  // Which credit pays for it.
-  if (weeklyUsed(member, weekKey(session.start, cfg), cfg) < cfg.weeklyCredits) source = 'weekly';
+  // Which credit pays for it. Extra sessions can go past the weekly limit.
+  const weekOk =
+    cfg.maxWeeklySessions === null || weeklyUsed(member, weekKey(session.start, cfg), cfg) < cfg.maxWeeklySessions;
+  if (member.monthlyLeft > 0 && weekOk) source = 'monthly';
   else if (extraBalance(member) > 0) source = 'purchased';
-  else
+  else if (member.monthlyLeft > 0)
     fail(
-      'no_credit',
-      `You have used your ${cfg.weeklyCredits} sessions for that week. Buy an extra session to add this one.`,
+      'week_full',
+      `You have booked ${cfg.maxWeeklySessions} sessions for that week. Add an extra session to book this one.`,
     );
+  else fail('no_credit', "This month's sessions are used up. Add an extra session to keep booking.");
 
   if (opts.bhd && bhdUsed(member, monthKey(session.start, cfg), cfg) >= cfg.bhdPerMonth)
     fail('no_bhd', `You have used all ${cfg.bhdPerMonth} Bad Hair Day cards for that month.`);
@@ -312,6 +337,7 @@ export function book(
     bookedAt: now,
   };
   m.bookings.push(b);
+  if (chk.source === 'monthly') m.monthlyLeft -= 1;
   if (chk.source === 'purchased') m.ledger.push({ id: nextId('l', m.ledger), delta: -1, reason: 'spend', ref: b.id });
   return { ok: true, booking: b, member: m };
 }
@@ -332,6 +358,8 @@ export function cancel(
   if (now <= cancelDeadline(b.start, cfg)) {
     b.status = 'cancelled';
     b.cancelledAt = now;
+    // Capped at the plan size, in case the booking was paid from the previous billing month.
+    if (b.source === 'monthly') m.monthlyLeft = Math.min(m.monthlyLeft + 1, planCredits(m, cfg));
     if (b.source === 'purchased') m.ledger.push({ id: nextId('l', m.ledger), delta: 1, reason: 'refund', ref: b.id });
     return { ok: true, refunded: true, member: m, booking: b };
   }
@@ -391,18 +419,22 @@ export function addExtra(member: Member, qty: number, ref: string | null) {
 
 /** A payment event from the payment processor. */
 export type PaymentEvent =
-  /** a monthly payment succeeded; paid through periodEnd */
+  /** a payment succeeded (the billing month's credits arrive); paid through periodEnd */
   | { type: 'paid'; periodEnd: number }
   | { type: 'failed'; at: number }
   /** the member ended the membership; it stays valid until paidThrough */
   | { type: 'canceled' };
 
-export function applyPayment(member: Member, ev: PaymentEvent): Member {
+// The billing date never moves: a late payment brings the credits back, but the next refill stays on schedule.
+export function applyPayment(member: Member, ev: PaymentEvent, c?: Partial<Config>): Member {
   const m = structuredClone(member);
-  if (ev.type === 'paid') m.sub = { status: 'active', paidThrough: ev.periodEnd, pastDueSince: null };
-  else if (ev.type === 'failed')
+  if (ev.type === 'paid') {
+    m.sub = { status: 'active', paidThrough: ev.periodEnd, pastDueSince: null };
+    m.monthlyLeft = planCredits(m, c);
+  } else if (ev.type === 'failed') {
     m.sub = { status: 'past_due', paidThrough: m.sub.paidThrough, pastDueSince: m.sub.pastDueSince || ev.at };
-  else m.sub = { status: 'canceled', paidThrough: m.sub.paidThrough, pastDueSince: null };
+    m.monthlyLeft = 0;
+  } else m.sub = { status: 'canceled', paidThrough: m.sub.paidThrough, pastDueSince: null };
   return m;
 }
 

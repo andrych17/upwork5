@@ -169,7 +169,9 @@ export default function AdminPage() {
               monthlyCredits: (row.monthly_credits as number) ?? 13,
               addonCredits: (row.addon_credits as number) ?? 0,
               status: (row.payment_status as 'active' | 'past_due' | 'paused' | 'canceled') || 'active',
-              joinedDate: row.created_at ? new Date(row.created_at as string).toISOString().split('T')[0] : '2026-10-28',
+              joinedDate: row.created_at
+                ? new Date(row.created_at as string).toISOString().split('T')[0]
+                : '2026-10-28',
             }));
             setMembers(mapped);
           }
@@ -207,13 +209,8 @@ export default function AdminPage() {
             .eq('id', data.user.id)
             .maybeSingle();
 
-          const isAllowed =
-            prof?.is_admin ||
-            adminEmail.includes('admin') ||
-            adminEmail.includes('kchristian') ||
-            adminEmail.includes('andrych17');
-
-          if (!isAllowed) {
+          // Only profiles.is_admin counts. The database checks it again on every admin read and write.
+          if (!prof?.is_admin) {
             await supabase.auth.signOut();
             setLoginError('Access denied. This account does not have administrator privileges.');
             setIsLoggingIn(false);
@@ -415,9 +412,7 @@ export default function AdminPage() {
   }
 
   const filteredMembers = members.filter(
-    (m) =>
-      m.name.toLowerCase().includes(search.toLowerCase()) ||
-      m.email.toLowerCase().includes(search.toLowerCase()),
+    (m) => m.name.toLowerCase().includes(search.toLowerCase()) || m.email.toLowerCase().includes(search.toLowerCase()),
   );
 
   const filteredBookings = bookings.filter(

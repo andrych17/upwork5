@@ -283,9 +283,9 @@ export default function Home() {
             alt="A man working independently on an architectural model"
           />
           <span>
-            Three sessions
+            13 sessions
             <br />
-            every week.
+            every month.
           </span>
         </div>
       </section>
@@ -298,7 +298,11 @@ export default function Home() {
             <br />
             Start doing.
           </h2>
-          <p>Both plans include 13 sessions each month (up to 4 per week). Extra sessions are available whenever you want more.</p>
+          <p>
+            Individual includes 13 sessions each month. Household is $34 a month or $340 a year for up to 4 people, each
+            with their own sign-in, sharing 16 sessions. Everyone can book up to 4 a week, and extra sessions are
+            available whenever you want more.
+          </p>
         </div>
         <div className="membership-grid">
           <MembershipCard label="Monthly" price="$26" detail="per month · cancel anytime" accent="monthly" />
