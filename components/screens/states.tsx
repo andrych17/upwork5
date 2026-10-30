@@ -44,7 +44,10 @@ const membershipStates = {
 };
 
 const bookingMessages = [
-  ['No monthly credits', 'You have used your 13 sessions for this month, or reached your 4 sessions limit for this week. Use an extra session or buy another.'],
+  [
+    'No monthly credits',
+    'You have used this month’s sessions, or reached your 4 sessions limit for this week. Use an extra session or buy another.',
+  ],
   ['No Bad Hair Day cards', 'You have used all 3 cards this month. That’s OK. We like you just the way you are.'],
   [
     'Cancellation closed',
@@ -55,7 +58,10 @@ const bookingMessages = [
   ['Full', 'This session is full.'],
   ['Booking closed', 'Booking closed 15 minutes before the start.'],
   ['Too far ahead', 'You can book up to 14 days ahead.'],
-  ['Payment paused', 'Your last payment did not go through. Sessions are held for 3 days before release. Update your card to restore credits.'],
+  [
+    'Payment paused',
+    'Your last payment did not go through. Sessions are held for 3 days before release. Update your card to restore credits.',
+  ],
   ['Beyond paid period', 'Your membership is paid through Nov 8. This session opens after your next renewal.'],
 ];
 

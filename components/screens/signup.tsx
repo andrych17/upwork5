@@ -150,6 +150,11 @@ export default function SignupPage() {
               <p className="step-intro">
                 Use an email you check. This is where session reminders and important account messages will go.
               </p>
+              <p className="step-intro">
+                Joining as a Household? Everyone signs up with their own email and password. The account holder picks
+                Household ($34 a month or $349 a year) in step 2 and invites up to 3 people, who share 16 sessions a
+                month. Invited by someone? Sign up with the email they invited.
+              </p>
               <div className="form-grid">
                 <label>
                   <span>First name</span>
@@ -206,10 +211,10 @@ export default function SignupPage() {
               <p className="step-count">Step 2 of 6</p>
               <h2>Choose your membership.</h2>
               <p className="step-intro">
-                Individual gets 13 sessions a month. Household is for up to 4 people, each with their own sign-in,
-                sharing 16 sessions a month. Everyone can book up to 4 a week. Your month starts on your sign-up date,
-                and unused sessions don’t carry over. Invited to someone’s Household? Sign up with the email they
-                invited, and you join it automatically.
+                Solo gets 13 sessions a month. Household is for up to 4 people, each with their own sign-in, sharing 16
+                sessions a month. Everyone can book up to 4 a week. Your month starts on your sign-up date, and unused
+                sessions don’t carry over. Invited to someone’s Household? Sign up with the email they invited, and you
+                join it automatically.
               </p>
               <div style={{ marginBottom: '16px' }}>
                 <span style={{ fontSize: '14px', fontWeight: 600, display: 'block', marginBottom: '8px' }}>
@@ -228,7 +233,7 @@ export default function SignupPage() {
                       textAlign: 'left',
                     }}
                   >
-                    <strong>Individual</strong>
+                    <strong>Solo</strong>
                     <div style={{ fontSize: '12px', color: '#6b7280' }}>$26/mo · $260/yr</div>
                     <div style={{ fontSize: '12px', color: '#6b7280' }}>1 person · 13 sessions/mo</div>
                   </button>
@@ -245,7 +250,7 @@ export default function SignupPage() {
                     }}
                   >
                     <strong>Household</strong>
-                    <div style={{ fontSize: '12px', color: '#6b7280' }}>$34/mo · $340/yr</div>
+                    <div style={{ fontSize: '12px', color: '#6b7280' }}>$34/mo · $349/yr</div>
                     <div style={{ fontSize: '12px', color: '#6b7280' }}>Up to 4 people · 16 sessions/mo</div>
                   </button>
                 </div>
@@ -262,8 +267,8 @@ export default function SignupPage() {
                 </button>
                 <button className={plan === 'annual' ? 'selected' : ''} type="button" onClick={() => setPlan('annual')}>
                   <span>Annual</span>
-                  <strong>{tier === 'individual' ? '$260' : '$340'}</strong>
-                  <small>per year · two months included</small>
+                  <strong>{tier === 'individual' ? '$260' : '$349'}</strong>
+                  <small>{tier === 'individual' ? 'per year · two months included' : 'per year · save $59'}</small>
                 </button>
               </div>
               <div className="payment-mock">

@@ -45,11 +45,11 @@ export default function Terms() {
       <h2>4. Membership, credits and payment</h2>
       <ul>
         <li>
-          Membership costs {ph('PRICE', '$26')} per month for individuals ({ph('PRICE', '$260')} annual) or{' '}
-          {ph('PRICE', '$34')} per month for households ({ph('PRICE', '$340')} annual), and includes{' '}
-          {ph('NUMBER', '13')} session credits each billing month for individuals or {ph('NUMBER', '16')} shared credits
-          for households (up to 4 sessions per person per week, Monday to Sunday). Annual memberships receive their
-          credits each month on the billing date.
+          Membership costs {ph('PRICE', '$26')} per month for Solo ({ph('PRICE', '$260')} annual) or{' '}
+          {ph('PRICE', '$34')} per month for households ({ph('PRICE', '$349')} annual), and includes{' '}
+          {ph('NUMBER', '13')} session credits each billing month for Solo or {ph('NUMBER', '16')} shared credits for
+          households (up to 4 sessions per person per week, Monday to Sunday). Annual memberships receive their credits
+          each month on the billing date.
         </li>
         <li>
           One credit books one seat in one standard session. Extra credits cost{' '}

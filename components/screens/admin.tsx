@@ -621,7 +621,7 @@ export default function AdminPage() {
                       </td>
                       <td style={{ padding: '14px 20px' }}>
                         <span style={{ textTransform: 'capitalize', fontWeight: 500 }}>
-                          {m.tier} ({m.interval})
+                          {m.tier === 'individual' ? 'Solo' : 'Household'} ({m.interval})
                         </span>
                         <div style={{ fontSize: '12px', color: '#6b7280' }}>
                           {m.tier === 'individual' ? '$26/mo' : '$34/mo'}

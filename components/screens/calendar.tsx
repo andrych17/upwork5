@@ -248,8 +248,8 @@ export default function SchedulePage() {
         <aside className="schedule-sidebar">
           <div className="membership-status">
             <p className="section-label">Weekly sessions</p>
-            <strong>3 included</strong>
-            <p>Membership includes three live sessions every Monday–Sunday.</p>
+            <strong>3 or 4 a week</strong>
+            <p>Solo includes 13 sessions a month and Household 16 shared. Book up to 4 a week, Monday–Sunday.</p>
             <Link href="/membership">
               See membership <span aria-hidden="true">↗</span>
             </Link>
@@ -329,6 +329,15 @@ export default function SchedulePage() {
                 </button>
               </div>
             </div>
+          </div>
+
+          <div className="reminder-bar">
+            <p>
+              <strong>Want reminders?</strong> Get a notification 24 hours and 1 hour before each session.
+            </p>
+            <Link href="/reminders">
+              Set up reminders <span aria-hidden="true">→</span>
+            </Link>
           </div>
 
           {view === 'week' ? (

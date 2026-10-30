@@ -357,3 +357,19 @@
     display: none;
   }
 }
+
+/* Household price tiles on the home page (Kelly, 30 Oct): Solo keeps the board's yellow and berry,
+   Household uses the board's blue and navy. */
+.household-monthly .membership-face {
+  background: var(--info);
+}
+
+.household-annual .membership-face {
+  background: var(--navy);
+  color: #fff;
+}
+
+.household-annual .plan-join {
+  color: var(--navy);
+  background: #fff;
+}

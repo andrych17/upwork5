@@ -74,17 +74,18 @@ function CardRow({ start }: { start: number }) {
   );
 }
 
-function MembershipCard({
-  label,
-  price,
-  detail,
-  accent,
-}: {
+interface MembershipCardProps {
   label: string;
   price: string;
   detail: string;
   accent: string;
-}) {
+  /** Plan name for the join link, e.g. "Solo monthly". */
+  plan: string;
+  /** Third joining step, which differs between Solo and Household. */
+  step: string;
+}
+
+function MembershipCard({ label, price, detail, accent, plan, step }: MembershipCardProps) {
   const [flipped, setFlipped] = useState(false);
 
   return (
@@ -107,10 +108,10 @@ function MembershipCard({
             <strong>02</strong> Record a quick Hello Video, seen only by our admin.
           </span>
           <span className="join-step">
-            <strong>03</strong> Choose your plan, then book up to 13 sessions a month (up to four a week).
+            <strong>03</strong> {step}
           </span>
           <Link className="plan-join" href="/signup">
-            Join with the {label.toLowerCase()} plan <span aria-hidden="true">→</span>
+            Join with {plan} <span aria-hidden="true">→</span>
           </Link>
           <Link className="terms-link" href="/terms" target="_blank" rel="noreferrer">
             Read Terms & Conditions <span aria-hidden="true">↗</span>
@@ -123,6 +124,10 @@ function MembershipCard({
     </div>
   );
 }
+
+const SOLO_STEP = 'Choose your plan, then book up to 13 sessions a month (up to four a week).';
+const HOUSEHOLD_STEP =
+  'Choose Household and invite up to 3 people by email. You share 16 sessions a month (up to four a week each).';
 
 export default function Home() {
   return (
@@ -246,7 +251,8 @@ export default function Home() {
             <div>
               <span>01</span>
               <p>
-                <strong>Choose</strong> an activity and book with one session credit.
+                <strong>Choose</strong> an activity and book with one session credit. Plans include 3 or 4 credits per
+                week, add-on credits available when needed.
               </p>
             </div>
             <div>
@@ -283,9 +289,9 @@ export default function Home() {
             alt="A man working independently on an architectural model"
           />
           <span>
-            13 sessions
+            Simple. Fun.
             <br />
-            every month.
+            Authentic.
           </span>
         </div>
       </section>
@@ -299,14 +305,43 @@ export default function Home() {
             Start doing.
           </h2>
           <p>
-            Individual includes 13 sessions each month. Household is $34 a month or $340 a year for up to 4 people, each
-            with their own sign-in, sharing 16 sessions. Everyone can book up to 4 a week, and extra sessions are
-            available whenever you want more.
+            Solo includes 13 sessions a month. Household covers up to 4 people, each with their own sign-in, sharing 16
+            sessions a month. Everyone can book up to 4 a week, and extra sessions are available whenever you want more.
           </p>
         </div>
         <div className="membership-grid">
-          <MembershipCard label="Monthly" price="$26" detail="per month · cancel anytime" accent="monthly" />
-          <MembershipCard label="Annual" price="$260" detail="per year · two months on us" accent="annual" />
+          <MembershipCard
+            label="Solo · Monthly"
+            price="$26"
+            detail="per month · 13 sessions · cancel anytime"
+            accent="monthly"
+            plan="Solo monthly"
+            step={SOLO_STEP}
+          />
+          <MembershipCard
+            label="Solo · Annual"
+            price="$260"
+            detail="per year · 13 sessions a month · two months on us"
+            accent="annual"
+            plan="Solo annual"
+            step={SOLO_STEP}
+          />
+          <MembershipCard
+            label="Household · Monthly"
+            price="$34"
+            detail="per month · up to 4 people · 16 shared sessions"
+            accent="household-monthly"
+            plan="Household monthly"
+            step={HOUSEHOLD_STEP}
+          />
+          <MembershipCard
+            label="Household · Annual"
+            price="$349"
+            detail="per year · up to 4 people · 16 shared sessions a month"
+            accent="household-annual"
+            plan="Household annual"
+            step={HOUSEHOLD_STEP}
+          />
         </div>
       </section>
 

@@ -54,6 +54,22 @@ function put(req, res) {
   return res;
 }
 
+// Tapping a reminder opens the page it points to (data.url), or brings that page to the front if it is open.
+// Only paths on this site are followed.
+self.addEventListener("notificationclick", function (event) {
+  event.notification.close();
+  var url = new URL((event.notification.data && event.notification.data.url) || "/", self.location.origin);
+  if (url.origin !== self.location.origin) url = new URL("/", self.location.origin);
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(function (list) {
+      for (var i = 0; i < list.length; i++) {
+        if (list[i].url === url.href && "focus" in list[i]) return list[i].focus();
+      }
+      return self.clients.openWindow(url.href);
+    })
+  );
+});
+
 self.addEventListener("fetch", function (event) {
   var req = event.request;
   if (req.method !== "GET") return;

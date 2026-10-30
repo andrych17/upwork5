@@ -10,7 +10,7 @@ export function GET() {
     '',
     `> ${TAGLINE} ${DEFINITION}`,
     '',
-    'Membership is $26 a month or $260 a year for individuals, with 13 sessions every month (up to four a week). A Household is $34 a month or $340 a year for up to four people, each with their own sign-in, sharing 16 sessions a month. Annual members get their sessions each month too. Extra sessions are $4 each or $15 for five, never expire, and can be used past the weekly limit. Unused monthly sessions do not carry over. Every session is 60 minutes and uses one credit per person. Weeks run Monday to Sunday. Times are Central.',
+    'Solo membership is $26 a month or $260 a year, with 13 sessions every month (up to four a week). A Household is $34 a month or $349 a year for up to four people, each with their own sign-in, sharing 16 sessions a month. Annual members get their sessions each month too. Extra sessions are $4 each or $15 for five, never expire, and can be used past the weekly limit. Unused monthly sessions do not carry over. Every session is 60 minutes and uses one credit per person. Weeks run Monday to Sunday. Times are Central.',
     '',
     '## Pages',
     '',

@@ -1,0 +1,127 @@
+/* Reminders page (/reminders) and the "Want reminders?" bar on Calendar (Kelly, 30 Oct).
+   Hero, note, list and button come from the board; this file only lays them out. */
+
+.reminders-shell {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 460px);
+  align-items: start;
+  gap: clamp(30px, 5vw, 75px);
+  padding: 0 clamp(20px, 6vw, 90px) clamp(90px, 10vw, 150px);
+  display: grid;
+}
+
+.reminders-shell h2 {
+  letter-spacing: -0.05em;
+  margin: 0 0 18px;
+  font-family: 'Bricolage Grotesque', sans-serif;
+  font-size: clamp(1.7rem, 3vw, 2.3rem);
+  font-weight: 780;
+  line-height: 1;
+}
+
+.reminders-card {
+  border: 2px solid var(--ink);
+  background: var(--paper);
+  box-shadow: 5px 6px 0 var(--ink);
+  border-radius: var(--radius-card);
+  gap: 14px;
+  padding: 26px;
+  display: grid;
+}
+
+.reminders-card h2 {
+  margin-bottom: 4px;
+}
+
+.reminders-card .enter-room {
+  cursor: pointer;
+  width: 100%;
+  font-family: inherit;
+  text-align: left;
+}
+
+.reminders-card .enter-room:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.reminders-card .reminders-secondary {
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.reminders-steps {
+  margin: 0;
+  padding-left: 20px;
+  list-style: decimal;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.reminders-steps li + li {
+  margin-top: 10px;
+}
+
+.reminders-message {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.reminders-message.error {
+  color: var(--danger);
+}
+
+.reminders-tip {
+  color: #55524c;
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.reminders-card .join-window-note {
+  text-align: left;
+  margin-top: 6px;
+}
+
+/* Calendar: under the week/month switch */
+.reminder-bar {
+  border: 1.5px solid var(--ink);
+  background: #f4dfbd;
+  border-radius: 14px;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px 20px;
+  margin-top: 18px;
+  padding: 12px 14px 12px 18px;
+  display: flex;
+}
+
+.reminder-bar p {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.reminder-bar a {
+  border: 1.5px solid var(--ink);
+  background: var(--ink);
+  color: #fff;
+  white-space: nowrap;
+  border-radius: 999px;
+  padding: 10px 16px;
+  font-size: 0.75rem;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+@media (max-width: 960px) {
+  .reminders-shell {
+    grid-template-columns: 1fr;
+  }
+
+  /* On phones the steps and buttons come first. */
+  .reminders-card {
+    order: -1;
+  }
+}

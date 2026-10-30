@@ -122,11 +122,9 @@ export default function SigninPage() {
             <br />
             start here.
           </h1>
-          <p>
-            Sign in to see your upcoming bookings, join your live video rooms, or choose your next session.
-          </p>
+          <p>Sign in to see your upcoming bookings, join your live video rooms, or choose your next session.</p>
           <div className="signup-trust">
-            <span>13 sessions monthly</span>
+            <span>13 or 16 sessions monthly</span>
             <span>Private by design</span>
             <span>Up to 4 sessions per week</span>
           </div>
@@ -137,9 +135,7 @@ export default function SigninPage() {
             <div className="signup-step">
               <p className="step-count">Member Sign in</p>
               <h2>Sign in to your account</h2>
-              <p className="step-intro">
-                Enter your email address and password to access your sessions and bookings.
-              </p>
+              <p className="step-intro">Enter your email address and password to access your sessions and bookings.</p>
 
               {errorMsg && (
                 <div
@@ -262,9 +258,7 @@ export default function SigninPage() {
             <div className="signup-step">
               <p className="step-count">Account Help</p>
               <h2>Reset your password</h2>
-              <p className="step-intro">
-                Enter your email and we’ll send a link to securely choose a new password.
-              </p>
+              <p className="step-intro">Enter your email and we’ll send a link to securely choose a new password.</p>
 
               {errorMsg && (
                 <div

@@ -62,7 +62,7 @@ export default function MembershipPage() {
           </div>
           <div className="plan-price">
             <strong>$26</strong>
-            <span>/ month (Individual)</span>
+            <span>/ month (Solo)</span>
           </div>
           <p>13 live sessions per month, up to 4 per week. Resets on your billing date. Cancel any time.</p>
           <div className="plan-includes">
