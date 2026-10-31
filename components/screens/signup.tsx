@@ -212,7 +212,7 @@ export default function SignupPage() {
               <h2>Choose your membership.</h2>
               <p className="step-intro">
                 Solo gets 13 sessions a month. Household is for up to 4 people, each with their own sign-in, sharing 16
-                sessions a month. Everyone can book up to 4 a week. Your month starts on your sign-up date, and unused
+                sessions a month, 4 each week, shared between household members. Solo can book up to 4 a week. Your month starts on your sign-up date, and unused
                 sessions don’t carry over. Invited to someone’s Household? Sign up with the email they invited, and you
                 join it automatically.
               </p>

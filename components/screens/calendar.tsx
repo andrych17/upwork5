@@ -249,7 +249,7 @@ export default function SchedulePage() {
           <div className="membership-status">
             <p className="section-label">Weekly sessions</p>
             <strong>3 or 4 a week</strong>
-            <p>Solo includes 13 sessions a month and Household 16 shared. Book up to 4 a week, Monday–Sunday.</p>
+            <p>Solo includes 13 sessions a month and Household 16 shared. Book up to 4 a week, Monday–Sunday. Household members share those 4.</p>
             <Link href="/membership">
               See membership <span aria-hidden="true">↗</span>
             </Link>

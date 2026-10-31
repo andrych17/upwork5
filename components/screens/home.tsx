@@ -127,7 +127,7 @@ function MembershipCard({ label, price, detail, accent, plan, step }: Membership
 
 const SOLO_STEP = 'Choose your plan, then book up to 13 sessions a month (up to four a week).';
 const HOUSEHOLD_STEP =
-  'Choose Household and invite up to 3 people by email. You share 16 sessions a month (up to four a week each).';
+  'Choose Household and invite up to 3 people by email. You share 16 sessions a month: 4 each week, shared between household members.';
 
 export default function Home() {
   return (
@@ -207,11 +207,7 @@ export default function Home() {
             src="/images/community-crafting.webp"
             alt="A man concentrating on a hands-on craft project"
           />
-          <span className="collage-note">
-            Come alone.
-            <br />
-            Do it together.
-          </span>
+          <span className="collage-note">Come alone. Do it together.</span>
         </div>
       </section>
 
@@ -288,11 +284,7 @@ export default function Home() {
             src="/images/purpose-solo.webp"
             alt="A man working independently on an architectural model"
           />
-          <span>
-            Simple. Fun.
-            <br />
-            Authentic.
-          </span>
+          <span>Simple. Fun. Authentic.</span>
         </div>
       </section>
 
@@ -306,7 +298,8 @@ export default function Home() {
           </h2>
           <p>
             Solo includes 13 sessions a month. Household covers up to 4 people, each with their own sign-in, sharing 16
-            sessions a month. Everyone can book up to 4 a week, and extra sessions are available whenever you want more.
+            sessions a month: 4 each week, shared between household members. Solo can book up to 4 a week, and extra
+            sessions are available whenever you want more.
           </p>
         </div>
         <div className="membership-grid">

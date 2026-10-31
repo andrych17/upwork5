@@ -121,7 +121,9 @@ export default function HouseholdCard() {
     }));
   };
 
-  const weekly = view.weekLimit ? `up to ${view.weekLimit} a week each` : 'as many a week as you like';
+  const weekly = view.weekLimit
+    ? `${view.weekLimit} each week, shared between household members`
+    : 'as many a week as you like';
 
   return (
     <section className="billing-section household-section" id="household">

@@ -373,3 +373,28 @@
   color: var(--navy);
   background: #fff;
 }
+
+/* Kelly's review, 31 Oct: the two labels on the home page collages shrank. One long line each, bigger, and
+   overlapping the photos: "Come alone. Do it together." over the craft photo, "Simple. Fun. Authentic." over
+   the architect's elbow. On narrow screens text-wrap: balance splits them into two even lines. */
+.collage-note,
+.works-collage span {
+  width: max-content;
+  max-width: 94%;
+  padding: 20px 36px;
+  border-radius: 22px;
+  box-shadow: 5px 6px 0 var(--ink);
+  font-size: clamp(1.3rem, 0.95rem + 1.3vw, 1.95rem);
+  line-height: 1.1;
+  text-wrap: balance;
+}
+
+.collage-note {
+  bottom: 9%;
+  left: -4%;
+}
+
+.works-collage span {
+  bottom: 7%;
+  right: -3%;
+}
