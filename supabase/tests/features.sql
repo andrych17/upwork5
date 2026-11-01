@@ -13,6 +13,13 @@ begin
   raise notice 'ok: %', label;
 end $$;
 
+-- Sign-ups start unpaid (section 23). Most checks want people who have paid.
+create function paid(ids uuid[]) returns void language sql as $$
+  update profiles set payment_status = 'active', monthly_credits = plan_credits(tier),
+         credits_cycle_start = (now() at time zone 'America/Chicago')::date
+  where id = any(ids);
+$$;
+
 -- People: an admin, a Solo member, a Household holder with one invited member, and another Solo.
 insert into auth.users (id, email, raw_user_meta_data) values
   (:'A', 'admin@example.com', '{"first_name": "Kelly"}'),
@@ -20,6 +27,7 @@ insert into auth.users (id, email, raw_user_meta_data) values
   (:'H', 'owner@example.com', '{"first_name": "Hana", "tier": "household"}'),
   (:'N', 'other@example.com', '{"first_name": "Nico"}');
 update profiles set is_admin = true where id = :'A';
+select paid(array[:'A', :'S', :'H', :'N']::uuid[]);
 
 select set_config('request.jwt.claim.sub', :'H', false);
 set role authenticated;
@@ -112,6 +120,7 @@ reset role;
 insert into auth.users (id, email, raw_user_meta_data) values
   (:'P', 'held@example.com', '{"first_name": "Pia"}'),
   (:'Q', 'held2@example.com', '{"first_name": "Quinn"}');
+select paid(array[:'P', :'Q']::uuid[]);
 insert into sessions (id, title, slug, starts_at) values
   ('00000000-0000-0000-0000-0000000000c1', 'Hold Far', 'hold-far', now() + interval '3 days'),
   ('00000000-0000-0000-0000-0000000000c2', 'Hold Soon', 'hold-soon', now() + interval '40 minutes'),

@@ -33,7 +33,7 @@ export interface UserProfile {
   billing_date: number; // Day of the month (1-31)
   monthly_credits: number; // 13 credits per cycle
   addon_credits: number;
-  payment_status: 'active' | 'past_due' | 'paused' | 'canceled';
+  payment_status: PaymentStatus;
   payment_failed_at: string | null;
   created_at: string;
 }
@@ -49,11 +49,14 @@ export interface SessionItem {
   booked_count?: number;
 }
 
+/** pending = signed up, not paid yet (schema section 23). */
+export type PaymentStatus = 'pending' | 'active' | 'past_due' | 'paused' | 'canceled';
+
 /** What get_my_membership() returns (supabase/schema.sql, section 14). */
 export interface MembershipSummary {
   tier: 'individual' | 'household';
   billing_interval: 'monthly' | 'annual';
-  payment_status: 'active' | 'past_due' | 'paused' | 'canceled';
+  payment_status: PaymentStatus;
   role: 'individual' | 'owner' | 'member';
   monthly_left: number;
   monthly_total: number;
@@ -72,6 +75,15 @@ export interface MembershipSummary {
   hello_status: 'none' | 'pending' | 'approved' | 'rejected' | 'declined';
   hello_required: boolean;
   hello_hold: boolean;
+  /** app_config.test_payments: Pay buttons succeed without a card */
+  test_payments: boolean;
+  /** Sign-up steps (section 24) */
+  terms_accepted: boolean;
+  interests: string[];
+  avatar_url: string | null;
+  /** YYYY-MM-DD the paid period ends (null until the first checkout) */
+  paid_until: string | null;
+  cancel_at_period_end: boolean;
   reminders: { email: boolean; sms: boolean; phone: string | null };
   household: {
     max_people: number;
@@ -80,6 +92,20 @@ export interface MembershipSummary {
     /** pending invite emails, only for the account holder */
     invites: string[] | null;
   } | null;
+}
+
+/** A row of the payments table (section 23). Members read their own, admins all. */
+export interface PaymentRow {
+  id: string;
+  profile_id: string;
+  kind: 'plan' | 'extras';
+  description: string;
+  amount_cents: number;
+  provider: string;
+  status: 'paid' | 'refunded';
+  refunded_at: string | null;
+  refund_reason: string | null;
+  created_at: string;
 }
 
 export interface BookingItem {

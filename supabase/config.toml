@@ -244,6 +244,11 @@ pass = "env(RESEND_SMTP_PASS)"
 admin_email = "noreply@meetdoconnect.com"
 sender_name = "MeetDoConnect"
 
+# Sign-up confirmation: the 8-digit code (typed on /signup) and the link both work.
+[auth.email.template.confirmation]
+subject = "Your MeetDoConnect code"
+content_path = "./supabase/templates/confirmation.html"
+
 # Uncomment to customize email template
 # [auth.email.template.invite]
 # subject = "You have been invited"

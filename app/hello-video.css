@@ -76,3 +76,97 @@
 .hello-membership .enter-room {
   width: fit-content;
 }
+
+/* Recorder steps (components/hello-recorder.tsx): countdown, prompts while recording, mic level, checks. */
+.hello-recorder {
+  flex-direction: column;
+  gap: 14px;
+  display: flex;
+}
+
+.hello-recorder .device-row {
+  margin: 0;
+}
+
+.hello-count {
+  color: #fff;
+  text-shadow: 0 4px 24px #0009;
+  pointer-events: none;
+  place-items: center;
+  font-size: clamp(4rem, 14vw, 7rem);
+  font-weight: 900;
+  display: grid;
+  position: absolute;
+  inset: 0;
+}
+
+.hello-prompt-overlay {
+  border: 1.5px solid var(--ink);
+  background: var(--highlight);
+  color: #171717;
+  border-radius: 14px;
+  margin: 0;
+  padding: 10px 14px;
+  font-size: 0.9rem;
+  font-weight: 800;
+  line-height: 1.3;
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  right: 12px;
+}
+
+.mic-meter {
+  align-items: center;
+  gap: 10px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  display: flex;
+}
+
+.mic-meter i {
+  border: 1.5px solid var(--ink);
+  background: var(--paper);
+  border-radius: 999px;
+  flex: 1;
+  height: 10px;
+  overflow: hidden;
+}
+
+.mic-meter b {
+  background: var(--success);
+  transform-origin: left;
+  width: 100%;
+  height: 100%;
+  transition: transform 0.08s linear;
+  display: block;
+}
+
+.device-checks {
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+}
+
+.device-checks li {
+  border: 1.5px solid var(--line);
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.device-checks li.ok {
+  border-color: var(--ink);
+  background: var(--success);
+  color: #171717;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mic-meter b {
+    transition: none;
+  }
+}

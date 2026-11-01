@@ -398,3 +398,177 @@
   bottom: 7%;
   right: -3%;
 }
+
+/* Sign-up flow (components/screens/signup.tsx): messages, tier picker, link buttons, photo + Hello Video. */
+.signup-alert {
+  border: 1.5px solid var(--ink);
+  background: var(--info);
+  color: #171717;
+  border-radius: 12px;
+  margin: 16px 20px 0;
+  padding: 10px 14px;
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.signup-alert.error {
+  background: #fde2e4;
+  border-color: var(--danger);
+  color: #6e1423;
+}
+
+.signup-switch {
+  margin-top: 16px;
+  font-size: 0.85rem;
+}
+
+.signup-switch a,
+.link-button {
+  color: var(--berry);
+  font: inherit;
+  cursor: pointer;
+  background: none;
+  border: 0;
+  padding: 0;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.signup-step > .link-button {
+  margin-top: 14px;
+  font-size: 0.8rem;
+}
+
+.signup-tiers {
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 16px;
+  display: grid;
+}
+
+.signup-tiers button {
+  border: 1.5px solid var(--line);
+  background: var(--paper);
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  border-radius: 14px;
+  flex-direction: column;
+  gap: 3px;
+  padding: 12px 14px;
+  display: flex;
+  transition:
+    border-color 0.2s cubic-bezier(0.32, 0.72, 0, 1),
+    background 0.2s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.signup-tiers button.selected {
+  border: 2px solid var(--ink);
+  background: var(--highlight);
+  color: #171717;
+}
+
+.signup-tiers small {
+  opacity: 0.75;
+  font-size: 0.72rem;
+}
+
+.payment-mock .step-intro {
+  margin: 0;
+  font-size: 0.8rem;
+}
+
+.upload-grid:has(.hello-box) {
+  grid-template-columns: minmax(150px, 200px) 1fr;
+  align-items: start;
+}
+
+.upload-photo {
+  border: 2px solid var(--ink);
+  object-fit: cover;
+  border-radius: 50%;
+  width: 72px;
+  height: 72px;
+  margin-bottom: 14px;
+}
+
+.upload-box.hello-box {
+  cursor: default;
+  text-align: left;
+  align-items: stretch;
+  min-height: 0;
+  padding: 16px;
+}
+
+.upload-box.hello-box h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.signup-step .reminder-phone {
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 14px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  display: flex;
+}
+
+.signup-step .reminder-phone input {
+  border: 1.5px solid var(--ink);
+  background: var(--paper);
+  border-radius: 10px;
+  min-height: 44px;
+  padding: 0 12px;
+}
+
+.signup-step .reminder-phone small {
+  opacity: 0.75;
+  font-weight: 400;
+  line-height: 1.4;
+}
+
+@media (max-width: 700px) {
+  .upload-grid:has(.hello-box),
+  .signup-tiers {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Membership billing in test mode (components/screens/membership.tsx). */
+.purchase-success.purchase-error {
+  background: #fde2e4;
+  color: #6e1423;
+}
+
+.start-plan .credit-options {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.test-badge {
+  border: 1px solid var(--ink);
+  background: var(--highlight);
+  color: #171717;
+  vertical-align: 1px;
+  border-radius: 999px;
+  margin-left: 8px;
+  padding: 1px 7px;
+  font-size: 0.62rem;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.payment-history strong.refunded {
+  opacity: 0.6;
+  text-decoration: line-through;
+}
+
+.receipt-status {
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.manage-membership .purchase-success {
+  margin-top: 18px;
+}

@@ -56,6 +56,8 @@ alter table app_config drop constraint if exists app_config_weekly_limit_scope_c
 alter table app_config add constraint app_config_weekly_limit_scope_check check (weekly_limit_scope in ('person', 'household'));
 -- Which reminders also go out by SMS for people who opted in (section 20). Each text costs about a cent.
 alter table app_config add column if not exists sms_kinds text[] not null default '{1h}';
+-- Pay buttons succeed without a card until the payment processor is connected (section 23).
+alter table app_config add column if not exists test_payments boolean not null default true;
 
 insert into app_config default values on conflict do nothing;
 
@@ -98,6 +100,18 @@ alter table profiles add column if not exists phone text;
 alter table profiles add column if not exists sms_opt_in_at timestamptz;
 alter table profiles drop constraint if exists profiles_phone_check;
 alter table profiles add constraint profiles_phone_check check (phone is null or phone ~ '^\+[1-9][0-9]{7,14}$');
+
+-- Sign-up steps and test-mode billing (section 24): Terms accepted, interests, the day the paid
+-- period ends, and a cancellation that takes effect on that day.
+alter table profiles add column if not exists terms_accepted_at timestamptz;
+alter table profiles add column if not exists interests text[] not null default '{}';
+alter table profiles add column if not exists paid_until date;
+alter table profiles add column if not exists cancel_at_period_end boolean not null default false;
+
+-- pending = signed up, not paid yet (section 23). No credits and no booking until checkout.
+alter table profiles drop constraint if exists profiles_payment_status_check;
+alter table profiles add constraint profiles_payment_status_check
+  check (payment_status in ('pending', 'active', 'past_due', 'paused', 'canceled'));
 
 create index if not exists idx_profiles_household_owner on profiles (household_owner_id);
 create index if not exists idx_profiles_email on profiles (lower(email));
@@ -213,9 +227,8 @@ as $$
 $$;
 
 -- 7. Trigger: Automatically create profile upon user signup
--- An invited email joins that household. Everyone else gets their own plan.
--- Until checkout exists (Milestone 3) the plan comes from the sign-up form; after that, the
--- payment processor's confirmation sets tier and billing_interval.
+-- An invited email joins that household (the holder pays). Everyone else starts as pending with the
+-- plan they picked on the sign-up form, and gets credits at checkout (section 23).
 create or replace function handle_new_user()
 returns trigger
 language plpgsql
@@ -282,10 +295,10 @@ begin
     v_tier,
     v_interval,
     extract(day from v_today)::int,
-    plan_credits(v_tier),
     0,
-    v_today,
-    'active'
+    0,
+    null,
+    'pending'
   )
   on conflict (id) do nothing;
   return new;
@@ -343,6 +356,10 @@ begin
   if v_payer.payment_status = 'past_due' then
     return jsonb_build_object('success', false, 'error',
       'The last membership payment did not go through. Update the card to book again.');
+  elsif v_payer.payment_status = 'pending' then
+    return jsonb_build_object('success', false, 'error', case when v_me.household_owner_id is null
+      then 'Finish checkout to start booking sessions.'
+      else 'Your Household account holder needs to finish checkout first.' end);
   elsif v_payer.payment_status <> 'active' then
     return jsonb_build_object('success', false, 'error', 'This membership is not active. Restart it to book sessions.');
   end if;
@@ -800,6 +817,12 @@ begin
     'hello_status', v_me.hello_status,
     'hello_required', v_cfg.require_hello_video,
     'hello_hold', v_cfg.hello_hold_bookings,
+    'test_payments', v_cfg.test_payments,
+    'terms_accepted', v_me.terms_accepted_at is not null,
+    'interests', to_jsonb(v_me.interests),
+    'avatar_url', v_me.avatar_url,
+    'paid_until', v_payer.paid_until,
+    'cancel_at_period_end', v_payer.cancel_at_period_end,
     'reminders', jsonb_build_object(
       'email', v_me.reminder_email,
       'sms', v_me.sms_reminders,
@@ -1684,7 +1707,7 @@ begin
   end if;
   if p_tier not in ('individual', 'household')
      or p_billing_interval not in ('monthly', 'annual')
-     or p_payment_status not in ('active', 'past_due', 'paused', 'canceled') then
+     or p_payment_status not in ('pending', 'active', 'past_due', 'paused', 'canceled') then
     return jsonb_build_object('success', false, 'error', 'Unknown plan or status.');
   end if;
 
@@ -1961,7 +1984,7 @@ begin
   end if;
   select k into v_unknown from jsonb_object_keys(p) k
   where k <> all (v_int_keys || array['max_weekly_sessions', 'weekly_limit_scope', 'require_hello_video',
-                                      'hello_hold_bookings', 'sms_kinds'])
+                                      'hello_hold_bookings', 'sms_kinds', 'test_payments'])
   limit 1;
   if v_unknown is not null then
     return jsonb_build_object('success', false, 'error', format('Unknown setting: %s', v_unknown));
@@ -1970,6 +1993,7 @@ begin
      or (p ? 'max_weekly_sessions' and jsonb_typeof(p->'max_weekly_sessions') not in ('number', 'null'))
      or (p ? 'require_hello_video' and jsonb_typeof(p->'require_hello_video') <> 'boolean')
      or (p ? 'hello_hold_bookings' and jsonb_typeof(p->'hello_hold_bookings') <> 'boolean')
+     or (p ? 'test_payments' and jsonb_typeof(p->'test_payments') <> 'boolean')
      or (p ? 'sms_kinds' and jsonb_typeof(p->'sms_kinds') <> 'array') then
     return jsonb_build_object('success', false, 'error', 'A setting has the wrong type.');
   end if;
@@ -1992,6 +2016,7 @@ begin
   v_new.weekly_limit_scope := coalesce(p->>'weekly_limit_scope', v_old.weekly_limit_scope);
   v_new.require_hello_video := coalesce((p->>'require_hello_video')::boolean, v_old.require_hello_video);
   v_new.hello_hold_bookings := coalesce((p->>'hello_hold_bookings')::boolean, v_old.hello_hold_bookings);
+  v_new.test_payments := coalesce((p->>'test_payments')::boolean, v_old.test_payments);
   if p ? 'sms_kinds' then
     v_new.sms_kinds := array(select distinct jsonb_array_elements_text(p->'sms_kinds') order by 1);
   end if;
@@ -2014,7 +2039,8 @@ begin
     bhd_per_month = v_new.bhd_per_month, booking_closes_minutes = v_new.booking_closes_minutes,
     book_ahead_days = v_new.book_ahead_days, max_weekly_sessions = v_new.max_weekly_sessions,
     weekly_limit_scope = v_new.weekly_limit_scope, require_hello_video = v_new.require_hello_video,
-    hello_hold_bookings = v_new.hello_hold_bookings, sms_kinds = v_new.sms_kinds
+    hello_hold_bookings = v_new.hello_hold_bookings, sms_kinds = v_new.sms_kinds,
+    test_payments = v_new.test_payments
   where id = 1;
 
   insert into admin_log (admin_id, action, details)
@@ -2155,3 +2181,423 @@ revoke execute on function get_schedule(timestamptz, timestamptz, text, boolean)
 grant execute on function get_schedule(timestamptz, timestamptz, text, boolean) to anon, authenticated;
 revoke execute on function set_booking_camera(uuid, boolean) from public, anon;
 grant execute on function set_booking_camera(uuid, boolean) to authenticated;
+
+-- 23. Checkout in test mode (Kelly 1 Nov): Pay buttons succeed right away, no card, nothing charged.
+-- Every "payment" is recorded so the member sees receipts and admins can follow and refund them.
+-- app_config.test_payments turns this off once the payment processor (Milestone 3) is connected.
+-- Prices live here and in lib/prices.ts; keep both the same.
+create table if not exists payments (
+  id uuid primary key default gen_random_uuid(),
+  profile_id uuid not null references profiles(id) on delete cascade,
+  kind text not null check (kind in ('plan', 'extras')),
+  description text not null check (length(description) between 1 and 120),
+  amount_cents int not null check (amount_cents >= 0),
+  currency text not null default 'usd',
+  tier text check (tier in ('individual', 'household')),
+  billing_interval text check (billing_interval in ('monthly', 'annual')),
+  extra_sessions int check (extra_sessions > 0),
+  provider text not null default 'test',
+  status text not null default 'paid' check (status in ('paid', 'refunded')),
+  refunded_at timestamptz,
+  refunded_by uuid references profiles(id) on delete set null,
+  refund_reason text,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_payments_profile on payments (profile_id, created_at desc);
+create index if not exists idx_payments_created on payments (created_at desc);
+create index if not exists idx_payments_refunded_by on payments (refunded_by);
+
+alter table payments enable row level security;
+drop policy if exists "People see their own payments" on payments;
+create policy "People see their own payments" on payments for select to authenticated
+  using ((select auth.uid()) = profile_id or is_admin());
+revoke insert, update, delete on payments from anon, authenticated;
+grant select on payments to authenticated;
+
+create or replace function plan_price_cents(p_tier text, p_interval text)
+returns int
+language sql
+immutable
+set search_path = public
+as $$
+  select case
+    when p_tier = 'individual' and p_interval = 'monthly' then 2600
+    when p_tier = 'individual' and p_interval = 'annual' then 26000
+    when p_tier = 'household' and p_interval = 'monthly' then 3400
+    when p_tier = 'household' and p_interval = 'annual' then 34900
+  end;
+$$;
+
+-- One billing period.
+create or replace function period_length(p_interval text)
+returns interval
+language sql
+immutable
+set search_path = public
+as $$
+  select case when p_interval = 'annual' then interval '1 year' else interval '1 month' end;
+$$;
+
+-- Extra sessions come in packs of 1 ($4) or 5 ($15).
+create or replace function extras_price_cents(p_count int)
+returns int
+language sql
+immutable
+set search_path = public
+as $$
+  select case p_count when 1 then 400 when 5 then 1500 end;
+$$;
+
+-- Start, restart or pay a due membership. A new or ended membership starts today: today becomes the
+-- billing day and the plan's credits arrive now. A past-due or paused one keeps its billing day and
+-- gets this month's credits (mark_payment_recovered). An active membership is left alone.
+create or replace function test_checkout(p_tier text, p_interval text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_cfg app_config%rowtype;
+  v_me profiles%rowtype;
+  v_today date;
+  v_people int;
+  v_amount int := plan_price_cents(p_tier, p_interval);
+  v_desc text;
+  v_payment uuid;
+begin
+  if auth.uid() is null then
+    return jsonb_build_object('success', false, 'error', 'Please sign in.');
+  end if;
+  select * into v_cfg from app_config where id = 1;
+  if not v_cfg.test_payments then
+    return jsonb_build_object('success', false, 'error', 'Online payments are not open yet.');
+  end if;
+  if v_amount is null then
+    return jsonb_build_object('success', false, 'error', 'Pick Solo or Household, monthly or annual.');
+  end if;
+
+  select * into v_me from profiles where id = auth.uid() for update;
+  if not found then
+    return jsonb_build_object('success', false, 'error', 'Profile not found.');
+  end if;
+  if v_me.disabled_at is not null then
+    return jsonb_build_object('success', false, 'error', 'This account is turned off.');
+  end if;
+  if v_me.household_owner_id is not null then
+    return jsonb_build_object('success', false, 'error', 'Your Household account holder pays for the plan.');
+  end if;
+  if v_me.terms_accepted_at is null then
+    return jsonb_build_object('success', false, 'error', 'Please accept the community rules and Terms first.');
+  end if;
+  if v_me.payment_status = 'active' then
+    return jsonb_build_object('success', false, 'error', 'Your membership is already active.');
+  end if;
+  if v_me.tier = 'household' and p_tier = 'individual' then
+    select count(*) into v_people from profiles where household_owner_id = v_me.id;
+    if v_people > 0 then
+      return jsonb_build_object('success', false, 'error',
+        'Your Household still has other people in it. Keep Household, or remove them first.');
+    end if;
+  end if;
+
+  v_today := (now() at time zone v_cfg.tz)::date;
+  if v_me.payment_status in ('pending', 'canceled') then
+    update profiles
+    set tier = p_tier,
+        billing_interval = p_interval,
+        billing_date = extract(day from v_today)::int,
+        payment_status = 'active',
+        payment_failed_at = null,
+        monthly_credits = plan_credits(p_tier),
+        credits_cycle_start = v_today,
+        paid_until = (v_today + period_length(p_interval))::date,
+        cancel_at_period_end = false,
+        updated_at = now()
+    where id = v_me.id;
+    update profiles set credits_cycle_start = v_today, updated_at = now() where household_owner_id = v_me.id;
+  else
+    -- The payment covers the period that failed, so the paid-through day moves on by one period.
+    update profiles
+    set tier = p_tier, billing_interval = p_interval, cancel_at_period_end = false,
+        paid_until = (greatest(coalesce(paid_until, v_today), (v_today - period_length(p_interval))::date + 1)
+                      + period_length(p_interval))::date,
+        updated_at = now()
+    where id = v_me.id;
+    perform mark_payment_recovered(v_me.id);
+  end if;
+
+  v_desc := format('%s membership, %s',
+    case when p_tier = 'household' then 'Household' else 'Solo' end,
+    case when p_interval = 'annual' then 'annual' else 'monthly' end);
+  insert into payments (profile_id, kind, description, amount_cents, tier, billing_interval)
+  values (v_me.id, 'plan', v_desc, v_amount, p_tier, p_interval)
+  returning id into v_payment;
+
+  return jsonb_build_object(
+    'success', true,
+    'payment_id', v_payment,
+    'description', v_desc,
+    'amount_cents', v_amount,
+    'monthly_credits', (select monthly_credits from profiles where id = v_me.id)
+  );
+end;
+$$;
+
+-- Extra sessions for an active membership. Household extras are shared, so they land on the holder,
+-- like booking and Give credits; the receipt belongs to whoever paid.
+create or replace function test_buy_extras(p_count int)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_cfg app_config%rowtype;
+  v_me profiles%rowtype;
+  v_payer profiles%rowtype;
+  v_amount int := extras_price_cents(p_count);
+  v_desc text;
+  v_payment uuid;
+begin
+  if auth.uid() is null then
+    return jsonb_build_object('success', false, 'error', 'Please sign in.');
+  end if;
+  select * into v_cfg from app_config where id = 1;
+  if not v_cfg.test_payments then
+    return jsonb_build_object('success', false, 'error', 'Online payments are not open yet.');
+  end if;
+  if v_amount is null then
+    return jsonb_build_object('success', false, 'error', 'Choose 1 or 5 extra sessions.');
+  end if;
+
+  select * into v_me from profiles where id = auth.uid();
+  if not found or v_me.disabled_at is not null then
+    return jsonb_build_object('success', false, 'error', 'This account cannot buy sessions.');
+  end if;
+  select * into v_payer from profiles where id = coalesce(v_me.household_owner_id, v_me.id) for update;
+  if v_payer.payment_status <> 'active' then
+    return jsonb_build_object('success', false, 'error', 'Start your membership first, then add extra sessions.');
+  end if;
+
+  update profiles set addon_credits = addon_credits + p_count, updated_at = now() where id = v_payer.id;
+  v_desc := case when p_count = 1 then '1 extra session' else format('%s extra sessions', p_count) end;
+  insert into payments (profile_id, kind, description, amount_cents, extra_sessions)
+  values (v_me.id, 'extras', v_desc, v_amount, p_count)
+  returning id into v_payment;
+
+  return jsonb_build_object(
+    'success', true,
+    'payment_id', v_payment,
+    'description', v_desc,
+    'amount_cents', v_amount,
+    'addon_credits', v_payer.addon_credits + p_count
+  );
+end;
+$$;
+
+-- Marks a payment refunded (in test mode no money moved; with a processor the refund itself happens
+-- there). Refunding extra sessions takes back the ones not used yet. A plan refund does not end the
+-- membership: change the status on the member if it should stop.
+create or replace function admin_refund_payment(p_payment uuid, p_reason text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_pay payments%rowtype;
+  v_payer uuid;
+  v_taken int := 0;
+begin
+  if not is_admin() then
+    return jsonb_build_object('success', false, 'error', 'Only an admin can refund payments.');
+  end if;
+  if coalesce(trim(p_reason), '') = '' then
+    return jsonb_build_object('success', false, 'error', 'Add a reason for the refund.');
+  end if;
+  select * into v_pay from payments where id = p_payment for update;
+  if not found then
+    return jsonb_build_object('success', false, 'error', 'Payment not found.');
+  end if;
+  if v_pay.status = 'refunded' then
+    return jsonb_build_object('success', false, 'error', 'This payment was already refunded.');
+  end if;
+
+  if v_pay.kind = 'extras' then
+    select coalesce(household_owner_id, id) into v_payer from profiles where id = v_pay.profile_id;
+    select least(addon_credits, v_pay.extra_sessions) into v_taken from profiles where id = v_payer for update;
+    update profiles set addon_credits = addon_credits - v_taken, updated_at = now() where id = v_payer;
+  end if;
+
+  update payments
+  set status = 'refunded', refunded_at = now(), refunded_by = auth.uid(), refund_reason = left(trim(p_reason), 300)
+  where id = v_pay.id;
+
+  insert into admin_log (admin_id, profile_id, action, details)
+  values (auth.uid(), v_pay.profile_id, 'payment_refunded', jsonb_build_object(
+    'payment_id', v_pay.id, 'description', v_pay.description, 'amount_cents', v_pay.amount_cents,
+    'reason', left(trim(p_reason), 300), 'extras_taken_back', v_taken));
+
+  return jsonb_build_object('success', true, 'extras_taken_back', v_taken);
+end;
+$$;
+
+revoke execute on function test_checkout(text, text) from public, anon;
+grant execute on function test_checkout(text, text) to authenticated;
+revoke execute on function test_buy_extras(int) from public, anon;
+grant execute on function test_buy_extras(int) to authenticated;
+revoke execute on function admin_refund_payment(uuid, text) from public, anon;
+grant execute on function admin_refund_payment(uuid, text) to authenticated;
+
+-- 24. Sign-up steps and the rest of test-mode billing (1 Nov). Sign-up: Terms first, then checkout, then
+-- the Hello Video, interests and reminders. Billing: each checkout pays for one period (paid_until);
+-- in test mode an hourly job "renews" it with a receipt, or ends it when the member cancelled.
+create or replace function accept_terms()
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if auth.uid() is null then
+    return jsonb_build_object('success', false, 'error', 'Please sign in.');
+  end if;
+  update profiles set terms_accepted_at = coalesce(terms_accepted_at, now()), updated_at = now()
+  where id = auth.uid();
+  return jsonb_build_object('success', found);
+end;
+$$;
+
+-- Up to 20 short labels; only used to make the Calendar more useful.
+create or replace function save_interests(p_interests text[])
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_clean text[];
+begin
+  if auth.uid() is null then
+    return jsonb_build_object('success', false, 'error', 'Please sign in.');
+  end if;
+  select coalesce(array_agg(distinct left(trim(i), 40)), '{}') into v_clean
+  from unnest(coalesce(p_interests, '{}')) i
+  where trim(i) <> '';
+  if cardinality(v_clean) > 20 then
+    return jsonb_build_object('success', false, 'error', 'Pick up to 20 interests.');
+  end if;
+  update profiles set interests = v_clean, updated_at = now() where id = auth.uid();
+  return jsonb_build_object('success', true, 'interests', to_jsonb(v_clean));
+end;
+$$;
+
+-- Cancel (or keep) the membership. It runs until paid_until, then stops; booked seats stay booked.
+create or replace function cancel_membership(p_cancel boolean)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_me profiles%rowtype;
+begin
+  if auth.uid() is null then
+    return jsonb_build_object('success', false, 'error', 'Please sign in.');
+  end if;
+  select * into v_me from profiles where id = auth.uid() for update;
+  if v_me.household_owner_id is not null then
+    return jsonb_build_object('success', false, 'error', 'Only your Household account holder can cancel the plan.');
+  end if;
+  if v_me.payment_status <> 'active' or v_me.paid_until is null then
+    return jsonb_build_object('success', false, 'error', 'There is no running membership to change.');
+  end if;
+  update profiles set cancel_at_period_end = p_cancel, updated_at = now() where id = v_me.id;
+  return jsonb_build_object(
+    'success', true,
+    'message', case when p_cancel
+      then format('Your membership ends on %s. You can keep booking until then.', to_char(v_me.paid_until, 'FMMonth FMDD'))
+      else 'Your membership keeps running. Nothing changes.' end);
+end;
+$$;
+
+-- Test mode only (a payment processor does this once it is connected): renew every membership whose paid
+-- period is over, with a receipt, or end it when the member cancelled. One period per run.
+create or replace function renew_test_memberships()
+returns int
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_cfg app_config%rowtype;
+  v_today date;
+  v_count int;
+begin
+  select * into v_cfg from app_config where id = 1;
+  if not v_cfg.test_payments then
+    return 0;
+  end if;
+  v_today := (now() at time zone v_cfg.tz)::date;
+
+  update profiles
+  set payment_status = 'canceled', monthly_credits = 0, cancel_at_period_end = false, updated_at = now()
+  where household_owner_id is null and payment_status = 'active' and paid_until <= v_today and cancel_at_period_end;
+
+  with renewed as (
+    update profiles p
+    set paid_until = (p.paid_until + period_length(p.billing_interval))::date, updated_at = now()
+    where p.household_owner_id is null and p.payment_status = 'active' and p.paid_until <= v_today
+      and not p.cancel_at_period_end
+    returning p.id, p.tier, p.billing_interval
+  )
+  insert into payments (profile_id, kind, description, amount_cents, tier, billing_interval)
+  select id, 'plan',
+    format('%s membership, %s renewal', case when tier = 'household' then 'Household' else 'Solo' end,
+           case when billing_interval = 'annual' then 'annual' else 'monthly' end),
+    plan_price_cents(tier, billing_interval), tier, billing_interval
+  from renewed;
+  get diagnostics v_count = row_count;
+  return v_count;
+end;
+$$;
+
+select cron.schedule('mdc-test-renewals', '15 * * * *', 'select public.renew_test_memberships()');
+
+revoke execute on function accept_terms() from public, anon;
+grant execute on function accept_terms() to authenticated;
+revoke execute on function save_interests(text[]) from public, anon;
+grant execute on function save_interests(text[]) to authenticated;
+revoke execute on function cancel_membership(boolean) from public, anon;
+grant execute on function cancel_membership(boolean) to authenticated;
+revoke execute on function renew_test_memberships() from public, anon, authenticated;
+revoke execute on function period_length(text) from public, anon;
+grant execute on function period_length(text) to authenticated;
+
+-- Profile photos (sign-up step 4; shown in rooms when the camera is off). Public bucket, each person writes
+-- only their own folder: avatars/<user id>/... Skipped where Supabase Storage is missing (local tests).
+do $do$
+begin
+  if to_regclass('storage.buckets') is null then
+    return;
+  end if;
+  insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+  values ('avatars', 'avatars', true, 5242880, array['image/jpeg', 'image/png', 'image/webp'])
+  on conflict (id) do update set public = true, file_size_limit = excluded.file_size_limit,
+    allowed_mime_types = excluded.allowed_mime_types;
+  execute 'drop policy if exists "People see their own photo" on storage.objects';
+  execute $p$create policy "People see their own photo" on storage.objects for select to authenticated
+    using (bucket_id = 'avatars' and (storage.foldername(name))[1] = (select auth.uid())::text)$p$;
+  execute 'drop policy if exists "People upload their own photo" on storage.objects';
+  execute $p$create policy "People upload their own photo" on storage.objects for insert to authenticated
+    with check (bucket_id = 'avatars' and (storage.foldername(name))[1] = (select auth.uid())::text)$p$;
+  execute 'drop policy if exists "People replace their own photo" on storage.objects';
+  execute $p$create policy "People replace their own photo" on storage.objects for update to authenticated
+    using (bucket_id = 'avatars' and (storage.foldername(name))[1] = (select auth.uid())::text)$p$;
+  execute 'drop policy if exists "People delete their own photo" on storage.objects';
+  execute $p$create policy "People delete their own photo" on storage.objects for delete to authenticated
+    using (bucket_id = 'avatars' and (storage.foldername(name))[1] = (select auth.uid())::text)$p$;
+end
+$do$;

@@ -1,11 +1,20 @@
 'use client';
 
+// Sign-up in one sitting (Kelly 31 Oct): basics, rules and Terms (the account is created here), membership and
+// payment, profile photo and Hello Video, interests, reminders. Every step after the account saves to Supabase,
+// so "Save & leave" and coming back later resume at the first unfinished step. Google sign-up returns here too.
+// Payments are in test mode (app_config.test_payments): Pay starts the membership without a card.
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import GoogleButton from '@/components/google-button';
-import { getSupabase, setDemoUser } from '@/lib/supabase';
+import HelloRecorder from '@/components/hello-recorder';
+import { useAccount } from '@/lib/account';
+import { money, PLANS, planPrice, type Interval, type Tier } from '@/lib/prices';
+import { savePushSubscription, VAPID_PUBLIC_KEY } from '@/lib/push';
+import { getSupabase, setDemoUser, type MembershipSummary } from '@/lib/supabase';
 
+const STEPS = 6;
 const interests = [
   'Quiet co-work',
   'Writing',
@@ -20,77 +29,257 @@ const interests = [
   'Tea & tasting',
   'Low-pressure conversation',
 ];
+const PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const PHOTO_MAX = 5 * 1024 * 1024;
+
+type Result = { success: boolean; error?: string } | null;
+
+async function loadSummary(): Promise<MembershipSummary | null> {
+  const { data } = (await getSupabase()?.rpc('get_my_membership')) ?? { data: null };
+  return data as MembershipSummary | null;
+}
+
+/** The first step this person has not finished. */
+function resumeStep(s: MembershipSummary | null): number {
+  if (!s?.terms_accepted) return 2;
+  if (s.role !== 'member' && s.payment_status === 'pending') return 3;
+  if (s.hello_status === 'none' || s.hello_status === 'rejected') return 4;
+  return 5;
+}
 
 export default function SignupPage() {
   const router = useRouter();
+  const supabase = getSupabase();
+  const { ready, account } = useAccount();
   const [step, setStep] = useState(1);
+  const [summary, setSummary] = useState<MembershipSummary | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
+
+  // Step 1
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [tier, setTier] = useState<'individual' | 'household'>('individual');
-  const [plan, setPlan] = useState<'monthly' | 'annual'>('monthly');
+  const [ageOk, setAgeOk] = useState(false);
+  // Step 2
+  const [rulesOk, setRulesOk] = useState(false);
+  const [termsOk, setTermsOk] = useState(false);
+  const [code, setCode] = useState('');
+  const [awaitingCode, setAwaitingCode] = useState(false);
+  const [notice, setNotice] = useState('');
+  // Step 3
+  const [tier, setTier] = useState<Tier>('individual');
+  const [plan, setPlan] = useState<Interval>('monthly');
+  // Step 4
+  const [photo, setPhoto] = useState<{ name: string; url: string | null }>({ name: '', url: null });
+  const [helloSent, setHelloSent] = useState(false);
+  // Step 5
   const [selectedInterests, setSelectedInterests] = useState<string[]>([]);
-  const [profileFile, setProfileFile] = useState('');
-  const [videoFile, setVideoFile] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [errorMsg, setErrorMsg] = useState('');
+  // Step 6
+  const [emailReminders, setEmailReminders] = useState(true);
+  const [smsReminders, setSmsReminders] = useState(false);
+  const [phone, setPhone] = useState('');
+  const [appNote, setAppNote] = useState('');
 
-  const toggleInterest = (interest: string) => {
-    setSelectedInterests((current) =>
-      current.includes(interest) ? current.filter((item) => item !== interest) : [...current, interest],
-    );
-  };
-
-  const next = () => {
-    setErrorMsg('');
-    setStep((current) => Math.min(6, current + 1));
-  };
-  const back = () => {
-    setErrorMsg('');
-    setStep((current) => Math.max(1, current - 1));
-  };
-
-  const handleFinish = async () => {
-    setLoading(true);
-    setErrorMsg('');
-    try {
-      const supabase = getSupabase();
-      if (supabase && email && password) {
-        const { error } = await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            data: {
-              first_name: firstName,
-              last_name: lastName,
-              tier,
-              billing_interval: plan,
-            },
-          },
-        });
-        if (error) {
-          setErrorMsg(error.message);
-          setLoading(false);
-          return;
-        }
+  // Someone already signed in (Google, the email link, or coming back) continues where they stopped.
+  // Only the first check counts, so creating the account on this page does not jump steps.
+  const resumed = useRef(false);
+  useEffect(() => {
+    if (!ready || resumed.current) return;
+    resumed.current = true;
+    if (!account || !supabase) return;
+    loadSummary().then((s) => {
+      setSummary(s);
+      if (s?.interests?.length) setSelectedInterests(s.interests);
+      if (s?.avatar_url) setPhoto({ name: 'Your photo', url: s.avatar_url });
+      if (s?.reminders) {
+        setEmailReminders(s.reminders.email);
+        setSmsReminders(s.reminders.sms);
+        setPhone(s.reminders.phone ?? '');
       }
+      setStep(resumeStep(s));
+    });
+  }, [ready, account, supabase]);
+
+  const go = (next: number) => {
+    setErrorMsg('');
+    setNotice('');
+    setStep(next);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+  const fail = (text: string) => {
+    setErrorMsg(text);
+    setBusy(false);
+  };
+
+  // ---------- step actions ----------
+
+  const finishBasics = () => {
+    if (account) return go(2);
+    if (!firstName.trim()) return setErrorMsg('Add your first name.');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) return setErrorMsg('Check the email address.');
+    if (password.length < 8) return setErrorMsg('Use a password with at least 8 characters.');
+    if (!ageOk) return setErrorMsg('Please confirm the age line to continue.');
+    go(2);
+  };
+
+  const acceptTerms = async () => {
+    const { data, error } = await supabase!.rpc('accept_terms');
+    if (error || !(data as Result)?.success) return fail('Could not save that. Please try again.');
+    const s = await loadSummary();
+    setSummary(s);
+    setBusy(false);
+    go(s?.role === 'member' || s?.payment_status !== 'pending' ? 4 : 3);
+  };
+
+  const finishRules = async () => {
+    if (!rulesOk || !termsOk) return setErrorMsg('Please agree to the community rules and the Terms to continue.');
+    if (!supabase) return go(3);
+    setBusy(true);
+    setErrorMsg('');
+    if (account) return acceptTerms();
+
+    if (awaitingCode) {
+      const token = code.replace(/\D/g, '');
+      if (token.length < 6) return fail('Enter the code from the email.');
+      const { error } = await supabase.auth.verifyOtp({ email: email.trim(), token, type: 'email' });
+      if (error) return fail('That code didn’t work. Check the newest email, or send a new code.');
+      return acceptTerms();
+    }
+
+    const { data, error } = await supabase.auth.signUp({
+      email: email.trim(),
+      password,
+      options: {
+        data: { first_name: firstName.trim(), last_name: lastName.trim() },
+        emailRedirectTo: `${window.location.origin}/signup`,
+      },
+    });
+    if (error) return fail(error.message);
+    // Supabase answers an existing email with a user that has no identities, and sends nothing.
+    if (data.user && data.user.identities?.length === 0)
+      return fail('There is already an account with this email. Sign in instead.');
+    if (!data.session) {
+      setAwaitingCode(true);
+      setBusy(false);
+      setNotice(`We emailed a code to ${email.trim()}. Enter it below to confirm your email.`);
+      return;
+    }
+    return acceptTerms();
+  };
+
+  const resendCode = async () => {
+    setErrorMsg('');
+    const { error } = await supabase!.auth.resend({ type: 'signup', email: email.trim() });
+    setNotice(error ? '' : `A new code is on its way to ${email.trim()}.`);
+    if (error) setErrorMsg(error.message);
+  };
+
+  const pay = async () => {
+    if (!supabase) return go(4);
+    setBusy(true);
+    setErrorMsg('');
+    const { data, error } = await supabase.rpc('test_checkout', { p_tier: tier, p_interval: plan });
+    const res = data as Result;
+    if (error || !res?.success) return fail(res?.error || 'The payment didn’t go through. Please try again.');
+    setSummary(await loadSummary());
+    setBusy(false);
+    go(4);
+  };
+
+  const uploadPhoto = async (file: File | undefined) => {
+    if (!file) return;
+    setErrorMsg('');
+    if (!PHOTO_TYPES.includes(file.type)) return setErrorMsg('Use a JPG, PNG or WebP photo.');
+    if (file.size > PHOTO_MAX) return setErrorMsg('That photo is over 5 MB. Please pick a smaller one.');
+    if (!supabase || !account) return setPhoto({ name: file.name, url: URL.createObjectURL(file) });
+    setPhoto({ name: 'Uploading…', url: null });
+    const path = `${account.id}/avatar`;
+    const { error } = await supabase.storage
+      .from('avatars')
+      .upload(path, file, { upsert: true, contentType: file.type, cacheControl: '3600' });
+    if (error) {
+      setPhoto({ name: '', url: null });
+      return setErrorMsg('The photo didn’t upload. Please try again.');
+    }
+    const url = `${supabase.storage.from('avatars').getPublicUrl(path).data.publicUrl}?v=${Date.now()}`;
+    await supabase.from('profiles').update({ avatar_url: url }).eq('id', account.id);
+    setPhoto({ name: file.name, url });
+  };
+
+  const saveInterests = async () => {
+    if (supabase) {
+      setBusy(true);
+      const { data, error } = await supabase.rpc('save_interests', { p_interests: selectedInterests });
+      const res = data as Result;
+      if (error || !res?.success) return fail(res?.error || 'Could not save your interests. Please try again.');
+      setBusy(false);
+    }
+    go(6);
+  };
+
+  const turnOnApp = async () => {
+    setAppNote('');
+    if (!('Notification' in window) || !('serviceWorker' in navigator)) {
+      setAppNote('This browser can’t show app notifications. Email reminders still work.');
+      return;
+    }
+    const permission = await Notification.requestPermission();
+    if (permission !== 'granted') {
+      setAppNote('Notifications are blocked. You can turn them on later from the Reminders page.');
+      return;
+    }
+    const failed = VAPID_PUBLIC_KEY ? await savePushSubscription() : null;
+    setAppNote(failed ?? 'App notifications are on for this device.');
+  };
+
+  const finish = async () => {
+    if (!supabase) {
       setDemoUser({
-        id: 'user-' + Date.now(),
+        id: 'demo',
         email: email || 'member@example.com',
         first_name: firstName || 'Member',
-        last_name: lastName || '',
+        last_name: lastName,
         plan: tier,
         billing_interval: plan,
-        monthly_credits: tier === 'household' ? 16 : 13,
+        monthly_credits: PLANS[tier].credits,
         payment_status: 'active',
       });
       router.push('/calendar');
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Failed to complete registration.';
-      setErrorMsg(msg);
-      setLoading(false);
+      return;
     }
+    setBusy(true);
+    const { data, error } = await supabase.rpc('set_reminder_prefs', {
+      p_email: emailReminders,
+      p_sms: smsReminders,
+      p_phone: smsReminders ? phone.trim() || null : null,
+    });
+    const res = data as Result;
+    if (error || !res?.success) return fail(res?.error || 'Could not save your reminders. Please try again.');
+    router.push('/calendar');
+  };
+
+  // ---------- render ----------
+
+  const isMember = summary?.role === 'member';
+  const paid = summary && summary.payment_status !== 'pending';
+  const helloDone = helloSent || summary?.hello_status === 'pending' || summary?.hello_status === 'approved';
+  const price = planPrice(tier, plan);
+
+  const primary: Record<number, { label: string; action: () => void; disabled?: boolean }> = {
+    1: { label: 'Continue', action: finishBasics },
+    2: {
+      label: account || !supabase ? 'Continue' : awaitingCode ? 'Confirm email' : 'Create my account',
+      action: () => void finishRules(),
+    },
+    3:
+      isMember || paid
+        ? { label: 'Continue', action: () => go(4) }
+        : { label: `Pay ${money(price * 100)} and continue`, action: () => void pay() },
+    4: { label: helloDone ? 'Continue' : 'Record first, then continue', action: () => go(5), disabled: !helloDone },
+    5: { label: 'Continue', action: () => void saveInterests() },
+    6: { label: 'Finish & see the Calendar', action: () => void finish() },
   };
 
   return (
@@ -101,9 +290,9 @@ export default function SignupPage() {
           <span>Do</span>
           <span>Connect</span>
         </Link>
-        <div className="signup-progress" aria-label={`Step ${step} of 6`}>
-          {[1, 2, 3, 4, 5, 6].map((number) => (
-            <span className={number <= step ? 'complete' : ''} key={number} />
+        <div className="signup-progress" aria-label={`Step ${step} of ${STEPS}`}>
+          {Array.from({ length: STEPS }, (_, i) => (
+            <span className={i + 1 <= step ? 'complete' : ''} key={i} />
           ))}
         </div>
         <Link href="/">Save & leave</Link>
@@ -130,172 +319,95 @@ export default function SignupPage() {
 
         <section className="signup-card">
           {errorMsg && (
-            <div
-              style={{
-                margin: '16px 20px 0',
-                padding: '10px 14px',
-                borderRadius: '8px',
-                backgroundColor: '#fef2f2',
-                border: '1px solid #fecaca',
-                color: '#991b1b',
-                fontSize: '14px',
-              }}
-            >
+            <div className="signup-alert error" role="alert">
               {errorMsg}
             </div>
           )}
+          {notice && (
+            <div className="signup-alert" role="status">
+              {notice}
+            </div>
+          )}
+
           {step === 1 && (
             <div className="signup-step">
-              <p className="step-count">Step 1 of 6</p>
+              <p className="step-count">Step 1 of {STEPS}</p>
               <h2>First, the basics.</h2>
-              <p className="step-intro">
-                Use an email you check. This is where session reminders and important account messages will go.
-              </p>
-              <p className="step-intro">
-                Joining as a Household? Everyone signs up with their own email and password. The account holder picks
-                Household ($34 a month or $349 a year) in step 2 and invites up to 3 people, who share 16 sessions a
-                month. Invited by someone? Sign up with the email they invited.
-              </p>
-              <GoogleButton next="/calendar" label="Sign up with Google" onError={setErrorMsg} />
-              <div className="form-grid">
-                <label>
-                  <span>First name</span>
-                  <input
-                    type="text"
-                    placeholder="Your first name"
-                    value={firstName}
-                    onChange={(e) => setFirstName(e.target.value)}
-                  />
-                </label>
-                <label>
-                  <span>Last name</span>
-                  <input
-                    type="text"
-                    placeholder="Your last name"
-                    value={lastName}
-                    onChange={(e) => setLastName(e.target.value)}
-                  />
-                </label>
-                <label className="full-field">
-                  <span>Email</span>
-                  <input
-                    type="email"
-                    placeholder="you@example.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                  />
-                </label>
-                <label className="full-field">
-                  <span>Create a password</span>
-                  <input
-                    type="password"
-                    placeholder="At least 8 characters"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                  />
-                </label>
-              </div>
-              <label className="check-row">
-                <input type="checkbox" defaultChecked />
-                <span>I am at least 12 years old. Children under 12 will attend only with a responsible adult.</span>
-              </label>
-              <div style={{ marginTop: '16px', fontSize: '14px' }}>
-                <span>Already have an account? </span>
-                <Link href="/signin" style={{ color: 'var(--amber-700, #b45309)', fontWeight: 600 }}>
-                  Sign in
-                </Link>
-              </div>
+              {account ? (
+                <p className="step-intro">
+                  You’re signed in as <strong>{account.email}</strong>. Continue to finish joining.
+                </p>
+              ) : (
+                <>
+                  <p className="step-intro">
+                    Use an email you check. This is where session reminders and important account messages will go.
+                  </p>
+                  <p className="step-intro">
+                    Joining as a Household? Everyone signs up with their own email and password. The account holder
+                    picks Household ($34 a month or $349 a year) in step 3 and invites up to 3 people, who share 16
+                    sessions a month. Invited by someone? Sign up with the email they invited.
+                  </p>
+                  <GoogleButton next="/signup" label="Sign up with Google" onError={setErrorMsg} />
+                  <div className="form-grid">
+                    <label>
+                      <span>First name</span>
+                      <input
+                        type="text"
+                        autoComplete="given-name"
+                        placeholder="Your first name"
+                        value={firstName}
+                        onChange={(e) => setFirstName(e.target.value)}
+                      />
+                    </label>
+                    <label>
+                      <span>Last name</span>
+                      <input
+                        type="text"
+                        autoComplete="family-name"
+                        placeholder="Your last name"
+                        value={lastName}
+                        onChange={(e) => setLastName(e.target.value)}
+                      />
+                    </label>
+                    <label className="full-field">
+                      <span>Email</span>
+                      <input
+                        type="email"
+                        autoComplete="email"
+                        placeholder="you@example.com"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                      />
+                    </label>
+                    <label className="full-field">
+                      <span>Create a password</span>
+                      <input
+                        type="password"
+                        autoComplete="new-password"
+                        placeholder="At least 8 characters"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                      />
+                    </label>
+                  </div>
+                  <label className="check-row">
+                    <input type="checkbox" checked={ageOk} onChange={(e) => setAgeOk(e.target.checked)} />
+                    <span>
+                      I am at least 12 years old. Children under 12 will attend only with a responsible adult.
+                    </span>
+                  </label>
+                  <div className="signup-switch">
+                    <span>Already have an account? </span>
+                    <Link href="/signin">Sign in</Link>
+                  </div>
+                </>
+              )}
             </div>
           )}
 
           {step === 2 && (
             <div className="signup-step">
-              <p className="step-count">Step 2 of 6</p>
-              <h2>Choose your membership.</h2>
-              <p className="step-intro">
-                Solo gets 13 sessions a month. Household is for up to 4 people, each with their own sign-in, sharing 16
-                sessions a month, 4 each week, shared between household members. Solo can book up to 4 a week. Your month starts on your sign-up date, and unused
-                sessions don’t carry over. Invited to someone’s Household? Sign up with the email they invited, and you
-                join it automatically.
-              </p>
-              <div style={{ marginBottom: '16px' }}>
-                <span style={{ fontSize: '14px', fontWeight: 600, display: 'block', marginBottom: '8px' }}>
-                  Select tier
-                </span>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                  <button
-                    type="button"
-                    onClick={() => setTier('individual')}
-                    style={{
-                      padding: '12px',
-                      borderRadius: '8px',
-                      border: tier === 'individual' ? '2px solid #b45309' : '1px solid #d1d5db',
-                      background: tier === 'individual' ? '#fffbeb' : '#fff',
-                      cursor: 'pointer',
-                      textAlign: 'left',
-                    }}
-                  >
-                    <strong>Solo</strong>
-                    <div style={{ fontSize: '12px', color: '#6b7280' }}>$26/mo · $260/yr</div>
-                    <div style={{ fontSize: '12px', color: '#6b7280' }}>1 person · 13 sessions/mo</div>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setTier('household')}
-                    style={{
-                      padding: '12px',
-                      borderRadius: '8px',
-                      border: tier === 'household' ? '2px solid #b45309' : '1px solid #d1d5db',
-                      background: tier === 'household' ? '#fffbeb' : '#fff',
-                      cursor: 'pointer',
-                      textAlign: 'left',
-                    }}
-                  >
-                    <strong>Household</strong>
-                    <div style={{ fontSize: '12px', color: '#6b7280' }}>$34/mo · $349/yr</div>
-                    <div style={{ fontSize: '12px', color: '#6b7280' }}>Up to 4 people · 16 sessions/mo</div>
-                  </button>
-                </div>
-              </div>
-              <div className="signup-plans">
-                <button
-                  className={plan === 'monthly' ? 'selected' : ''}
-                  type="button"
-                  onClick={() => setPlan('monthly')}
-                >
-                  <span>Monthly</span>
-                  <strong>{tier === 'individual' ? '$26' : '$34'}</strong>
-                  <small>per month · cancel anytime</small>
-                </button>
-                <button className={plan === 'annual' ? 'selected' : ''} type="button" onClick={() => setPlan('annual')}>
-                  <span>Annual</span>
-                  <strong>{tier === 'individual' ? '$260' : '$349'}</strong>
-                  <small>{tier === 'individual' ? 'per year · two months included' : 'per year · save $59'}</small>
-                </button>
-              </div>
-              <div className="payment-mock">
-                <div className="developer-note">Payment form placeholder · developer connects Stripe</div>
-                <label>
-                  <span>Card number</span>
-                  <input type="text" placeholder="1234 1234 1234 1234" />
-                </label>
-                <div>
-                  <label>
-                    <span>Expiry</span>
-                    <input type="text" placeholder="MM / YY" />
-                  </label>
-                  <label>
-                    <span>CVC</span>
-                    <input type="text" placeholder="CVC" />
-                  </label>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {step === 3 && (
-            <div className="signup-step">
-              <p className="step-count">Step 3 of 6</p>
+              <p className="step-count">Step 2 of {STEPS}</p>
               <h2>Short rules. Real safety.</h2>
               <p className="step-intro">These are the basics that let small rooms feel relaxed.</p>
               <div className="short-rules">
@@ -317,91 +429,206 @@ export default function SignupPage() {
                 </div>
               </div>
               <label className="check-row">
-                <input type="checkbox" />
+                <input type="checkbox" checked={rulesOk} onChange={(e) => setRulesOk(e.target.checked)} />
                 <span>I agree to the short community rules.</span>
               </label>
               <label className="check-row">
-                <input type="checkbox" />
+                <input type="checkbox" checked={termsOk} onChange={(e) => setTermsOk(e.target.checked)} />
                 <span>
                   I agree to the{' '}
-                  <Link href="/terms" target="_blank" rel="noreferrer">
+                  <Link href="/terms" target="_blank" rel="noopener noreferrer">
                     Terms & Conditions
                   </Link>{' '}
                   and{' '}
-                  <Link href="/privacy" target="_blank" rel="noreferrer">
+                  <Link href="/privacy" target="_blank" rel="noopener noreferrer">
                     Privacy Policy
                   </Link>
                   .
                 </span>
               </label>
+              {awaitingCode && (
+                <div className="form-grid">
+                  <label className="full-field">
+                    <span>Code from the email</span>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      placeholder="12345678"
+                      maxLength={10}
+                      value={code}
+                      onChange={(e) => setCode(e.target.value)}
+                    />
+                  </label>
+                  <p className="signup-switch full-field">
+                    No email after a minute? Check spam, or{' '}
+                    <button type="button" className="link-button" onClick={() => void resendCode()}>
+                      send a new code
+                    </button>
+                    . Clicking the link in the email works too.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {step === 3 && (
+            <div className="signup-step">
+              <p className="step-count">Step 3 of {STEPS}</p>
+              <h2>Choose your membership.</h2>
+              {isMember ? (
+                <p className="step-intro">
+                  You’re part of {summary?.household?.owner_name || 'your account holder'}’s Household. They pay for the
+                  plan, so there’s nothing to pay here.
+                </p>
+              ) : paid ? (
+                <p className="step-intro">Your membership is active. Nothing to pay here.</p>
+              ) : (
+                <>
+                  <p className="step-intro">
+                    Solo gets 13 sessions a month. Household is for up to 4 people, each with their own sign-in, sharing
+                    16 sessions a month, 4 each week, shared between household members. Solo can book up to 4 a week.
+                    Your month starts today, and unused sessions don’t carry over.
+                  </p>
+                  <div className="signup-tiers" role="radiogroup" aria-label="Membership">
+                    {(Object.keys(PLANS) as Tier[]).map((key) => (
+                      <button
+                        key={key}
+                        type="button"
+                        role="radio"
+                        aria-checked={tier === key}
+                        className={tier === key ? 'selected' : ''}
+                        onClick={() => setTier(key)}
+                      >
+                        <strong>{PLANS[key].name}</strong>
+                        <small>
+                          ${PLANS[key].monthly}/mo · ${PLANS[key].annual}/yr
+                        </small>
+                        <small>
+                          {PLANS[key].people} · {PLANS[key].credits} sessions/mo
+                        </small>
+                      </button>
+                    ))}
+                  </div>
+                  <div className="signup-plans">
+                    <button
+                      className={plan === 'monthly' ? 'selected' : ''}
+                      type="button"
+                      onClick={() => setPlan('monthly')}
+                    >
+                      <span>Monthly</span>
+                      <strong>${PLANS[tier].monthly}</strong>
+                      <small>per month · cancel anytime</small>
+                    </button>
+                    <button
+                      className={plan === 'annual' ? 'selected' : ''}
+                      type="button"
+                      onClick={() => setPlan('annual')}
+                    >
+                      <span>Annual</span>
+                      <strong>${PLANS[tier].annual}</strong>
+                      <small>per year · save ${PLANS[tier].monthly * 12 - PLANS[tier].annual}</small>
+                    </button>
+                  </div>
+                  <div className="payment-mock">
+                    <div className="developer-note">
+                      {summary && !summary.test_payments
+                        ? 'Online payments open soon'
+                        : 'Test mode · no card is charged'}
+                    </div>
+                    <p className="step-intro">
+                      Card payments are being connected. For now, pressing Pay starts your membership right away and
+                      nothing is charged. You’ll see a receipt on your Membership page.
+                    </p>
+                  </div>
+                </>
+              )}
             </div>
           )}
 
           {step === 4 && (
             <div className="signup-step">
-              <p className="step-count">Step 4 of 6</p>
+              <p className="step-count">Step 4 of {STEPS}</p>
               <h2>Put a face to the name.</h2>
               <p className="step-intro">
                 Your profile photo appears in rooms when you use a Bad Hair Day card. Your Hello Video is seen only by
-                an admin to help keep bots out.
+                an admin to help keep bots out. Rooms open for you once it’s approved, usually within a day. You can
+                book sessions in the meantime.
               </p>
               <div className="upload-grid">
                 <label className="upload-box">
                   <input
                     type="file"
-                    accept="image/*"
-                    onChange={(event) => setProfileFile(event.target.files?.[0]?.name ?? '')}
+                    accept={PHOTO_TYPES.join(',')}
+                    onChange={(e) => void uploadPhoto(e.target.files?.[0])}
                   />
-                  <span className="upload-mark">+</span>
+                  {photo.url ? (
+                    <img className="upload-photo" src={photo.url} alt="Your profile photo" />
+                  ) : (
+                    <span className="upload-mark">+</span>
+                  )}
                   <strong>Profile photo</strong>
-                  <small>{profileFile || 'Clear face photo · JPG or PNG'}</small>
+                  <small>{photo.name || 'Clear face photo · JPG or PNG'}</small>
                 </label>
-                <label className="upload-box">
-                  <input
-                    type="file"
-                    accept="video/*"
-                    onChange={(event) => setVideoFile(event.target.files?.[0]?.name ?? '')}
-                  />
-                  <span className="upload-mark">▶</span>
-                  <strong>Private Hello Video</strong>
-                  <small>{videoFile || 'About 10–20 seconds · seen only by admin'}</small>
-                </label>
+                <div className="upload-box hello-box">
+                  {helloDone ? (
+                    <>
+                      <span className="upload-mark">✓</span>
+                      <strong>Hello Video sent</strong>
+                      <small>We’ll let you know once it’s approved.</small>
+                    </>
+                  ) : (
+                    <HelloRecorder title="Private Hello Video" onSent={() => setHelloSent(true)} />
+                  )}
+                </div>
               </div>
               <div className="hello-prompt">
                 <strong>Not sure what to say?</strong>
                 <p>“Hi, I’m [first name]. I’m looking forward to [an activity you enjoy].” That’s enough.</p>
               </div>
+              {!helloDone && (
+                <button type="button" className="link-button" onClick={() => go(5)}>
+                  I’ll record it later (rooms stay closed until it’s approved)
+                </button>
+              )}
             </div>
           )}
 
           {step === 5 && (
             <div className="signup-step">
-              <p className="step-count">Step 5 of 6</p>
+              <p className="step-count">Step 5 of {STEPS}</p>
               <h2>What sounds good?</h2>
               <p className="step-intro">
                 Choose a few interests. We’ll use these to make the Calendar more useful, never to rank or publicly
                 profile you.
               </p>
               <div className="interest-grid">
-                {interests.map((interest) => (
-                  <button
-                    className={selectedInterests.includes(interest) ? 'selected' : ''}
-                    type="button"
-                    aria-pressed={selectedInterests.includes(interest)}
-                    key={interest}
-                    onClick={() => toggleInterest(interest)}
-                  >
-                    {interest}
-                    <span>{selectedInterests.includes(interest) ? '✓' : '+'}</span>
-                  </button>
-                ))}
+                {interests.map((interest) => {
+                  const on = selectedInterests.includes(interest);
+                  return (
+                    <button
+                      className={on ? 'selected' : ''}
+                      type="button"
+                      aria-pressed={on}
+                      key={interest}
+                      onClick={() =>
+                        setSelectedInterests((current) =>
+                          on ? current.filter((item) => item !== interest) : [...current, interest],
+                        )
+                      }
+                    >
+                      {interest}
+                      <span>{on ? '✓' : '+'}</span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}
 
           {step === 6 && (
             <div className="signup-step">
-              <p className="step-count">Step 6 of 6</p>
+              <p className="step-count">Step 6 of {STEPS}</p>
               <h2>Stay in the loop, quietly.</h2>
               <p className="step-intro">
                 Choose how reminders reach you. Payment and safety messages cannot be switched off.
@@ -409,60 +636,59 @@ export default function SignupPage() {
               <div className="notification-list">
                 <div>
                   <span>
-                    <strong>Booking confirmations</strong>Email and app
+                    <strong>Email reminders</strong>24 hours and 1 hour before each session
                   </span>
                   <label>
-                    <input type="checkbox" defaultChecked />
+                    <input
+                      type="checkbox"
+                      aria-label="Email reminders"
+                      checked={emailReminders}
+                      onChange={(e) => setEmailReminders(e.target.checked)}
+                    />
                     <i />
                   </label>
                 </div>
                 <div>
                   <span>
-                    <strong>24-hour prep reminder</strong>Email, text, and app
+                    <strong>Text reminders</strong>1 hour before each session
                   </span>
                   <label>
-                    <input type="checkbox" defaultChecked />
+                    <input
+                      type="checkbox"
+                      aria-label="Text reminders"
+                      checked={smsReminders}
+                      onChange={(e) => setSmsReminders(e.target.checked)}
+                    />
                     <i />
                   </label>
                 </div>
                 <div>
                   <span>
-                    <strong>One-hour Join reminder</strong>Text and app
+                    <strong>App notifications</strong>On this phone or computer
                   </span>
-                  <label>
-                    <input type="checkbox" defaultChecked />
-                    <i />
-                  </label>
-                </div>
-                <div>
-                  <span>
-                    <strong>New week is ready</strong>Email and app
-                  </span>
-                  <label>
-                    <input type="checkbox" defaultChecked />
-                    <i />
-                  </label>
-                </div>
-                <div>
-                  <span>
-                    <strong>Activity-buddy updates</strong>App and email
-                  </span>
-                  <label>
-                    <input type="checkbox" defaultChecked />
-                    <i />
-                  </label>
+                  <button type="button" className="link-button" onClick={() => void turnOnApp()}>
+                    Turn on
+                  </button>
                 </div>
               </div>
-              <div className="quiet-hours">
-                <label>
-                  <span>Quiet hours start</span>
-                  <input type="time" defaultValue="21:00" />
+              {appNote && <p className="step-intro">{appNote}</p>}
+              {smsReminders && (
+                <label className="reminder-phone">
+                  Mobile number with country code
+                  <input
+                    type="tel"
+                    inputMode="tel"
+                    autoComplete="tel"
+                    placeholder="+1 555 123 4567"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                  />
+                  <small>
+                    By turning on text reminders you agree to get session reminders from MeetDoConnect by SMS, one for
+                    each session you book. Message and data rates may apply. Reply STOP to cancel, HELP for help.
+                  </small>
                 </label>
-                <label>
-                  <span>Quiet hours end</span>
-                  <input type="time" defaultValue="08:00" />
-                </label>
-              </div>
+              )}
               <div className="required-notice">
                 <strong>Always delivered:</strong> payment trouble, account security, and safety messages.
               </div>
@@ -470,18 +696,21 @@ export default function SignupPage() {
           )}
 
           <footer className="signup-actions">
-            <button type="button" onClick={back} disabled={step === 1}>
+            <button
+              type="button"
+              onClick={() => go(Math.max(1, step - 1))}
+              disabled={step === 1 || busy || (step === 3 && Boolean(account))}
+            >
               Back
             </button>
-            {step < 6 ? (
-              <button className="signup-next" type="button" onClick={next}>
-                Continue <span aria-hidden="true">→</span>
-              </button>
-            ) : (
-              <button className="signup-next" type="button" onClick={handleFinish} disabled={loading}>
-                {loading ? 'Creating account...' : 'Finish & see the Calendar'} <span aria-hidden="true">→</span>
-              </button>
-            )}
+            <button
+              className="signup-next"
+              type="button"
+              onClick={primary[step].action}
+              disabled={busy || primary[step].disabled}
+            >
+              {busy ? 'One moment…' : primary[step].label} <span aria-hidden="true">→</span>
+            </button>
           </footer>
         </section>
       </div>

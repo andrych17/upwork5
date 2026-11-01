@@ -8,7 +8,7 @@ import { parts, zonedToUtc } from '@/lib/schedule/rules';
 export const ADMIN_TZ = 'America/Chicago';
 export const PAGE_SIZE = 25;
 
-export type PaymentStatus = 'active' | 'past_due' | 'paused' | 'canceled';
+export type PaymentStatus = 'pending' | 'active' | 'past_due' | 'paused' | 'canceled';
 export type Tier = 'individual' | 'household';
 export type BillingInterval = 'monthly' | 'annual';
 
@@ -95,9 +95,14 @@ export function fromCentralInput(value: string): string | null {
 }
 
 /** Strips characters that would break a PostgREST or() filter. */
-export const searchTerm = (q: string) => q.replace(/[,()*%\\:"']/g, ' ').trim().slice(0, 80);
+export const searchTerm = (q: string) =>
+  q
+    .replace(/[,()*%\\:"']/g, ' ')
+    .trim()
+    .slice(0, 80);
 
 export const STATUS_LABEL: Record<PaymentStatus, string> = {
+  pending: 'Not paid yet',
   active: 'Active',
   past_due: 'Past due',
   paused: 'Paused',
@@ -105,7 +110,11 @@ export const STATUS_LABEL: Record<PaymentStatus, string> = {
 };
 
 export const statusBadge = (s: PaymentStatus) =>
-  s === 'active' ? 'adm-badge adm-badge-good' : s === 'past_due' ? 'adm-badge adm-badge-warn' : 'adm-badge adm-badge-bad';
+  s === 'active'
+    ? 'adm-badge adm-badge-good'
+    : s === 'past_due' || s === 'pending'
+      ? 'adm-badge adm-badge-warn'
+      : 'adm-badge adm-badge-bad';
 
 /**
  * Runs `load` (a useCallback) whenever it changes or reload() is called. Only the newest answer is kept,

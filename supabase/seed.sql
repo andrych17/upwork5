@@ -249,6 +249,16 @@ set payment_failed_at = now() - interval '1 day',
     credits_cycle_start = null
 where id = 'd0000000-0000-0000-0000-000000000005';
 
+-- Sample members finished sign-up: Terms accepted, Hello Video approved, and the paying ones paid through
+-- their next billing day (sections 19 and 24).
+update public.profiles
+set terms_accepted_at = created_at,
+    hello_status = 'approved',
+    hello_reviewed_at = created_at,
+    paid_until = case when household_owner_id is null and payment_status = 'active'
+                      then next_cycle_start(billing_date, (now() at time zone 'America/Chicago')::date) end
+where id::text like 'd0000000-0000-0000-0000-%';
+
 -- Nina has one open invite for a third person
 insert into public.household_invites (email, owner_id)
 values ('leo.patel@example.com', 'd0000000-0000-0000-0000-000000000004')

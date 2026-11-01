@@ -17,4 +17,5 @@ rm -f /tmp/"$name".sql
 psql < tests/features.sql
 psql < tests/admin.sql
 psql < tests/schedule.sql
+psql < tests/payments.sql
 echo "schema checks: ok"

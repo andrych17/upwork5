@@ -13,9 +13,10 @@ insert into auth.users (id, email, raw_user_meta_data) values
   (:'U2', 'u2@example.com', '{"first_name": "Ugo"}'),
   (:'HO', 'ho@example.com', '{"first_name": "Hal", "tier": "household"}');
 update profiles set is_admin = true where id = :'A2';
+select paid(array[:'A2', :'U1', :'U2', :'HO']::uuid[]);
 update profiles set monthly_credits = 5, addon_credits = 1 where id = :'U1';
 insert into auth.users (id, email) values (:'HM', 'hm@example.com');
-update profiles set household_owner_id = :'HO' where id = :'HM';
+update profiles set household_owner_id = :'HO', payment_status = 'active' where id = :'HM';
 insert into auth.sessions (user_id) values (:'U1'), (:'U1');
 insert into sessions (id, title, slug, starts_at, capacity) values
   (:'S1', 'Admin Test Room', 'admin-test-room', now() + interval '5 days', 12);

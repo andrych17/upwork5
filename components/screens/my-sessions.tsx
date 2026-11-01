@@ -13,7 +13,13 @@ import { getSupabase, type MembershipSummary } from '@/lib/supabase';
 import { useNow } from '@/lib/use-now';
 
 const ROOM_OPENS_MINUTES = 10;
-const STATUS = { active: 'Active', past_due: 'Payment due', paused: 'Paused', canceled: 'Canceled' } as const;
+const STATUS = {
+  pending: 'Not started',
+  active: 'Active',
+  past_due: 'Payment due',
+  paused: 'Paused',
+  canceled: 'Canceled',
+} as const;
 
 const refillDay = (iso: string) => {
   const [y, m, d] = iso.split('-').map(Number);

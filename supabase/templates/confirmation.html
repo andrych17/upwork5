@@ -1,0 +1,11 @@
+<div style="font-family: 'DM Sans', Arial, sans-serif; color: #171717; max-width: 480px; margin: 0 auto; padding: 24px">
+  <h2 style="margin: 0 0 12px">Confirm your email</h2>
+  <p style="margin: 0 0 16px">Welcome to MeetDoConnect. Enter this code on the sign-up page to confirm your email:</p>
+  <p
+    style="font-size: 30px; font-weight: 800; letter-spacing: 6px; background: #ffcf46; border: 2px solid #171717; border-radius: 12px; padding: 12px 16px; text-align: center; margin: 0 0 16px"
+  >
+    {{ .Token }}
+  </p>
+  <p style="margin: 0 0 16px">Or confirm with this link: <a href="{{ .ConfirmationURL }}" style="color: #d91f68">Confirm my email</a></p>
+  <p style="margin: 0; font-size: 13px; color: #555">The code works for one hour. If you didn’t sign up, you can ignore this email.</p>
+</div>

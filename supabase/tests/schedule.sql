@@ -6,6 +6,7 @@
 insert into auth.users (id, email, raw_user_meta_data) values
   (:'P1', 'p1@example.com', '{"first_name": "Pia"}'),
   (:'P2', 'p2@example.com', '{"first_name": "Quinn"}');
+select paid(array[:'P1', :'P2']::uuid[]);
 insert into sessions (slug, title, starts_at, capacity, published) values
   ('sched-x', 'Sched X', now() + interval '2 days', 2, true),
   ('sched-z', 'Sched Z', now() + interval '2 days 1 minute', 12, true),

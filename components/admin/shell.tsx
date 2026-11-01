@@ -26,7 +26,15 @@ export function useAdmin(): AdminCtx {
 }
 
 const icon = (d: string) => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.6"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
     <path d={d} />
   </svg>
 );
@@ -39,8 +47,13 @@ const NAV: { title: string; items: { href: Route; label: string; d: string; coun
   {
     title: 'Members',
     items: [
-      { href: '/admin/members', label: 'Members', d: 'M16 19v-1a4 4 0 0 0-8 0v1M12 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M21 19v-1a3 3 0 0 0-3-3M18 5a3 3 0 0 1 0 6' },
+      {
+        href: '/admin/members',
+        label: 'Members',
+        d: 'M16 19v-1a4 4 0 0 0-8 0v1M12 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M21 19v-1a3 3 0 0 0-3-3M18 5a3 3 0 0 1 0 6',
+      },
       { href: '/admin/hello-videos', label: 'Hello Videos', d: 'M4 7h11v10H4zM15 10l5-3v10l-5-3', count: 'hello' },
+      { href: '/admin/payments', label: 'Payments', d: 'M3 6h18v12H3zM3 10h18M7 15h3' },
     ],
   },
   {
@@ -53,7 +66,11 @@ const NAV: { title: string; items: { href: Route; label: string; d: string; coun
   {
     title: 'System',
     items: [
-      { href: '/admin/settings', label: 'Settings', d: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6a7 7 0 0 0 0 2.4l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.07-.4.1-.8.1-1.2' },
+      {
+        href: '/admin/settings',
+        label: 'Settings',
+        d: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6a7 7 0 0 0 0 2.4l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.07-.4.1-.8.1-1.2',
+      },
       { href: '/admin/logs', label: 'Activity log', d: 'M12 7v5l3 2M21 12a9 9 0 1 1-9-9 9 9 0 0 1 9 9' },
     ],
   },
@@ -74,7 +91,10 @@ async function resolveGate(supabase: SupabaseClient): Promise<{ gate: Gate; me: 
 }
 
 async function countPendingHello(supabase: SupabaseClient): Promise<number> {
-  const { count } = await supabase.from('hello_videos').select('id', { count: 'exact', head: true }).eq('status', 'pending');
+  const { count } = await supabase
+    .from('hello_videos')
+    .select('id', { count: 'exact', head: true })
+    .eq('status', 'pending');
   return count ?? 0;
 }
 

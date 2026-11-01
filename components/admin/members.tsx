@@ -15,11 +15,12 @@ import {
   type AdminProfile,
 } from '@/lib/admin';
 
-type Filter = 'all' | 'active' | 'past_due' | 'paused' | 'canceled' | 'off' | 'admins';
+type Filter = 'all' | 'pending' | 'active' | 'past_due' | 'paused' | 'canceled' | 'off' | 'admins';
 
 const FILTERS: { key: Filter; label: string }[] = [
   { key: 'all', label: 'All' },
   { key: 'active', label: 'Active' },
+  { key: 'pending', label: 'Not paid yet' },
   { key: 'past_due', label: 'Past due' },
   { key: 'paused', label: 'Paused' },
   { key: 'canceled', label: 'Canceled' },
@@ -108,7 +109,11 @@ export default function AdminMembers() {
               </button>
             </form>
           </div>
-          {error && <p className="adm-msg adm-msg-error" style={{ margin: '1rem' }}>{error}</p>}
+          {error && (
+            <p className="adm-msg adm-msg-error" style={{ margin: '1rem' }}>
+              {error}
+            </p>
+          )}
           <div className="adm-table-wrap">
             <table className="adm-table">
               <thead>
@@ -132,12 +137,18 @@ export default function AdminMembers() {
                   >
                     <td>
                       <strong>{fullName(m)}</strong>
-                      {m.is_admin && <span className="adm-badge adm-badge-accent" style={{ marginLeft: 6 }}>Admin</span>}
+                      {m.is_admin && (
+                        <span className="adm-badge adm-badge-accent" style={{ marginLeft: 6 }}>
+                          Admin
+                        </span>
+                      )}
                       <span className="adm-sub">{m.email}</span>
                     </td>
                     <td>
                       {m.household_owner_id ? 'Household member' : m.tier === 'household' ? 'Household' : 'Solo'}
-                      <span className="adm-sub">{m.household_owner_id ? 'Shares the holder’s plan' : m.billing_interval}</span>
+                      <span className="adm-sub">
+                        {m.household_owner_id ? 'Shares the holder’s plan' : m.billing_interval}
+                      </span>
                     </td>
                     <td>
                       {m.monthly_credits} monthly
@@ -163,7 +174,12 @@ export default function AdminMembers() {
               {loading ? ' · loading…' : ''}
             </span>
             <div className="adm-toolbar">
-              <button type="button" className="adm-btn adm-btn-sm" disabled={page === 0} onClick={() => setPage(page - 1)}>
+              <button
+                type="button"
+                className="adm-btn adm-btn-sm"
+                disabled={page === 0}
+                onClick={() => setPage(page - 1)}
+              >
                 Previous
               </button>
               <span>

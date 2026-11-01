@@ -1,8 +1,9 @@
 'use client';
 
 // Membership & credits. Plan, status and credit numbers come from get_my_membership() (schema section 14).
-// Online payments are not connected yet, so card, receipts and plan changes say so instead of showing
-// sample billing. Without Supabase (local preview) the page shows the sample member below.
+// Payments run in test mode until the processor is connected (sections 23-24): Pay, extra sessions and
+// cancel work and leave receipts, but no card is charged. Without Supabase (local preview) the page shows the
+// sample member below.
 import AccountMenu from '@/components/account-menu';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
@@ -10,7 +11,8 @@ import HelloVideoCard from '@/components/hello-video-card';
 import HouseholdCard from '@/components/household-card';
 import MenuToggle from '@/components/menu-toggle';
 import { useAccount } from '@/lib/account';
-import { getSupabase, type MembershipSummary } from '@/lib/supabase';
+import { EXTRAS, money, PLANS, type Interval, type Tier } from '@/lib/prices';
+import { getSupabase, type MembershipSummary, type PaymentRow } from '@/lib/supabase';
 
 type Summary = Pick<
   MembershipSummary,
@@ -26,6 +28,9 @@ type Summary = Pick<
   | 'bhd_left'
   | 'bhd_total'
   | 'next_refill'
+  | 'test_payments'
+  | 'paid_until'
+  | 'cancel_at_period_end'
 > & { owner_name?: string };
 
 const SAMPLE: Summary = {
@@ -41,25 +46,20 @@ const SAMPLE: Summary = {
   bhd_left: 2,
   bhd_total: 3,
   next_refill: '2026-06-08',
+  test_payments: true,
+  paid_until: '2026-06-08',
+  cancel_at_period_end: false,
 };
 
-// Same prices as the sign-up page.
-const PRICES = {
-  individual: { monthly: 26, annual: 260, name: 'Solo' },
-  household: { monthly: 34, annual: 349, name: 'Household' },
-} as const;
-
 const STATUS = {
+  pending: { title: ['Your membership', 'hasn’t started yet.'], label: 'Not started' },
   active: { title: ['Everything’s', 'in good standing.'], label: 'Active membership' },
   past_due: { title: ['Your payment', 'needs a look.'], label: 'Payment didn’t go through' },
   paused: { title: ['Your membership', 'is on pause.'], label: 'Paused' },
   canceled: { title: ['Your membership', 'has ended.'], label: 'Canceled' },
 } as const;
 
-const creditOptions = [
-  { amount: 1, price: 4, label: 'A little more room' },
-  { amount: 5, price: 15, label: 'Keep a few handy' },
-];
+type Result = { success: boolean; error?: string; message?: string } | null;
 
 function day(iso: string): string {
   const [y, m, d] = iso.split('-').map(Number);
@@ -73,6 +73,54 @@ async function fetchSummary(): Promise<Summary | null> {
   const s = data as MembershipSummary | null;
   if (error || !s) return null;
   return { ...s, owner_name: s.household?.owner_name };
+}
+
+const SAMPLE_PAYMENTS: PaymentRow[] = [
+  {
+    id: 's1',
+    profile_id: '',
+    kind: 'plan',
+    description: 'Solo membership, monthly',
+    amount_cents: 2600,
+    provider: 'test',
+    status: 'paid',
+    refunded_at: null,
+    refund_reason: null,
+    created_at: '2026-05-08T15:00:00Z',
+  },
+  {
+    id: 's2',
+    profile_id: '',
+    kind: 'extras',
+    description: '5 extra sessions',
+    amount_cents: 1500,
+    provider: 'test',
+    status: 'paid',
+    refunded_at: null,
+    refund_reason: null,
+    created_at: '2026-03-24T15:00:00Z',
+  },
+];
+
+async function fetchPayments(): Promise<PaymentRow[]> {
+  const supabase = getSupabase();
+  if (!supabase) return SAMPLE_PAYMENTS;
+  const { data } = await supabase
+    .from('payments')
+    .select('id, profile_id, kind, description, amount_cents, provider, status, refunded_at, refund_reason, created_at')
+    .order('created_at', { ascending: false })
+    .limit(24);
+  return (data ?? []) as PaymentRow[];
+}
+
+/** Calls a billing RPC and returns its message, or throws the error text. */
+async function billing(fn: string, args: Record<string, unknown>): Promise<string> {
+  const supabase = getSupabase();
+  if (!supabase) return 'Done in this preview.';
+  const { data, error } = await supabase.rpc(fn, args);
+  const res = data as Result;
+  if (error || !res?.success) throw new Error(res?.error || 'That didn’t go through. Please try again.');
+  return res.message ?? '';
 }
 
 function Pips({ left, total, tone }: { left: number; total: number; tone?: 'yellow' }) {
@@ -94,25 +142,25 @@ export default function MembershipPage() {
   const live = Boolean(getSupabase());
   const { ready, account } = useAccount();
   const signedIn = Boolean(account);
-  // Keyed by account id so a sign-in or sign-out in another tab loads again.
-  const [loaded, setLoaded] = useState<{ id: string; summary: Summary | null } | null>(null);
-  const [selectedCredits, setSelectedCredits] = useState(5);
-  const [shopNote, setShopNote] = useState('');
-  const selected = creditOptions.find((option) => option.amount === selectedCredits) ?? creditOptions[1];
+  // Keyed by account id (and a reload counter) so a sign-in elsewhere or a payment loads again.
+  const [tick, setTick] = useState(0);
+  const [loaded, setLoaded] = useState<{ key: string; summary: Summary | null; payments: PaymentRow[] } | null>(null);
 
-  const accountId = account?.id ?? '';
+  const key = `${account?.id ?? ''}|${tick}`;
   useEffect(() => {
     if (!signedIn && live) return;
     let current = true;
-    fetchSummary().then((summary) => {
-      if (current) setLoaded({ id: accountId, summary });
+    Promise.all([fetchSummary(), fetchPayments()]).then(([summary, payments]) => {
+      if (current) setLoaded({ key, summary, payments });
     });
     return () => {
       current = false;
     };
-  }, [accountId, signedIn, live]);
+  }, [key, signedIn, live]);
 
-  const summary = live ? (loaded?.id === accountId ? loaded.summary : undefined) : (loaded?.summary ?? SAMPLE);
+  // While a change reloads, keep showing the last numbers for the same person.
+  const mine = loaded && loaded.key.split('|')[0] === (account?.id ?? '') ? loaded : null;
+  const summary = live ? (mine ? mine.summary : undefined) : (loaded?.summary ?? SAMPLE);
 
   return (
     <main className="membership-page">
@@ -174,21 +222,9 @@ export default function MembershipPage() {
       ) : (
         <Overview
           summary={summary}
+          payments={(live ? mine?.payments : loaded?.payments) ?? []}
           live={live}
-          selected={selected}
-          selectedCredits={selectedCredits}
-          onSelect={(amount) => {
-            setSelectedCredits(amount);
-            setShopNote('');
-          }}
-          shopNote={shopNote}
-          onBuy={() =>
-            setShopNote(
-              live
-                ? 'Buying extra sessions opens once online payments are switched on. Nothing was charged.'
-                : `${selected.amount === 1 ? 'One session' : 'Five sessions'} added in this preview.`,
-            )
-          }
+          reload={() => setTick((t) => t + 1)}
         />
       )}
     </main>
@@ -197,21 +233,47 @@ export default function MembershipPage() {
 
 interface OverviewProps {
   summary: Summary;
+  payments: PaymentRow[];
   live: boolean;
-  selected: (typeof creditOptions)[number];
-  selectedCredits: number;
-  onSelect: (amount: number) => void;
-  shopNote: string;
-  onBuy: () => void;
+  reload: () => void;
 }
 
-function Overview({ summary: s, live, selected, selectedCredits, onSelect, shopNote, onBuy }: OverviewProps) {
-  const plan = PRICES[s.tier];
+function Overview({ summary: s, payments, live, reload }: OverviewProps) {
+  const plan = PLANS[s.tier];
   const price = s.billing_interval === 'annual' ? plan.annual : plan.monthly;
   const status = STATUS[s.payment_status];
   const isMember = s.role === 'member';
+  const running = s.payment_status === 'active';
   const weekText = s.week_limit === null ? 'no weekly limit' : `up to ${s.week_limit} per week`;
   const shared = s.tier === 'household' ? ', shared by your household' : '';
+  const nextDay = s.paid_until ?? s.next_refill;
+
+  const [selectedCredits, setSelectedCredits] = useState(5);
+  const selected = EXTRAS.find((option) => option.amount === selectedCredits) ?? EXTRAS[1];
+  const [busy, setBusy] = useState('');
+  const [note, setNote] = useState<{ where: 'shop' | 'plan' | 'manage'; text: string; error?: boolean } | null>(null);
+  const [newTier, setNewTier] = useState<Tier>(s.tier);
+  const [newInterval, setNewInterval] = useState<Interval>(s.billing_interval);
+
+  const act = async (where: 'shop' | 'plan' | 'manage', fn: string, args: Record<string, unknown>, done: string) => {
+    setBusy(where);
+    setNote(null);
+    try {
+      const message = await billing(fn, args);
+      setNote({ where, text: message || done });
+      reload();
+    } catch (e) {
+      setNote({ where, text: e instanceof Error ? e.message : String(e), error: true });
+    }
+    setBusy('');
+  };
+
+  const noteFor = (where: 'shop' | 'plan' | 'manage') =>
+    note?.where === where && (
+      <div className={note.error ? 'purchase-success purchase-error' : 'purchase-success'} role="status">
+        {note.text}
+      </div>
+    );
 
   return (
     <>
@@ -227,15 +289,103 @@ function Overview({ summary: s, live, selected, selectedCredits, onSelect, shopN
         <div className="active-status" data-status={s.payment_status}>
           <span className="active-status-dot" />
           <div>
-            <strong>{status.label}</strong>
+            <strong>{s.cancel_at_period_end && running ? 'Ends soon' : status.label}</strong>
             <p>
               {s.payment_status === 'past_due'
                 ? 'Booking pauses if the payment isn’t fixed within a few days.'
-                : `Next monthly sessions arrive ${day(s.next_refill)}.`}
+                : s.payment_status === 'pending'
+                  ? 'Choose a plan below to start booking.'
+                  : !running
+                    ? 'Restart below whenever you’re ready.'
+                    : s.cancel_at_period_end
+                      ? `Your membership ends ${day(nextDay)}.`
+                      : `Next monthly sessions arrive ${day(s.next_refill)}.`}
             </p>
           </div>
         </div>
       </section>
+
+      {!running && !isMember && (
+        <section className="buy-credits start-plan" id="plan">
+          <div className="buy-copy">
+            <p className="section-label">
+              {s.payment_status === 'pending' ? 'Start your membership' : 'Pick up again'}
+            </p>
+            <h2>
+              {s.payment_status === 'past_due' || s.payment_status === 'paused' ? (
+                <>
+                  Settle the payment,
+                  <br />
+                  keep your seats.
+                </>
+              ) : (
+                <>
+                  Choose a plan,
+                  <br />
+                  start booking today.
+                </>
+              )}
+            </h2>
+            <p>
+              Your month starts on the day you pay, and the plan’s sessions arrive right away.
+              {s.test_payments && ' Payments are in test mode: nothing is charged.'}
+            </p>
+          </div>
+          <div className="credit-shop">
+            {noteFor('plan')}
+            <div className="credit-options" role="radiogroup" aria-label="Plan">
+              {(Object.keys(PLANS) as Tier[]).flatMap((t) =>
+                (['monthly', 'annual'] as Interval[]).map((i) => (
+                  <button
+                    className={newTier === t && newInterval === i ? 'selected' : ''}
+                    type="button"
+                    role="radio"
+                    aria-checked={newTier === t && newInterval === i}
+                    key={`${t}-${i}`}
+                    onClick={() => {
+                      setNewTier(t);
+                      setNewInterval(i);
+                    }}
+                  >
+                    <span>{i === 'annual' ? 'Annual' : 'Monthly'}</span>
+                    <strong>{PLANS[t].name}</strong>
+                    <small>{PLANS[t].credits} sessions a month</small>
+                    <b>${PLANS[t][i]}</b>
+                  </button>
+                )),
+              )}
+            </div>
+            <div className="purchase-total">
+              <div>
+                <span>
+                  {PLANS[newTier].name}, {newInterval}
+                </span>
+                <strong>{money(PLANS[newTier][newInterval] * 100)}</strong>
+              </div>
+              <button
+                type="button"
+                disabled={busy !== ''}
+                onClick={() =>
+                  void act(
+                    'plan',
+                    'test_checkout',
+                    { p_tier: newTier, p_interval: newInterval },
+                    'Paid. Your membership is active and your sessions are ready.',
+                  )
+                }
+              >
+                {busy === 'plan' ? 'Paying…' : `Pay ${money(PLANS[newTier][newInterval] * 100)}`}{' '}
+                <span aria-hidden="true">→</span>
+              </button>
+              <p>
+                {s.test_payments
+                  ? 'Test mode: no card is charged. A receipt appears below.'
+                  : 'Renews automatically. Cancel anytime.'}
+              </p>
+            </div>
+          </div>
+        </section>
+      )}
 
       <section className="membership-overview">
         <article className="current-plan">
@@ -268,7 +418,6 @@ function Overview({ summary: s, live, selected, selectedCredits, onSelect, shopN
             <span>Activity buddy picks</span>
             <span>Member-only rooms</span>
           </div>
-          {!live && <button type="button">Switch to annual · ${plan.annual}</button>}
         </article>
 
         <div className="credit-overview">
@@ -309,56 +458,71 @@ function Overview({ summary: s, live, selected, selectedCredits, onSelect, shopN
 
       <HelloVideoCard />
 
-      <section className="buy-credits" id="credits">
-        <div className="buy-copy">
-          <p className="section-label">Want another session?</p>
-          <h2>
-            Keep an extra
-            <br />
-            hour in your pocket.
-          </h2>
-          <p>
-            Extra sessions are used after your monthly sessions, or once you reach the weekly limit. They never expire
-            and stay with your account until you need them.
-          </p>
-        </div>
-        <div className="credit-shop">
-          {shopNote && (
-            <div className="purchase-success" role="status">
-              {shopNote}
+      {(running || isMember) && (
+        <section className="buy-credits" id="credits">
+          <div className="buy-copy">
+            <p className="section-label">Want another session?</p>
+            <h2>
+              Keep an extra
+              <br />
+              hour in your pocket.
+            </h2>
+            <p>
+              Extra sessions are used after your monthly sessions, or once you reach the weekly limit. They never expire
+              and stay with your account until you need them.
+            </p>
+          </div>
+          <div className="credit-shop">
+            {noteFor('shop')}
+            <div className="credit-options" role="radiogroup" aria-label="Choose extra sessions">
+              {EXTRAS.map((option) => (
+                <button
+                  className={selectedCredits === option.amount ? 'selected' : ''}
+                  type="button"
+                  role="radio"
+                  aria-checked={selectedCredits === option.amount}
+                  key={option.amount}
+                  onClick={() => {
+                    setSelectedCredits(option.amount);
+                    setNote(null);
+                  }}
+                >
+                  <span>{option.label}</span>
+                  <strong>{option.amount}</strong>
+                  <small>{option.amount === 1 ? 'extra session' : 'extra sessions'}</small>
+                  <b>${option.price}</b>
+                </button>
+              ))}
             </div>
-          )}
-          <div className="credit-options" role="radiogroup" aria-label="Choose extra sessions">
-            {creditOptions.map((option) => (
+            <div className="purchase-total">
+              <div>
+                <span>
+                  {selected.amount} extra {selected.amount === 1 ? 'session' : 'sessions'}
+                </span>
+                <strong>{money(selected.price * 100)}</strong>
+              </div>
               <button
-                className={selectedCredits === option.amount ? 'selected' : ''}
                 type="button"
-                role="radio"
-                aria-checked={selectedCredits === option.amount}
-                key={option.amount}
-                onClick={() => onSelect(option.amount)}
+                disabled={busy !== ''}
+                onClick={() =>
+                  void act(
+                    'shop',
+                    'test_buy_extras',
+                    { p_count: selected.amount },
+                    `${selected.amount === 1 ? 'One extra session' : `${selected.amount} extra sessions`} added to your account.`,
+                  )
+                }
               >
-                <span>{option.label}</span>
-                <strong>{option.amount}</strong>
-                <small>{option.amount === 1 ? 'extra session' : 'extra sessions'}</small>
-                <b>${option.price}</b>
+                {busy === 'shop' ? 'Adding…' : 'Add to my account'} <span aria-hidden="true">→</span>
               </button>
-            ))}
-          </div>
-          <div className="purchase-total">
-            <div>
-              <span>
-                {selected.amount} extra {selected.amount === 1 ? 'session' : 'sessions'}
-              </span>
-              <strong>${selected.price}.00</strong>
+              <p>
+                Charged once. Extra sessions are non-refundable.
+                {s.test_payments && ' Test mode: no card is charged.'}
+              </p>
             </div>
-            <button type="button" onClick={onBuy}>
-              Add to my account <span aria-hidden="true">→</span>
-            </button>
-            <p>Charged once. Extra sessions are non-refundable.</p>
           </div>
-        </div>
-      </section>
+        </section>
+      )}
 
       <section className="billing-section">
         <div className="billing-heading">
@@ -369,8 +533,14 @@ function Overview({ summary: s, live, selected, selectedCredits, onSelect, shopN
           <article className="payment-method">
             <div>
               <span>Payment method</span>
-              <strong>{live ? 'Not connected yet' : 'Visa ···· 4242'}</strong>
-              <small>{live ? 'Your card shows here once online payments are switched on.' : 'Expires 08/28'}</small>
+              <strong>{!live ? 'Visa ···· 4242' : s.test_payments ? 'Test mode' : 'Card on file'}</strong>
+              <small>
+                {!live
+                  ? 'Expires 08/28'
+                  : s.test_payments
+                    ? 'Card payments are being connected. Nothing is charged for now.'
+                    : 'Managed by our payment processor.'}
+              </small>
             </div>
           </article>
           <article className="next-payment">
@@ -381,10 +551,20 @@ function Overview({ summary: s, live, selected, selectedCredits, onSelect, shopN
                   <strong>Covered by your household</strong>
                   <small>{s.owner_name ?? 'Your account holder'} pays for the plan.</small>
                 </>
+              ) : !running ? (
+                <>
+                  <strong>None scheduled</strong>
+                  <small>Start or restart your membership above.</small>
+                </>
+              ) : s.cancel_at_period_end ? (
+                <>
+                  <strong>None, ends {day(nextDay)}</strong>
+                  <small>You can keep booking until then.</small>
+                </>
               ) : (
                 <>
                   <strong>
-                    ${price} {s.billing_interval === 'annual' ? 'a year' : `on ${day(s.next_refill)}`}
+                    ${price} on {day(nextDay)}
                   </strong>
                   <small>Your membership renews automatically.</small>
                 </>
@@ -393,28 +573,34 @@ function Overview({ summary: s, live, selected, selectedCredits, onSelect, shopN
           </article>
         </div>
 
-        {!live && (
-          <div className="payment-history">
-            <div className="history-heading">
-              <strong>Payment history</strong>
-              <span>Amount</span>
-            </div>
-            <div>
-              <span>
-                <b>May 8, 2026</b> Monthly membership
-              </span>
-              <strong>$26.00</strong>
-              <button type="button">Receipt</button>
-            </div>
-            <div>
-              <span>
-                <b>March 24, 2026</b> 5 extra sessions
-              </span>
-              <strong>$15.00</strong>
-              <button type="button">Receipt</button>
-            </div>
+        <div className="payment-history">
+          <div className="history-heading">
+            <strong>Payment history</strong>
+            <span>Amount</span>
           </div>
-        )}
+          {payments.length === 0 && (
+            <div>
+              <span>No payments yet.</span>
+            </div>
+          )}
+          {payments.map((p) => (
+            <div key={p.id}>
+              <span>
+                <b>
+                  {new Date(p.created_at).toLocaleDateString('en-US', {
+                    month: 'long',
+                    day: 'numeric',
+                    year: 'numeric',
+                  })}
+                </b>{' '}
+                {p.description}
+                {p.provider === 'test' && <em className="test-badge">Test</em>}
+              </span>
+              <strong className={p.status === 'refunded' ? 'refunded' : undefined}>{money(p.amount_cents)}</strong>
+              <span className="receipt-status">{p.status === 'refunded' ? 'Refunded' : 'Paid'}</span>
+            </div>
+          ))}
+        </div>
       </section>
 
       <section className="manage-membership">
@@ -424,22 +610,33 @@ function Overview({ summary: s, live, selected, selectedCredits, onSelect, shopN
           <p>
             Your membership keeps running until you decide otherwise. If you cancel, you can keep booking through your
             paid-through date and restart whenever you are ready.
-            {live && ' Plan changes and cancellations open here once online payments are switched on.'}
           </p>
+          {noteFor('manage')}
         </div>
         <div className="manage-actions">
-          <Link className="state-preview-link" href="/states">
-            Developer: preview P1 states
-          </Link>
           {!live && (
-            <>
-              <button type="button">Change billing cycle</button>
-              <button className="cancel-membership" type="button">
-                Cancel membership
-              </button>
-            </>
+            <Link className="state-preview-link" href="/states">
+              Developer: preview P1 states
+            </Link>
           )}
-          <Link href="/terms" target="_blank" rel="noreferrer">
+          {running && !isMember && (
+            <button
+              className={s.cancel_at_period_end ? undefined : 'cancel-membership'}
+              type="button"
+              disabled={busy !== ''}
+              onClick={() => {
+                if (
+                  !s.cancel_at_period_end &&
+                  !window.confirm(`Cancel your membership? It runs until ${day(nextDay)}.`)
+                )
+                  return;
+                void act('manage', 'cancel_membership', { p_cancel: !s.cancel_at_period_end }, 'Saved.');
+              }}
+            >
+              {busy === 'manage' ? 'Saving…' : s.cancel_at_period_end ? 'Keep my membership' : 'Cancel membership'}
+            </button>
+          )}
+          <Link href="/terms" target="_blank" rel="noopener noreferrer">
             Terms & Conditions <span aria-hidden="true">↗</span>
           </Link>
         </div>
