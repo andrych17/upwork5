@@ -125,3 +125,62 @@
     order: -1;
   }
 }
+
+/* Email and text choices (components/reminder-prefs.tsx), under the device card. */
+.reminders-side {
+  align-content: start;
+  gap: 22px;
+  display: grid;
+}
+
+.reminder-toggle {
+  cursor: pointer;
+  align-items: flex-start;
+  gap: 12px;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  display: flex;
+}
+
+.reminder-toggle input {
+  accent-color: var(--berry);
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin: 1px 0 0;
+}
+
+.reminder-toggle strong {
+  display: block;
+}
+
+.reminder-phone {
+  gap: 8px;
+  font-size: 0.75rem;
+  font-weight: 800;
+  display: grid;
+}
+
+.reminder-phone input {
+  border: 1.5px solid var(--ink);
+  background: var(--paper);
+  font: inherit;
+  border-radius: 999px;
+  min-height: 44px;
+  padding: 0 18px;
+  font-size: 0.85rem;
+  font-weight: 400;
+}
+
+.reminder-phone small {
+  color: #55524c;
+  font-size: 0.7rem;
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+@media (max-width: 960px) {
+  .reminders-side {
+    order: -1;
+  }
+}

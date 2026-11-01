@@ -7,5 +7,14 @@ export default defineConfig([
   ...nextTs,
   // Static export has no image optimizer; photos in public/images are already resized WebP.
   { rules: { '@next/next/no-img-element': 'off' } },
-  globalIgnores(['.next/**', 'out/**', 'dist/**', 'public/**', 'next-env.d.ts', 'lib/word-rush/words.ts']),
+  // Edge Functions are Deno code, checked by `bash supabase/tests/run-deno.sh`.
+  globalIgnores([
+    '.next/**',
+    'out/**',
+    'dist/**',
+    'public/**',
+    'next-env.d.ts',
+    'lib/word-rush/words.ts',
+    'supabase/functions/**',
+  ]),
 ]);

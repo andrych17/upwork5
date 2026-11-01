@@ -61,10 +61,18 @@ export interface MembershipSummary {
   week_used: number;
   /** null = no weekly limit */
   week_limit: number | null;
+  /** true: everyone on a Household plan shares the weekly limit (app_config.weekly_limit_scope) */
+  week_limit_shared: boolean;
   bhd_left: number;
   bhd_total: number;
   /** YYYY-MM-DD, when the next month's credits arrive */
   next_refill: string;
+  /** Hello Video review (section 19); hello_required = app_config.require_hello_video,
+   *  hello_hold = people can book before approval and the booking is held (app_config.hello_hold_bookings) */
+  hello_status: 'none' | 'pending' | 'approved' | 'rejected' | 'declined';
+  hello_required: boolean;
+  hello_hold: boolean;
+  reminders: { email: boolean; sms: boolean; phone: string | null };
   household: {
     max_people: number;
     owner_name: string;

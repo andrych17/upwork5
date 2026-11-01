@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
+import HelloVideoCard from '@/components/hello-video-card';
 import HouseholdCard from '@/components/household-card';
 import MenuToggle from '@/components/menu-toggle';
 
@@ -114,6 +115,8 @@ export default function MembershipPage() {
       </section>
 
       <HouseholdCard />
+
+      <HelloVideoCard />
 
       <section className="buy-credits" id="credits">
         <div className="buy-copy">

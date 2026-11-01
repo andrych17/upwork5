@@ -2,13 +2,16 @@
 
 // Reminders: turn on notifications for this device and send a test, so members can see what the
 // 24-hour and 1-hour reminders look like. Tests are shown by this device's service worker (public/sw.js).
-// Reminders for booked sessions need a push sender on the server, which comes with the reminders milestone.
+// Signed in, with NEXT_PUBLIC_VAPID_PUBLIC_KEY set, the device is also saved for real reminders
+// (lib/push.ts), which the send-reminders Edge Function delivers. Email and SMS choices: components/reminder-prefs.tsx.
 // - iPhone and iPad show notifications only in the Home Screen app (iOS 16.4+), so Safari gets install steps.
 // - Android and desktop browsers show them right away; installing is optional.
 import Link from 'next/link';
-import { useState, useSyncExternalStore } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import InstallButton from '@/components/install-button';
 import MenuToggle from '@/components/menu-toggle';
+import ReminderPrefs from '@/components/reminder-prefs';
+import { isSignedIn, removePushSubscription, savePushSubscription, VAPID_PUBLIC_KEY } from '@/lib/push';
 
 type Status = 'checking' | 'unsupported' | 'ios-install' | NotificationPermission;
 
@@ -85,7 +88,25 @@ export default function RemindersPage() {
   const ios = useSyncExternalStore(subscribe, isIOS, () => false);
   const [asking, setAsking] = useState(false);
   const [message, setMessage] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null);
+  // Real reminders on this device: null until checked, then on or off (signed in and keys set only).
+  const [device, setDevice] = useState<'on' | 'off' | null>(null);
   const note = NOTE[status];
+
+  // Keep this device's subscription saved; the browser can rotate it and a new sign-in moves it over.
+  useEffect(() => {
+    if (status !== 'granted' || !VAPID_PUBLIC_KEY) return;
+    let current = true;
+    (async () => {
+      if (!(await isSignedIn())) return;
+      const problem = await savePushSubscription().catch(() => 'Could not save this device.');
+      if (!current) return;
+      setDevice(problem ? 'off' : 'on');
+      if (problem) setMessage({ tone: 'error', text: problem });
+    })();
+    return () => {
+      current = false;
+    };
+  }, [status]);
 
   async function turnOn() {
     setAsking(true);
@@ -95,6 +116,23 @@ export default function RemindersPage() {
       setAsking(false);
       emit();
     }
+  }
+
+  async function turnOffDevice() {
+    setMessage(null);
+    await removePushSubscription().catch(() => undefined);
+    setDevice('off');
+    setMessage({
+      tone: 'ok',
+      text: 'Reminders are off on this device. Email and text choices below stay as they are.',
+    });
+  }
+
+  async function turnOnDevice() {
+    setMessage(null);
+    const problem = await savePushSubscription().catch(() => 'Could not save this device.');
+    setDevice(problem ? 'off' : 'on');
+    setMessage(problem ? { tone: 'error', text: problem } : { tone: 'ok', text: 'Reminders are on for this device.' });
   }
 
   async function test(kind: TestKind) {
@@ -170,78 +208,93 @@ export default function RemindersPage() {
           </div>
         </div>
 
-        <div className="reminders-card">
-          {status === 'ios-install' && (
-            <>
-              <h2>Three steps on iPhone</h2>
-              <ol className="reminders-steps">
-                <li>
-                  <strong>Tap Share</strong> in Safari: the square with an arrow, at the bottom (top right on iPad).
-                </li>
-                <li>
-                  <strong>Tap Add to Home Screen</strong>, then Add. Scroll the list if you don’t see it.
-                </li>
-                <li>
-                  <strong>Open MeetDoConnect from your Home Screen</strong>, go to Calendar, tap Set up reminders and
-                  turn them on.
-                </li>
-              </ol>
-            </>
-          )}
+        <div className="reminders-side">
+          <div className="reminders-card">
+            {status === 'ios-install' && (
+              <>
+                <h2>Three steps on iPhone</h2>
+                <ol className="reminders-steps">
+                  <li>
+                    <strong>Tap Share</strong> in Safari: the square with an arrow, at the bottom (top right on iPad).
+                  </li>
+                  <li>
+                    <strong>Tap Add to Home Screen</strong>, then Add. Scroll the list if you don’t see it.
+                  </li>
+                  <li>
+                    <strong>Open MeetDoConnect from your Home Screen</strong>, go to Calendar, tap Set up reminders and
+                    turn them on.
+                  </li>
+                </ol>
+              </>
+            )}
 
-          {status === 'default' && (
-            <>
-              <h2>Turn on reminders</h2>
-              <button className="enter-room" type="button" disabled={asking} onClick={turnOn}>
-                {asking ? 'Waiting for your answer…' : 'Turn on reminders'} <span aria-hidden="true">→</span>
-              </button>
-              <p className="reminders-tip">Your browser asks once. Tap Allow.</p>
-              <InstallButton />
-            </>
-          )}
-
-          {status === 'granted' && (
-            <>
-              <h2>Send a test</h2>
-              {(Object.keys(TESTS) as TestKind[]).map((kind, index) => (
-                <button
-                  key={kind}
-                  className={`enter-room ${index ? 'reminders-secondary' : ''}`}
-                  type="button"
-                  onClick={() => test(kind)}
-                >
-                  {TESTS[kind].label} <span aria-hidden="true">→</span>
+            {status === 'default' && (
+              <>
+                <h2>Turn on reminders</h2>
+                <button className="enter-room" type="button" disabled={asking} onClick={turnOn}>
+                  {asking ? 'Waiting for your answer…' : 'Turn on reminders'} <span aria-hidden="true">→</span>
                 </button>
-              ))}
-              {message && (
-                <p className={`reminders-message ${message.tone}`} role="status">
-                  {message.text}
+                <p className="reminders-tip">Your browser asks once. Tap Allow.</p>
+                <InstallButton />
+              </>
+            )}
+
+            {status === 'granted' && (
+              <>
+                <h2>Send a test</h2>
+                {(Object.keys(TESTS) as TestKind[]).map((kind, index) => (
+                  <button
+                    key={kind}
+                    className={`enter-room ${index ? 'reminders-secondary' : ''}`}
+                    type="button"
+                    onClick={() => test(kind)}
+                  >
+                    {TESTS[kind].label} <span aria-hidden="true">→</span>
+                  </button>
+                ))}
+                {device === 'on' && (
+                  <button className="enter-room reminders-secondary" type="button" onClick={turnOffDevice}>
+                    Stop reminders on this device
+                  </button>
+                )}
+                {device === 'off' && (
+                  <button className="enter-room reminders-secondary" type="button" onClick={turnOnDevice}>
+                    Get reminders on this device
+                  </button>
+                )}
+                {message && (
+                  <p className={`reminders-message ${message.tone}`} role="status">
+                    {message.text}
+                  </p>
+                )}
+                <p className="reminders-tip">
+                  Nothing showed up? Turn off Do Not Disturb or Focus, and check that notifications are allowed for your
+                  browser in your phone or computer settings.
                 </p>
-              )}
-              <p className="reminders-tip">
-                Nothing showed up? Turn off Do Not Disturb or Focus, and check that notifications are allowed for your
-                browser in your phone or computer settings.
-              </p>
-            </>
-          )}
+              </>
+            )}
 
-          {status === 'denied' && (
-            <>
-              <h2>Allow notifications</h2>
-              <p className="reminders-tip">
-                {ios
-                  ? 'Open Settings, then Notifications, then MeetDoConnect, and turn on Allow Notifications.'
-                  : 'Tap the icon to the left of the web address, open Site settings (or Permissions), set Notifications to Allow, then reload this page. In the installed Android app: hold the MeetDoConnect icon, tap App info, then Notifications.'}
-              </p>
-            </>
-          )}
+            {status === 'denied' && (
+              <>
+                <h2>Allow notifications</h2>
+                <p className="reminders-tip">
+                  {ios
+                    ? 'Open Settings, then Notifications, then MeetDoConnect, and turn on Allow Notifications.'
+                    : 'Tap the icon to the left of the web address, open Site settings (or Permissions), set Notifications to Allow, then reload this page. In the installed Android app: hold the MeetDoConnect icon, tap App info, then Notifications.'}
+                </p>
+              </>
+            )}
 
-          {(status === 'checking' || status === 'unsupported') && <p className="reminders-tip">{note.text}</p>}
+            {(status === 'checking' || status === 'unsupported') && <p className="reminders-tip">{note.text}</p>}
 
-          <p className="join-window-note">
-            Tests come from this device. Reminders for the sessions you book are sent automatically once member
-            reminders go live.
-          </p>
+            <p className="join-window-note">
+              {device === 'on'
+                ? 'Tests come from this device. Reminders for the sessions you book arrive on every device where you turned them on.'
+                : 'Tests come from this device. Reminders for the sessions you book are sent automatically once member reminders go live.'}
+            </p>
+          </div>
+
+          <ReminderPrefs />
         </div>
       </section>
     </main>

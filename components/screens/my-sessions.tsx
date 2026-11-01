@@ -5,7 +5,18 @@ import { useState } from 'react';
 import { getSession } from '@/lib/session-data';
 import MenuToggle from '@/components/menu-toggle';
 
-const bookings = [
+interface SampleBooking {
+  session: ReturnType<typeof getSession>;
+  fullDate: string;
+  time: string;
+  deadline: string;
+  joinState: 'open' | 'waiting';
+  attending: number;
+  /** Booked before the Hello Video was approved (bookings.held): no Join until approval */
+  held?: boolean;
+}
+
+const bookings: SampleBooking[] = [
   {
     session: getSession('quiet-co-work'),
     fullDate: 'Monday, May 18',
@@ -176,7 +187,15 @@ export default function MySessionsPage() {
                     </div>
                   </div>
                   <div className="join-session">
-                    {booking.joinState === 'open' && index === 0 ? (
+                    {booking.held ? (
+                      <>
+                        <strong>Waiting for approval</strong>
+                        <p>Your seat is held until your Hello Video is approved.</p>
+                        <button type="button" disabled>
+                          Join room
+                        </button>
+                      </>
+                    ) : booking.joinState === 'open' && index === 0 ? (
                       <>
                         <span className="room-open-dot" />
                         <strong>Room is open</strong>

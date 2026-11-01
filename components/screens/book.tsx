@@ -24,11 +24,7 @@ export default function BookPage({ slug }: { slug: string }) {
     try {
       const supabase = getSupabase();
       if (supabase) {
-        const { data: sessionData } = await supabase
-          .from('sessions')
-          .select('id')
-          .eq('slug', slug)
-          .maybeSingle();
+        const { data: sessionData } = await supabase.from('sessions').select('id').eq('slug', slug).maybeSingle();
 
         if (sessionData?.id) {
           const { data: rpcRes, error: rpcErr } = await supabase.rpc('book_session', {
@@ -295,16 +291,13 @@ export default function BookPage({ slug }: { slug: string }) {
               </div>
             )}
 
-            <button
-              className="confirm-booking"
-              type="button"
-              onClick={confirm}
-              disabled={isBooking}
-            >
-              {isBooking ? 'Saving seat...' : inviting ? `Confirm & invite ${inviting}` : 'Confirm with 1 credit'} <span aria-hidden="true">→</span>
+            <button className="confirm-booking" type="button" onClick={confirm} disabled={isBooking}>
+              {isBooking ? 'Saving seat...' : inviting ? `Confirm & invite ${inviting}` : 'Confirm with 1 credit'}{' '}
+              <span aria-hidden="true">→</span>
             </button>
             <p className="cancel-copy">
-              Free cancellation until 24 hours before the session starts. After that, you can release the seat but the credit is used.
+              Free cancellation until 24 hours before the session starts. After that, you can release the seat but the
+              credit is used.
             </p>
           </div>
           <div className="booking-help">

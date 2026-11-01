@@ -3,7 +3,7 @@
    and fall back to the saved copy when there is no connection.
    Next.js build files under /_next/static/ never change once built, so those come from the cache first.
    Bump CACHE when you change the lists below. */
-var CACHE = "meetdoconnect-v4";
+var CACHE = "meetdoconnect-v5";
 var PAGES = ["/", "/calendar", "/games", "/signup", "/rules", "/terms", "/privacy", "/offline"];
 var FILES = ["/manifest.webmanifest", "/icons/icon.svg", "/icons/icon-192.png", "/icons/icon-512.png", "/fonts/bricolage-grotesque-latin.woff2", "/fonts/dm-sans-latin.woff2"];
 
@@ -53,6 +53,24 @@ function put(req, res) {
   }
   return res;
 }
+
+// Reminders from the server (supabase/functions/send-reminders) arrive as { title, body, url, tag }.
+self.addEventListener("push", function (event) {
+  var data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch (e) {
+    data = { body: event.data ? event.data.text() : "" };
+  }
+  event.waitUntil(
+    self.registration.showNotification(data.title || "MeetDoConnect", {
+      body: data.body || "",
+      icon: "/icons/icon-192.png",
+      tag: data.tag,
+      data: { url: data.url || "/sessions" },
+    })
+  );
+});
 
 // Tapping a reminder opens the page it points to (data.url), or brings that page to the front if it is open.
 // Only paths on this site are followed.
