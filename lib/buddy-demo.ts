@@ -1,7 +1,8 @@
 import { useSyncExternalStore } from 'react';
 
-// Buddy Room demo state shared by After session, Calendar and Book until real accounts and chat arrive
-// (Milestones 2 and 4). Kept in sessionStorage so an invite survives the trip to the calendar and back.
+// Buddy Room state shared by After session, Calendar and Book, kept in sessionStorage so an invite survives the
+// trip to the calendar and back. With Supabase only `inviting`/`invitingId` are used (the buddy being invited);
+// the rest is the sample Buddy Room for the local preview without a database.
 
 export const MAX_PICKS = 3;
 
@@ -10,8 +11,9 @@ export interface BuddyDemo {
   saved: boolean;
   /** Buddy Room that is open */
   chat: string | null;
-  /** buddy being invited while the member browses the calendar */
+  /** buddy being invited while the member browses the calendar (name, and profile id when live) */
   inviting: string | null;
+  invitingId: string | null;
   /** buddy name -> booked session slug */
   sessionInvites: Record<string, string>;
   gameInvites: Record<string, string>;
@@ -24,6 +26,7 @@ const EMPTY: BuddyDemo = {
   saved: false,
   chat: null,
   inviting: null,
+  invitingId: null,
   sessionInvites: {},
   gameInvites: {},
   messages: {},

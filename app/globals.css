@@ -13,6 +13,8 @@
 @import './reminders.css';
 /* Hello Video recorder and its Membership card. */
 @import './hello-video.css';
+/* Buddy Rooms: picks after a session and the private chat. */
+@import './buddies.css';
 @import './account.css';
 @import './admin.css';
 @import './nav.css';

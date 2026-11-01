@@ -18,7 +18,7 @@ export default function InviteBanner({ place }: { place: 'calendar' | 'book' }) 
             : `Confirming sends this session to ${inviting} in your Buddy Room. ${inviting} confirms with their own credit.`}
         </p>
       </div>
-      <button type="button" onClick={() => updateBuddyDemo((demo) => ({ ...demo, inviting: null }))}>
+      <button type="button" onClick={() => updateBuddyDemo((demo) => ({ ...demo, inviting: null, invitingId: null }))}>
         Cancel invite
       </button>
     </div>
