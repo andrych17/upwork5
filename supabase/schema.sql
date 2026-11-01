@@ -2038,3 +2038,120 @@ revoke execute on function admin_delete_session(uuid) from public, anon;
 grant execute on function admin_delete_session(uuid) to authenticated;
 revoke execute on function admin_update_config(jsonb) from public, anon;
 grant execute on function admin_update_config(jsonb) to authenticated;
+
+-- 22. Member schedule: calendar, booking page, My sessions and the phone tab bar (1 Nov).
+-- Published sessions with how many seats are taken. Only counts leave the function, so member names
+-- stay private (bookings RLS shows people their own rows only). For a signed-in member each row also
+-- says whether they hold a seat. p_slug picks one session (booking page); p_mine lists the caller's own
+-- seats that have not ended (My sessions, tab bar); otherwise sessions starting in [p_from, p_to), at
+-- most 190 days so one call cannot pull the whole table.
+drop function if exists get_schedule(timestamptz, timestamptz, text);
+create or replace function get_schedule(p_from timestamptz, p_to timestamptz, p_slug text default null,
+                                        p_mine boolean default false)
+returns table (
+  id uuid,
+  slug text,
+  title text,
+  blurb text,
+  host text,
+  prep text,
+  starts_at timestamptz,
+  minutes int,
+  capacity int,
+  booked int,
+  closes_at timestamptz,
+  cancel_by timestamptz,
+  my_booking_id uuid,
+  my_camera_off boolean,
+  my_held boolean
+)
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+#variable_conflict use_column
+declare
+  v_cfg app_config%rowtype;
+begin
+  if p_slug is null and not coalesce(p_mine, false) and (p_from is null or p_to is null or p_to <= p_from or p_to - p_from > interval '190 days') then
+    raise exception 'Pick a range of up to 190 days.' using errcode = '22023';
+  end if;
+  select * into v_cfg from app_config c where c.id = 1;
+  return query
+  select s.id, s.slug, s.title, s.blurb, s.host, s.prep, s.starts_at, s.minutes, s.capacity,
+         coalesce(n.seats, 0)::int,
+         s.starts_at - make_interval(mins => v_cfg.booking_closes_minutes),
+         s.starts_at - make_interval(hours => v_cfg.cancel_hours),
+         m.id, m.camera_off, m.held
+  from sessions s
+  left join lateral (
+    select count(*) as seats from bookings b where b.session_id = s.id and b.status = 'confirmed'
+  ) n on true
+  left join bookings m on m.session_id = s.id and m.user_id = auth.uid() and m.status = 'confirmed'
+  where s.published
+    and case when p_slug is not null then s.slug = p_slug
+             when coalesce(p_mine, false) then m.id is not null and s.starts_at + make_interval(mins => s.minutes) > now()
+             else s.starts_at >= p_from and s.starts_at < p_to end
+  order by s.starts_at
+  limit 500;
+end;
+$$;
+
+-- Bad Hair Day after booking (My sessions): camera off or back on for a seat you hold, until the
+-- session starts. Turning it off uses one of that month's cards, counted the same way as book_session.
+create or replace function set_booking_camera(p_booking_id uuid, p_camera_off boolean)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_cfg app_config%rowtype;
+  v_user_id uuid := auth.uid();
+  v_booking bookings%rowtype;
+  v_session sessions%rowtype;
+  v_used int;
+begin
+  if v_user_id is null then
+    return jsonb_build_object('success', false, 'error', 'Please sign in.');
+  end if;
+  select * into v_cfg from app_config where id = 1;
+  -- One person's toggles run one at a time, so two at once cannot both take the last card.
+  perform 1 from profiles where id = v_user_id for update;
+  select * into v_booking from bookings where id = p_booking_id and user_id = v_user_id for update;
+  if not found or v_booking.status <> 'confirmed' then
+    return jsonb_build_object('success', false, 'error', 'Booking not found or already cancelled.');
+  end if;
+  select * into v_session from sessions where id = v_booking.session_id;
+  if v_session.starts_at <= now() then
+    return jsonb_build_object('success', false, 'error', 'This session has already started.');
+  end if;
+  if v_booking.camera_off = coalesce(p_camera_off, false) then
+    return jsonb_build_object('success', true, 'camera_off', v_booking.camera_off);
+  end if;
+
+  if p_camera_off then
+    select count(*) into v_used
+    from bookings b
+    join sessions s on s.id = b.session_id
+    where b.user_id = v_user_id
+      and b.camera_off
+      and b.status in ('confirmed', 'attended', 'late_cancelled')
+      and date_trunc('month', s.starts_at at time zone v_cfg.tz)
+        = date_trunc('month', v_session.starts_at at time zone v_cfg.tz);
+    if v_used >= v_cfg.bhd_per_month then
+      return jsonb_build_object('success', false, 'error',
+        format('You have used all %s Bad Hair Day cards for that month.', v_cfg.bhd_per_month));
+    end if;
+  end if;
+
+  update bookings set camera_off = coalesce(p_camera_off, false) where id = p_booking_id;
+  return jsonb_build_object('success', true, 'camera_off', coalesce(p_camera_off, false));
+end;
+$$;
+
+revoke execute on function get_schedule(timestamptz, timestamptz, text, boolean) from public;
+grant execute on function get_schedule(timestamptz, timestamptz, text, boolean) to anon, authenticated;
+revoke execute on function set_booking_camera(uuid, boolean) from public, anon;
+grant execute on function set_booking_camera(uuid, boolean) to authenticated;

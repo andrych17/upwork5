@@ -129,7 +129,13 @@ export default function MembershipPage() {
             Membership
           </Link>
         </nav>
-        <AccountMenu signedOut={<Link className="schedule-signin" href="/signin">Sign in</Link>} />
+        <AccountMenu
+          signedOut={
+            <Link className="schedule-signin" href="/signin">
+              Sign in
+            </Link>
+          }
+        />
         <MenuToggle />
       </header>
 
@@ -255,7 +261,8 @@ function Overview({ summary: s, live, selected, selectedCredits, onSelect, shopN
           </p>
           <div className="plan-includes">
             <span>
-              {s.monthly_total} monthly sessions ({s.week_limit === null ? 'no weekly limit' : `up to ${s.week_limit}/week`})
+              {s.monthly_total} monthly sessions (
+              {s.week_limit === null ? 'no weekly limit' : `up to ${s.week_limit}/week`})
             </span>
             <span>{s.bhd_total} Bad Hair Day cards monthly</span>
             <span>Activity buddy picks</span>
@@ -311,8 +318,8 @@ function Overview({ summary: s, live, selected, selectedCredits, onSelect, shopN
             hour in your pocket.
           </h2>
           <p>
-            Extra sessions are used after your monthly sessions, or once you reach the weekly limit. They never
-            expire and stay with your account until you need them.
+            Extra sessions are used after your monthly sessions, or once you reach the weekly limit. They never expire
+            and stay with your account until you need them.
           </p>
         </div>
         <div className="credit-shop">

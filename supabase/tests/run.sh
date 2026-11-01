@@ -16,4 +16,5 @@ PGOPTIONS="-c client_min_messages=warning" psql < /tmp/"$name".sql >/dev/null
 rm -f /tmp/"$name".sql
 psql < tests/features.sql
 psql < tests/admin.sql
+psql < tests/schedule.sql
 echo "schema checks: ok"

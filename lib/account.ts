@@ -45,7 +45,13 @@ async function refresh() {
     set({
       ready: true,
       account: demo
-        ? { id: demo.id ?? 'demo', name: `${first} ${last}`.trim() || email, email, initials: initials(first, last, email), isAdmin: false }
+        ? {
+            id: demo.id ?? 'demo',
+            name: `${first} ${last}`.trim() || email,
+            email,
+            initials: initials(first, last, email),
+            isAdmin: false,
+          }
         : null,
     });
     return;
@@ -84,7 +90,8 @@ function start() {
   void refresh();
   getSupabase()?.auth.onAuthStateChange((event) => {
     // Supabase calls made inside this callback can deadlock, so run the refresh afterwards.
-    if (event === 'SIGNED_IN' || event === 'SIGNED_OUT' || event === 'USER_UPDATED') setTimeout(() => void refresh(), 0);
+    if (event === 'SIGNED_IN' || event === 'SIGNED_OUT' || event === 'USER_UPDATED')
+      setTimeout(() => void refresh(), 0);
   });
 }
 
@@ -103,4 +110,15 @@ export function useAccount(): State {
     () => state,
     () => SERVER,
   );
+}
+
+/**
+ * Where to go after signing in: the page's ?next= when it is a path on this site (e.g. the booking page
+ * that sent the person to sign in), otherwise the fallback. Anything else is ignored, so a link cannot
+ * send people to another site.
+ */
+export function nextFromQuery(fallback: string): string {
+  if (typeof window === 'undefined') return fallback;
+  const next = new URLSearchParams(window.location.search).get('next') ?? '';
+  return /^\/(?![/\\])/.test(next) ? next : fallback;
 }

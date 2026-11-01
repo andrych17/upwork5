@@ -1,6 +1,8 @@
 'use client';
 
+import type { Route } from 'next';
 import Link from 'next/link';
+import { nextFromQuery } from '@/lib/account';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import GoogleButton from '@/components/google-button';
@@ -47,7 +49,7 @@ export default function SigninPage() {
             monthly_credits: 13,
             payment_status: 'active',
           });
-          router.push('/calendar');
+          router.push(nextFromQuery('/calendar') as Route);
           return;
         }
       } else {
@@ -60,7 +62,7 @@ export default function SigninPage() {
           monthly_credits: 13,
           payment_status: 'active',
         });
-        router.push('/calendar');
+        router.push(nextFromQuery('/calendar') as Route);
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'An error occurred during sign in.';

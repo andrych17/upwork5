@@ -2,7 +2,7 @@
 
 import AccountMenu from '@/components/account-menu';
 import Link from 'next/link';
-import { useState } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import { prepCards, type SessionContent } from '@/lib/session-data';
 import MenuToggle from '@/components/menu-toggle';
 import { useAccount } from '@/lib/account';
@@ -131,232 +131,257 @@ const SOLO_STEP = 'Choose your plan, then book up to 13 sessions a month (up to 
 const HOUSEHOLD_STEP =
   'Choose Household and invite up to 3 people by email. You share 16 sessions a month: 4 each week, shared between household members.';
 
+// The hero header scrolls away with the photos; past this point a copy comes back pinned to the top.
+const FLOAT_AFTER = 240;
+const onScroll = (notify: () => void) => {
+  window.addEventListener('scroll', notify, { passive: true });
+  return () => window.removeEventListener('scroll', notify);
+};
+const pastHero = () => window.scrollY > FLOAT_AFTER;
+
+function SiteHeader({ signedIn, floating = false }: { signedIn: boolean; floating?: boolean }) {
+  const shown = useSyncExternalStore(onScroll, pastHero, () => false);
+  const hidden = floating && !shown;
+  return (
+    <header
+      className={floating ? 'site-header site-header-float' : 'site-header'}
+      data-shown={floating && shown ? '' : undefined}
+      aria-hidden={hidden || undefined}
+      inert={hidden}
+    >
+      <Link className="mini-mark" href="/" aria-label="MeetDoConnect home">
+        MDC
+      </Link>
+      <nav aria-label="Primary navigation">
+        <Link href="/">Home</Link>
+        <Link href="/calendar">Calendar</Link>
+        <Link href="/games">Games</Link>
+        <Link href="/membership">Membership</Link>
+        {!signedIn && <Link href="/signin">Sign in</Link>}
+      </nav>
+      <AccountMenu
+        tone="dark"
+        signedOut={
+          <Link className="sign-in" href="/signup">
+            Join
+          </Link>
+        }
+      />
+      <MenuToggle />
+    </header>
+  );
+}
+
 export default function Home() {
   const { account } = useAccount();
+  // The pinned copy sits outside <main>: main's page-in animation would make it scroll with the page.
   return (
-    <main>
-      <section className="hero" aria-label="MeetDoConnect introduction">
-        <div className="hero-collage" aria-hidden="true">
-          {photos.map((photo, index) => (
-            <div className={`photo photo-${index + 1}`} key={photo.src}>
-              <img src={photo.src} alt="" />
+    <>
+      <SiteHeader signedIn={Boolean(account)} floating />
+      <main>
+        <section className="hero" aria-label="MeetDoConnect introduction">
+          <div className="hero-collage" aria-hidden="true">
+            {photos.map((photo, index) => (
+              <div className={`photo photo-${index + 1}`} key={photo.src}>
+                <img src={photo.src} alt="" />
+              </div>
+            ))}
+          </div>
+          <div className="hero-scrim" />
+          <SiteHeader signedIn={Boolean(account)} />
+          <div className="hero-copy" id="top">
+            <p className="eyebrow">Real people. Real activities. Live online.</p>
+            <h1>
+              <span>Meet</span>
+              <span>Do</span>
+              <span>Connect</span>
+            </h1>
+            <p className="tagline">Skip the swiping. Start doing.</p>
+          </div>
+          <a className="hero-cta" href="#rooms">
+            Find something to do <span aria-hidden="true">↓</span>
+          </a>
+        </section>
+
+        <section className="purpose">
+          <div className="purpose-copy">
+            <p className="section-label">A better kind of online</p>
+            <h2>Show up as you are. Leave with something done.</h2>
+            <div className="purpose-text">
+              <p>
+                MeetDoConnect brings solo people, couples, teens, and families into welcoming video rooms built around
+                doing—not performing.
+              </p>
+              <p>
+                Make dinner. Finish the puzzle. Write the page. Share a song. The activity breaks the ice; the people
+                make it matter.
+              </p>
             </div>
-          ))}
-        </div>
-        <div className="hero-scrim" />
-        <header className="site-header">
-          <Link className="mini-mark" href="/" aria-label="MeetDoConnect home">
-            MDC
-          </Link>
-          <nav aria-label="Primary navigation">
-            <Link href="/">Home</Link>
-            <Link href="/calendar">Calendar</Link>
-            <Link href="/games">Games</Link>
-            <Link href="/membership">Membership</Link>
-            {!account && <Link href="/signin">Sign in</Link>}
-          </nav>
-          <AccountMenu
-            tone="dark"
-            signedOut={
-              <Link className="sign-in" href="/signup">
-                Join
+            <div className="join-actions">
+              <Link className="join-button" href="/signup">
+                Join MeetDoConnect <span aria-hidden="true">↗</span>
               </Link>
-            }
-          />
-          <MenuToggle />
-        </header>
-        <div className="hero-copy" id="top">
-          <p className="eyebrow">Real people. Real activities. Live online.</p>
-          <h1>
-            <span>Meet</span>
-            <span>Do</span>
-            <span>Connect</span>
-          </h1>
-          <p className="tagline">Skip the swiping. Start doing.</p>
-        </div>
-        <a className="hero-cta" href="#rooms">
-          Find something to do <span aria-hidden="true">↓</span>
-        </a>
-      </section>
-
-      <section className="purpose">
-        <div className="purpose-copy">
-          <p className="section-label">A better kind of online</p>
-          <h2>Show up as you are. Leave with something done.</h2>
-          <div className="purpose-text">
-            <p>
-              MeetDoConnect brings solo people, couples, teens, and families into welcoming video rooms built around
-              doing—not performing.
-            </p>
-            <p>
-              Make dinner. Finish the puzzle. Write the page. Share a song. The activity breaks the ice; the people make
-              it matter.
-            </p>
-          </div>
-          <div className="join-actions">
-            <Link className="join-button" href="/signup">
-              Join MeetDoConnect <span aria-hidden="true">↗</span>
-            </Link>
-            <Link className="join-toc" href="/terms" target="_blank" rel="noreferrer">
-              Terms & Conditions
-            </Link>
-          </div>
-        </div>
-        <div className="purpose-collage" aria-label="People connecting through shared activities">
-          <img
-            loading="lazy"
-            decoding="async"
-            src="/images/community-painting.webp"
-            alt="A woman smiling while painting"
-          />
-          <img
-            loading="lazy"
-            decoding="async"
-            src="/images/community-crafting.webp"
-            alt="A man concentrating on a hands-on craft project"
-          />
-          <span className="collage-note">Come alone. Do it together.</span>
-        </div>
-      </section>
-
-      <section className="rooms" id="rooms">
-        <div className="rooms-heading">
-          <div>
-            <p className="section-label">Explore rooms</p>
-            <h2>Twelve ways to spend an hour together.</h2>
-          </div>
-          <p className="rooms-note">Hover, tap, or press a card to reveal what to bring and how the hour flows.</p>
-        </div>
-        <CardRow start={0} />
-        <CardRow start={4} />
-      </section>
-
-      <section className="manifesto">
-        <p>MeetDoConnect</p>
-        <h2>
-          Skip the swiping.
-          <br />
-          <span>Start doing.</span>
-        </h2>
-        <div className="manifesto-track" aria-hidden="true">
-          MAKE · THINK · PLAY · COOK · WRITE · LISTEN · MAKE · THINK · PLAY · COOK
-        </div>
-      </section>
-
-      <section className="rooms rooms-final" aria-label="More rooms">
-        <CardRow start={8} />
-      </section>
-
-      <section className="how-it-works">
-        <div className="how-copy">
-          <p className="section-label">Real people. Real connection.</p>
-          <h2>How our community works.</h2>
-          <div className="steps">
-            <div>
-              <span>01</span>
-              <p>
-                <strong>Choose</strong> an activity and book with one session credit. Plans include 3 or 4 credits per
-                week, add-on credits available when needed.
-              </p>
-            </div>
-            <div>
-              <span>02</span>
-              <p>
-                <strong>Prepare</strong> with a simple card that tells you exactly what to bring.
-              </p>
-            </div>
-            <div>
-              <span>03</span>
-              <p>
-                <strong>Do</strong> the activity live in a small video room of about 5–12 people.
-              </p>
-            </div>
-            <div>
-              <span>04</span>
-              <p>
-                <strong>Reconnect</strong> only when two people both choose to be activity buddies.
-              </p>
+              <Link className="join-toc" href="/terms" target="_blank" rel="noreferrer">
+                Terms & Conditions
+              </Link>
             </div>
           </div>
-        </div>
-        <div className="works-collage">
-          <img
-            loading="lazy"
-            decoding="async"
-            src="/images/purpose-together.webp"
-            alt="Two women working creatively together"
-          />
-          <img
-            loading="lazy"
-            decoding="async"
-            src="/images/purpose-solo.webp"
-            alt="A man working independently on an architectural model"
-          />
-          <span>Simple. Fun. Authentic.</span>
-        </div>
-      </section>
+          <div className="purpose-collage" aria-label="People connecting through shared activities">
+            <img
+              loading="lazy"
+              decoding="async"
+              src="/images/community-painting.webp"
+              alt="A woman smiling while painting"
+            />
+            <img
+              loading="lazy"
+              decoding="async"
+              src="/images/community-crafting.webp"
+              alt="A man concentrating on a hands-on craft project"
+            />
+            <span className="collage-note">Come alone. Do it together.</span>
+          </div>
+        </section>
 
-      <section className="membership" id="membership">
-        <div className="membership-heading">
-          <p className="section-label">Ready when you are</p>
+        <section className="rooms" id="rooms">
+          <div className="rooms-heading">
+            <div>
+              <p className="section-label">Explore rooms</p>
+              <h2>Twelve ways to spend an hour together.</h2>
+            </div>
+            <p className="rooms-note">Hover, tap, or press a card to reveal what to bring and how the hour flows.</p>
+          </div>
+          <CardRow start={0} />
+          <CardRow start={4} />
+        </section>
+
+        <section className="manifesto">
+          <p>MeetDoConnect</p>
           <h2>
-            Meet real people.
+            Skip the swiping.
             <br />
-            Start doing.
+            <span>Start doing.</span>
           </h2>
-          <p>
-            Solo includes 13 sessions a month. Household covers up to 4 people, each with their own sign-in, sharing 16
-            sessions a month: 4 each week, shared between household members. Solo can book up to 4 a week, and extra
-            sessions are available whenever you want more.
-          </p>
-        </div>
-        <div className="membership-grid">
-          <MembershipCard
-            label="Solo · Monthly"
-            price="$26"
-            detail="per month · 13 sessions · cancel anytime"
-            accent="monthly"
-            plan="Solo monthly"
-            step={SOLO_STEP}
-          />
-          <MembershipCard
-            label="Solo · Annual"
-            price="$260"
-            detail="per year · 13 sessions a month · two months on us"
-            accent="annual"
-            plan="Solo annual"
-            step={SOLO_STEP}
-          />
-          <MembershipCard
-            label="Household · Monthly"
-            price="$34"
-            detail="per month · up to 4 people · 16 shared sessions"
-            accent="household-monthly"
-            plan="Household monthly"
-            step={HOUSEHOLD_STEP}
-          />
-          <MembershipCard
-            label="Household · Annual"
-            price="$349"
-            detail="per year · up to 4 people · 16 shared sessions a month"
-            accent="household-annual"
-            plan="Household annual"
-            step={HOUSEHOLD_STEP}
-          />
-        </div>
-      </section>
+          <div className="manifesto-track" aria-hidden="true">
+            MAKE · THINK · PLAY · COOK · WRITE · LISTEN · MAKE · THINK · PLAY · COOK
+          </div>
+        </section>
 
-      <section className="closing">
-        <p className="section-label">See what’s waiting</p>
-        <h2>
-          There’s room
-          <br />
-          at the table.
-        </h2>
-        <Link href="/calendar">
-          See this week’s sessions <span aria-hidden="true">↗</span>
-        </Link>
-      </section>
-    </main>
+        <section className="rooms rooms-final" aria-label="More rooms">
+          <CardRow start={8} />
+        </section>
+
+        <section className="how-it-works">
+          <div className="how-copy">
+            <p className="section-label">Real people. Real connection.</p>
+            <h2>How our community works.</h2>
+            <div className="steps">
+              <div>
+                <span>01</span>
+                <p>
+                  <strong>Choose</strong> an activity and book with one session credit. Plans include 3 or 4 credits per
+                  week, add-on credits available when needed.
+                </p>
+              </div>
+              <div>
+                <span>02</span>
+                <p>
+                  <strong>Prepare</strong> with a simple card that tells you exactly what to bring.
+                </p>
+              </div>
+              <div>
+                <span>03</span>
+                <p>
+                  <strong>Do</strong> the activity live in a small video room of about 5–12 people.
+                </p>
+              </div>
+              <div>
+                <span>04</span>
+                <p>
+                  <strong>Reconnect</strong> only when two people both choose to be activity buddies.
+                </p>
+              </div>
+            </div>
+          </div>
+          <div className="works-collage">
+            <img
+              loading="lazy"
+              decoding="async"
+              src="/images/purpose-together.webp"
+              alt="Two women working creatively together"
+            />
+            <img
+              loading="lazy"
+              decoding="async"
+              src="/images/purpose-solo.webp"
+              alt="A man working independently on an architectural model"
+            />
+            <span>Simple. Fun. Authentic.</span>
+          </div>
+        </section>
+
+        <section className="membership" id="membership">
+          <div className="membership-heading">
+            <p className="section-label">Ready when you are</p>
+            <h2>
+              Meet real people.
+              <br />
+              Start doing.
+            </h2>
+            <p>
+              Solo includes 13 sessions a month. Household covers up to 4 people, each with their own sign-in, sharing
+              16 sessions a month: 4 each week, shared between household members. Solo can book up to 4 a week, and
+              extra sessions are available whenever you want more.
+            </p>
+          </div>
+          <div className="membership-grid">
+            <MembershipCard
+              label="Solo · Monthly"
+              price="$26"
+              detail="per month · 13 sessions · cancel anytime"
+              accent="monthly"
+              plan="Solo monthly"
+              step={SOLO_STEP}
+            />
+            <MembershipCard
+              label="Solo · Annual"
+              price="$260"
+              detail="per year · 13 sessions a month · two months on us"
+              accent="annual"
+              plan="Solo annual"
+              step={SOLO_STEP}
+            />
+            <MembershipCard
+              label="Household · Monthly"
+              price="$34"
+              detail="per month · up to 4 people · 16 shared sessions"
+              accent="household-monthly"
+              plan="Household monthly"
+              step={HOUSEHOLD_STEP}
+            />
+            <MembershipCard
+              label="Household · Annual"
+              price="$349"
+              detail="per year · up to 4 people · 16 shared sessions a month"
+              accent="household-annual"
+              plan="Household annual"
+              step={HOUSEHOLD_STEP}
+            />
+          </div>
+        </section>
+
+        <section className="closing">
+          <p className="section-label">See what’s waiting</p>
+          <h2>
+            There’s room
+            <br />
+            at the table.
+          </h2>
+          <Link href="/calendar">
+            See this week’s sessions <span aria-hidden="true">↗</span>
+          </Link>
+        </section>
+      </main>
+    </>
   );
 }

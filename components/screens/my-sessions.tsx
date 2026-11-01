@@ -1,83 +1,147 @@
 'use client';
 
+// My sessions: the signed-in member's upcoming seats (get_schedule p_mine) and their
+// balances (get_my_membership). Bad Hair Day goes through set_booking_camera(), cancelling through
+// cancel_booking(), which returns the credit when it is more than cancel_hours before the start.
 import AccountMenu from '@/components/account-menu';
 import Link from 'next/link';
-import { useState } from 'react';
-import { getSession } from '@/lib/session-data';
+import { useEffect, useState } from 'react';
 import MenuToggle from '@/components/menu-toggle';
+import { useAccount } from '@/lib/account';
+import { addMinutes, fetchMine, roomInfo, timeOf, when, type Room } from '@/lib/rooms';
+import { getSupabase, type MembershipSummary } from '@/lib/supabase';
+import { useNow } from '@/lib/use-now';
 
-interface SampleBooking {
-  session: ReturnType<typeof getSession>;
-  fullDate: string;
-  time: string;
-  deadline: string;
-  joinState: 'open' | 'waiting';
-  attending: number;
-  /** Booked before the Hello Video was approved (bookings.held): no Join until approval */
-  held?: boolean;
+const ROOM_OPENS_MINUTES = 10;
+const STATUS = { active: 'Active', past_due: 'Payment due', paused: 'Paused', canceled: 'Canceled' } as const;
+
+const refillDay = (iso: string) => {
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
+};
+
+interface Loaded {
+  key: string;
+  rooms: Room[] | null;
+  summary: MembershipSummary | null;
 }
 
-const bookings: SampleBooking[] = [
-  {
-    session: getSession('quiet-co-work'),
-    fullDate: 'Monday, May 18',
-    time: '10:00–11:00 am',
-    deadline: 'Monday at 7:00 am',
-    joinState: 'open',
-    attending: 7,
-  },
-  {
-    session: getSession('botanical-sketch-night'),
-    fullDate: 'Wednesday, May 20',
-    time: '7:00–8:00 pm',
-    deadline: 'Wednesday at 4:00 pm',
-    joinState: 'waiting',
-    attending: 8,
-  },
-  {
-    session: getSession('share-a-song'),
-    fullDate: 'Sunday, May 24',
-    time: '6:30–7:30 pm',
-    deadline: 'Sunday at 3:30 pm',
-    joinState: 'waiting',
-    attending: 5,
-  },
-];
-
 export default function MySessionsPage() {
-  const [cameraOff, setCameraOff] = useState<Record<string, boolean>>({});
-  const [cancelled, setCancelled] = useState<string[]>([]);
+  const supabase = getSupabase();
+  const { ready, account } = useAccount();
+  const now = useNow();
+  const [tick, setTick] = useState(0);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ text: string; error: boolean } | null>(null);
+  const key = `${account?.id ?? 'out'}|${tick}`;
+  const [loaded, setLoaded] = useState<Loaded | null>(null);
 
-  const cancelSession = (slug: string) => {
-    setCancelled((current) => [...current, slug]);
+  useEffect(() => {
+    if (!supabase || !account) return;
+    let live = true;
+    Promise.all([
+      fetchMine(supabase),
+      supabase.rpc('get_my_membership').then(({ data }) => data as MembershipSummary | null),
+    ]).then(([rooms, summary]) => {
+      if (live) setLoaded({ key, rooms, summary });
+    });
+    return () => {
+      live = false;
+    };
+  }, [supabase, account, key]);
+
+  // While a change reloads the list, keep showing the last one for the same person.
+  const current = loaded && loaded.key.startsWith(`${account?.id ?? 'out'}|`) ? loaded : null;
+  // The list is loaded once; a session that ends while the page is open drops off here.
+  const booked = (current?.rooms ?? []).filter(
+    (room) => room.my_booking_id && new Date(addMinutes(room.starts_at, room.minutes)).getTime() > now,
+  );
+  const s = current?.summary ?? null;
+
+  const run = async (id: string, fn: 'cancel_booking' | 'set_booking_camera', args: Record<string, unknown>) => {
+    if (!supabase) return;
+    setBusy(id);
+    setToast(null);
+    const { data, error } = await supabase.rpc(fn, args);
+    const res = data as { success: boolean; error?: string; message?: string } | null;
+    setBusy(null);
+    if (error || !res?.success) {
+      setToast({ text: res?.error || 'That didn’t work. Please try again.', error: true });
+      return;
+    }
+    if (res.message) setToast({ text: res.message, error: false });
+    setTick((t) => t + 1);
   };
+
+  const cancel = (room: Room) => {
+    const free = new Date(room.cancel_by).getTime() > now;
+    const ok = window.confirm(
+      free
+        ? `Cancel ${room.title}? Your credit comes back.`
+        : `Cancel ${room.title}? The free cancellation time has passed, so the credit is used.`,
+    );
+    if (ok && room.my_booking_id) void run(room.my_booking_id, 'cancel_booking', { p_booking_id: room.my_booking_id });
+  };
+
+  const header = (
+    <header className="schedule-nav member-nav">
+      <Link className="schedule-mark" href="/" aria-label="MeetDoConnect home">
+        <span>Meet</span>
+        <span>Do</span>
+        <span>Connect</span>
+      </Link>
+      <nav aria-label="Member navigation">
+        <Link href="/calendar">Calendar</Link>
+        <Link className="active" href="/sessions">
+          My sessions
+        </Link>
+        <Link href="/membership">Membership</Link>
+      </nav>
+      <AccountMenu
+        signedOut={
+          <Link className="schedule-signin" href="/signin">
+            Sign in
+          </Link>
+        }
+      />
+      <MenuToggle />
+    </header>
+  );
+
+  if (!supabase || (ready && !account)) {
+    return (
+      <main className="sessions-page">
+        {header}
+        <section className="sessions-hero">
+          <div>
+            <p className="section-label">My sessions</p>
+            <h1>
+              Sign in to see
+              <br />
+              <span>your sessions.</span>
+            </h1>
+          </div>
+          <Link className="browse-more" href={{ pathname: '/signin', query: { next: '/sessions' } }}>
+            Sign in <span aria-hidden="true">↗</span>
+          </Link>
+        </section>
+      </main>
+    );
+  }
+
+  const weekLeft = s && s.week_limit !== null ? Math.max(s.week_limit - s.week_used, 0) : null;
 
   return (
     <main className="sessions-page">
-      <header className="schedule-nav member-nav">
-        <Link className="schedule-mark" href="/" aria-label="MeetDoConnect home">
-          <span>Meet</span>
-          <span>Do</span>
-          <span>Connect</span>
-        </Link>
-        <nav aria-label="Member navigation">
-          <Link href="/calendar">Calendar</Link>
-          <Link className="active" href="/sessions">
-            My sessions
-          </Link>
-          <Link href="/membership">Membership</Link>
-        </nav>
-        <AccountMenu signedOut={<Link className="schedule-signin" href="/signin">Sign in</Link>} />
-        <MenuToggle />
-      </header>
+      {header}
 
       <section className="sessions-hero">
         <div>
           <p className="section-label">My sessions</p>
           <h1>
-            Your week has
+            {booked.length > 0 ? 'Your week has' : 'Nothing booked'}
             <br />
-            <span>good things in it.</span>
+            <span>{booked.length > 0 ? 'good things in it.' : 'yet. Pick an hour.'}</span>
           </h1>
         </div>
         <Link className="browse-more" href="/calendar">
@@ -85,137 +149,176 @@ export default function MySessionsPage() {
         </Link>
       </section>
 
-      <section className="member-balance" aria-label="Member balances">
-        <div>
-          <span>This week</span>
-          <strong>1 of 4 left</strong>
-          <div className="balance-pips" aria-hidden="true">
-            <i />
-            <i className="used" />
-            <i className="used" />
-            <i className="used" />
+      {s && (
+        <section className="member-balance" aria-label="Member balances">
+          <div>
+            <span>This week</span>
+            <strong>{weekLeft === null ? 'No weekly limit' : `${weekLeft} of ${s.week_limit} left`}</strong>
+            {s.week_limit !== null && (
+              <div className="balance-pips" aria-hidden="true">
+                {Array.from({ length: s.week_limit }, (_, i) => (
+                  <i key={i} className={i < s.week_used ? 'used' : undefined} />
+                ))}
+              </div>
+            )}
+            <small>
+              Week resets Monday · {s.monthly_left} of {s.monthly_total} left this month
+              {s.week_limit_shared ? ' (shared)' : ''}
+            </small>
           </div>
-          <small>Week resets Monday · 10 of 13 left this month</small>
-        </div>
-        <div>
-          <span>Extra sessions</span>
-          <strong>1 available</strong>
-          <Link href="/membership#credits">Buy extras</Link>
-          <small>Extras never expire</small>
-        </div>
-        <div>
-          <span>Bad Hair Day cards</span>
-          <strong>2 of 3 left</strong>
-          <div className="balance-pips card-pips" aria-hidden="true">
-            <i />
-            <i />
-            <i className="used" />
+          <div>
+            <span>Extra sessions</span>
+            <strong>{s.addon_left} available</strong>
+            <Link href="/membership#credits">Buy extras</Link>
+            <small>Extras never expire</small>
           </div>
-          <small>Resets June 1</small>
-        </div>
-        <div className="membership-mini-status">
-          <span>Membership</span>
-          <strong>Active</strong>
-          <Link href="/membership">Manage</Link>
-          <small>Paid through June 8</small>
-        </div>
-      </section>
+          <div>
+            <span>Bad Hair Day cards</span>
+            <strong>
+              {s.bhd_left} of {s.bhd_total} left
+            </strong>
+            <div className="balance-pips card-pips" aria-hidden="true">
+              {Array.from({ length: s.bhd_total }, (_, i) => (
+                <i key={i} className={i < s.bhd_left ? undefined : 'used'} />
+              ))}
+            </div>
+            <small>Resets on the 1st of each month</small>
+          </div>
+          <div className="membership-mini-status">
+            <span>Membership</span>
+            <strong>{STATUS[s.payment_status]}</strong>
+            <Link href="/membership">Manage</Link>
+            <small>Next monthly sessions {refillDay(s.next_refill)}</small>
+          </div>
+        </section>
+      )}
 
-      {cancelled.length > 0 && (
-        <div className="sessions-toast" role="status">
-          <strong>Session cancelled.</strong> Your seat was released and the credit returned to this week.
+      {toast && (
+        <div className={toast.error ? 'sessions-toast is-error' : 'sessions-toast'} role="status">
+          {toast.text}
         </div>
       )}
 
       <section className="upcoming-sessions">
         <div className="upcoming-heading">
           <p className="section-label">Coming up</p>
-          <p>{bookings.length - cancelled.length} booked this week</p>
+          <p>{current ? `${booked.length} booked` : 'Loading…'}</p>
         </div>
 
-        <div className="booked-list">
-          {bookings
-            .filter(({ session }) => !cancelled.includes(session.slug))
-            .map((booking, index) => {
-              const { session } = booking;
-              const isOff = cameraOff[session.slug] ?? false;
-              return (
-                <article className="booked-session" key={session.slug}>
-                  <div className={`booking-color tone-${session.tone}`} aria-hidden="true" />
-                  <div className="booked-date">
-                    <span>{session.day}</span>
-                    <strong>{session.date}</strong>
-                    <span>{session.month}</span>
+        {current?.rooms === null && (
+          <p className="calendar-empty">We couldn’t load your sessions. Refresh to try again.</p>
+        )}
+        {current && current.rooms !== null && booked.length === 0 && (
+          <p className="calendar-empty">
+            No sessions booked. <Link href="/calendar">Open the calendar</Link> to pick one.
+          </p>
+        )}
+
+        <div className="booked-list" aria-busy={!current}>
+          {booked.map((room) => {
+            const info = roomInfo(room);
+            const at = when(room.starts_at);
+            const isOff = Boolean(room.my_camera_off);
+            const bookingId = room.my_booking_id as string;
+            const opens = new Date(addMinutes(room.starts_at, -ROOM_OPENS_MINUTES)).getTime();
+            const closes = new Date(addMinutes(room.starts_at, ROOM_OPENS_MINUTES)).getTime();
+            const started = new Date(room.starts_at).getTime() <= now;
+            const freeCancel = new Date(room.cancel_by).getTime() > now;
+            return (
+              <article className="booked-session" key={room.id}>
+                <div className={`booking-color tone-${info.tone}`} aria-hidden="true" />
+                <div className="booked-date">
+                  <span>{at.weekday}</span>
+                  <strong>{at.date}</strong>
+                  <span>{at.month}</span>
+                </div>
+                <div className="booked-main">
+                  <div className="booked-title-line">
+                    <div>
+                      <p>
+                        {at.long} · {at.time}–{timeOf(addMinutes(room.starts_at, room.minutes))}
+                      </p>
+                      <h2>{room.title}</h2>
+                    </div>
+                    <span className={`camera-tag ${isOff ? 'off' : ''}`}>{isOff ? 'Camera off' : 'Camera on'}</span>
                   </div>
-                  <div className="booked-main">
-                    <div className="booked-title-line">
-                      <div>
-                        <p>
-                          {booking.fullDate} · {booking.time}
-                        </p>
-                        <h2>{session.title}</h2>
-                      </div>
-                      <span className={`camera-tag ${isOff ? 'off' : ''}`}>{isOff ? 'Camera off' : 'Camera on'}</span>
-                    </div>
-                    <p className="booked-meta">
-                      {session.forWhom} · {booking.attending} attending · 60 minutes
-                    </p>
-                    <div className="booked-prep">
-                      <strong>Bring this</strong>
-                      <p>{session.prep}</p>
-                      <Link href={`/book/${session.slug}`}>
-                        Open full prep card <span aria-hidden="true">↗</span>
-                      </Link>
-                    </div>
+                  <p className="booked-meta">
+                    {info.forWhom} · {room.booked} attending · {room.minutes} minutes
+                  </p>
+                  <div className="booked-prep">
+                    <strong>Bring this</strong>
+                    <p>{info.prep}</p>
+                    <Link href={{ pathname: '/book', query: { s: room.slug } }}>
+                      Open full prep card <span aria-hidden="true">↗</span>
+                    </Link>
+                  </div>
+                  {!started && (
                     <div className="booked-controls">
                       <label className="small-card-toggle">
                         <input
                           type="checkbox"
                           checked={isOff}
+                          disabled={busy !== null}
                           onChange={(event) =>
-                            setCameraOff((current) => ({ ...current, [session.slug]: event.target.checked }))
+                            void run(bookingId, 'set_booking_camera', {
+                              p_booking_id: bookingId,
+                              p_camera_off: event.target.checked,
+                            })
                           }
                         />
                         <span aria-hidden="true" />
                         <b>Bad Hair Day card</b>
                       </label>
-                      <button type="button" onClick={() => cancelSession(session.slug)}>
-                        Cancel session
+                      <button type="button" disabled={busy !== null} onClick={() => cancel(room)}>
+                        {busy === bookingId ? 'Working…' : 'Cancel session'}
                       </button>
-                      <span>Free cancel until {booking.deadline}</span>
+                      <span>
+                        {freeCancel
+                          ? `Free cancel until ${when(room.cancel_by).weekday} ${timeOf(room.cancel_by)}`
+                          : 'Credit is kept if you cancel now'}
+                      </span>
                     </div>
-                  </div>
-                  <div className="join-session">
-                    {booking.held ? (
-                      <>
-                        <strong>Waiting for approval</strong>
-                        <p>Your seat is held until your Hello Video is approved.</p>
-                        <button type="button" disabled>
-                          Join room
-                        </button>
-                      </>
-                    ) : booking.joinState === 'open' && index === 0 ? (
-                      <>
-                        <span className="room-open-dot" />
-                        <strong>Room is open</strong>
-                        <p>Closes at 10:10 am</p>
-                        <Link href="/camera-check">
-                          Join room <span aria-hidden="true">→</span>
-                        </Link>
-                      </>
-                    ) : (
-                      <>
-                        <strong>Not open yet</strong>
-                        <p>Room opens 10 minutes before the start.</p>
-                        <button type="button" disabled>
-                          Join room
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </article>
-              );
-            })}
+                  )}
+                </div>
+                <div className="join-session">
+                  {room.my_held ? (
+                    <>
+                      <strong>Waiting for approval</strong>
+                      <p>Your seat is held until your Hello Video is approved.</p>
+                      <button type="button" disabled>
+                        Join room
+                      </button>
+                    </>
+                  ) : now >= opens && now <= closes ? (
+                    <>
+                      <span className="room-open-dot" />
+                      <strong>Room is open</strong>
+                      <p>Closes at {timeOf(addMinutes(room.starts_at, ROOM_OPENS_MINUTES))}</p>
+                      <Link href="/camera-check">
+                        Join room <span aria-hidden="true">→</span>
+                      </Link>
+                    </>
+                  ) : now > closes ? (
+                    <>
+                      <strong>In progress</strong>
+                      <p>The room closed to new arrivals ten minutes after the start.</p>
+                      <button type="button" disabled>
+                        Join room
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <strong>Not open yet</strong>
+                      <p>Room opens at {timeOf(addMinutes(room.starts_at, -ROOM_OPENS_MINUTES))}.</p>
+                      <button type="button" disabled>
+                        Join room
+                      </button>
+                    </>
+                  )}
+                </div>
+              </article>
+            );
+          })}
         </div>
       </section>
 

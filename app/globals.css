@@ -15,6 +15,7 @@
 @import './hello-video.css';
 @import './account.css';
 @import './admin.css';
+@import './nav.css';
 
 /* Tailwind tokens for the few pieces still written with utilities (text pages, install button),
    pointed at the Figma palette so they match the rest of the site. */
