@@ -2518,7 +2518,7 @@ begin
   return jsonb_build_object(
     'success', true,
     'message', case when p_cancel
-      then format('Your membership ends on %s. You can keep booking until then.', to_char(v_me.paid_until, 'FMMonth FMDD'))
+      then format('Your membership ends on %s. You can keep booking until then.', to_char(v_me.paid_until, 'FMMonth FMDD, YYYY'))
       else 'Your membership keeps running. Nothing changes.' end);
 end;
 $$;

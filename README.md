@@ -163,13 +163,16 @@ missing stays off (the site shows its preview, the function answers `503 NOT_CON
 | Supabase function secrets | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`                                   | App notifications                     |
 | Supabase function secrets | `RESEND_API_KEY`, `RESEND_FROM`, `REPLY_TO` (optional)                                     | Email reminders                       |
 | Supabase function secrets | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_MESSAGING_SERVICE_SID` or `TWILIO_FROM` | SMS reminders (opt-in)                |
+| Supabase function secrets | `DAILY_API_KEY`                                                                            | Live video rooms (room-join)          |
 | Supabase Vault (SQL)      | `project_url`, `reminders_cron_secret`                                                     | Used by `supabase/cron-reminders.sql` |
 
 Steps:
 
 1. **Database**: run `supabase/schema.sql` in the SQL editor (safe to run again). Settings live in
-   `app_config`: `require_hello_video` (block booking until approved, default off) and `sms_kinds`
-   (`{1h}` by default, `{24h,1h}` for both).
+   `app_config`: `require_hello_video` (no live room until an admin approved the Hello Video),
+   `hello_hold_bookings` (booking before approval holds the seat), `test_payments` (Pay succeeds without a
+   card until the payment processor is connected) and `sms_kinds` (`{1h}` by default, `{24h,1h}` for both).
+   Kelly's rules (31 Oct): turn on `require_hello_video` and `hello_hold_bookings`.
 2. **Hello Video storage**: create a private R2 bucket and an API token for that bucket only
    (Object Read & Write). Add a CORS rule allowing `PUT` and `GET` from the site origins with the
    `Content-Type` header, and a lifecycle rule deleting objects under `hello/` after 30 days as a safety net
@@ -177,7 +180,8 @@ Steps:
 3. **App notifications**: `npx web-push generate-vapid-keys`. The public key goes in both places above, the
    private key only in Supabase.
 4. **Functions**: `supabase secrets set NAME=value ...`, then
-   `supabase functions deploy hello-video` and `supabase functions deploy send-reminders --no-verify-jwt`.
+   `supabase functions deploy hello-video`, `supabase functions deploy room-join` and
+   `supabase functions deploy send-reminders --no-verify-jwt`.
 5. **Schedule**: store the two Vault secrets and run `supabase/cron-reminders.sql`.
 6. **Check**: `bash supabase/tests/run.sh` (schema, Docker Postgres) and `bash supabase/tests/run-deno.sh`
    (type-check and tests for the functions, Docker Deno, no real calls).

@@ -63,7 +63,12 @@ type Result = { success: boolean; error?: string; message?: string } | null;
 
 function day(iso: string): string {
   const [y, m, d] = iso.split('-').map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
+  const sameYear = y === new Date().getFullYear();
+  return new Date(y, m - 1, d).toLocaleDateString('en-US', {
+    month: 'long',
+    day: 'numeric',
+    ...(sameYear ? {} : { year: 'numeric' }),
+  });
 }
 
 async function fetchSummary(): Promise<Summary | null> {

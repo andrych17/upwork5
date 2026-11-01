@@ -82,13 +82,12 @@ export default function SignupPage() {
   const [phone, setPhone] = useState('');
   const [appNote, setAppNote] = useState('');
 
-  // Someone already signed in (Google, the email link, or coming back) continues where they stopped.
-  // Only the first check counts, so creating the account on this page does not jump steps.
+  // Someone already signed in (Google, the email link, or coming back) continues where they stopped. Once the
+  // person starts on this page (resumed set by the step actions), creating the account here doesn't jump steps.
   const resumed = useRef(false);
   useEffect(() => {
-    if (!ready || resumed.current) return;
+    if (!ready || resumed.current || !account || !supabase) return;
     resumed.current = true;
-    if (!account || !supabase) return;
     loadSummary().then((s) => {
       setSummary(s);
       if (s?.interests?.length) setSelectedInterests(s.interests);
@@ -116,6 +115,7 @@ export default function SignupPage() {
   // ---------- step actions ----------
 
   const finishBasics = () => {
+    resumed.current = true;
     if (account) return go(2);
     if (!firstName.trim()) return setErrorMsg('Add your first name.');
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) return setErrorMsg('Check the email address.');
