@@ -4,6 +4,7 @@
 // The file goes straight to a private R2 bucket through a 10-minute signed link (hello-video Edge Function);
 // only admins watch it, and it is deleted as soon as it is reviewed.
 // Without Supabase keys (preview site) everything works except the upload, which stays on this device.
+import AccountMenu from '@/components/account-menu';
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import MenuToggle from '@/components/menu-toggle';
@@ -267,9 +268,7 @@ export default function HelloVideoPage() {
           <Link href="/sessions">My sessions</Link>
           <Link href="/membership">Membership</Link>
         </nav>
-        <Link className="schedule-signin" href="/membership">
-          My membership
-        </Link>
+        <AccountMenu signedOut={<Link className="schedule-signin" href="/signin">Sign in</Link>} />
         <MenuToggle />
       </header>
 

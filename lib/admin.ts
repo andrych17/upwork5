@@ -130,3 +130,13 @@ export function useLoad<T>(load: () => PromiseLike<T>): { data: T | undefined; l
     reload: () => setTick((t) => t + 1),
   };
 }
+
+/**
+ * Ref for a side panel. On narrow screens the panel sits under the list, so bring it into view when it
+ * opens; otherwise tapping a row looks like nothing happened.
+ */
+export function revealPanel(el: HTMLElement | null): void {
+  if (!el || !window.matchMedia('(max-width: 960px)').matches) return;
+  const calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  el.scrollIntoView({ behavior: calm ? 'auto' : 'smooth', block: 'start' });
+}

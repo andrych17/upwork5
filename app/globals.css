@@ -13,6 +13,7 @@
 @import './reminders.css';
 /* Hello Video recorder and its Membership card. */
 @import './hello-video.css';
+@import './account.css';
 @import './admin.css';
 
 /* Tailwind tokens for the few pieces still written with utilities (text pages, install button),

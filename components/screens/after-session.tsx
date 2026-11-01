@@ -1,5 +1,6 @@
 'use client';
 
+import AccountMenu from '@/components/account-menu';
 import Link from 'next/link';
 import { useState } from 'react';
 import MenuToggle from '@/components/menu-toggle';
@@ -80,9 +81,7 @@ export default function AfterSessionPage() {
           <Link href="/sessions">My sessions</Link>
           <Link href="/membership">Membership</Link>
         </nav>
-        <Link className="member-avatar" href="/membership" aria-label="Open account">
-          KC
-        </Link>
+        <AccountMenu signedOut={<Link className="schedule-signin" href="/signin">Sign in</Link>} />
         <MenuToggle />
       </header>
 

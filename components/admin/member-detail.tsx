@@ -11,6 +11,7 @@ import {
   fmtDate,
   fmtWhen,
   fullName,
+  revealPanel,
   statusBadge,
   useLoad,
   type AdminProfile,
@@ -99,7 +100,7 @@ export default function MemberDetail({ id, onClose, onChanged, onOpen }: Props) 
 
   if (!loaded) {
     return (
-      <aside className="adm-card adm-panel">
+      <aside className="adm-card adm-panel" ref={revealPanel}>
         <p className="adm-empty">{loading ? 'Loading…' : 'Member not found.'}</p>
       </aside>
     );
@@ -115,7 +116,7 @@ export default function MemberDetail({ id, onClose, onChanged, onOpen }: Props) 
   const upcoming = bookings.filter((b) => b.status === 'confirmed' && b.session && new Date(b.session.starts_at) > new Date());
 
   return (
-    <aside className="adm-card adm-panel" aria-label={`Member ${fullName(p)}`}>
+    <aside className="adm-card adm-panel" ref={revealPanel} aria-label={`Member ${fullName(p)}`}>
       <div className="adm-card-head">
         <div>
           <h2>{fullName(p)}</h2>

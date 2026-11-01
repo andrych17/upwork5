@@ -1,10 +1,10 @@
 'use client';
 
+import AccountMenu from '@/components/account-menu';
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import InviteBanner from '@/components/invite-banner';
 import MenuToggle from '@/components/menu-toggle';
-import { getDemoUser, getSupabase } from '@/lib/supabase';
 
 type Session = {
   slug: string;
@@ -181,21 +181,7 @@ export default function SchedulePage() {
   const [filter, setFilter] = useState('All sessions');
   const [expanded, setExpanded] = useState<number | null>(null);
   const [weekOffset, setWeekOffset] = useState(0);
-  const [currentUser, setCurrentUser] = useState<string | null>(() => getDemoUser()?.first_name ?? null);
   const weekLabels = ['May 11–17, 2026', 'May 18–24, 2026', 'May 25–31, 2026'];
-
-  useEffect(() => {
-    const supabase = getSupabase();
-    if (supabase) {
-      supabase.auth.getSession().then(({ data }) => {
-        if (data.session?.user) {
-          const meta = data.session.user.user_metadata ?? {};
-          const name = meta.first_name || meta.given_name || String(meta.full_name || meta.name || '').split(' ')[0] || 'Member';
-          setCurrentUser(name);
-        }
-      });
-    }
-  }, []);
 
   return (
     <main className="schedule-page">
@@ -213,15 +199,7 @@ export default function SchedulePage() {
           <Link href="/#rooms">Rooms</Link>
           <Link href="/membership">Membership</Link>
         </nav>
-        {currentUser ? (
-          <Link className="schedule-signin" href="/sessions">
-            My sessions ({currentUser})
-          </Link>
-        ) : (
-          <Link className="schedule-signin" href="/signin">
-            Sign in
-          </Link>
-        )}
+        <AccountMenu signedOut={<Link className="schedule-signin" href="/signin">Sign in</Link>} />
         <MenuToggle />
       </header>
 

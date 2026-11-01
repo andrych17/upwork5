@@ -1,5 +1,6 @@
 'use client';
 
+import AccountMenu from '@/components/account-menu';
 import Link from 'next/link';
 import { useState, useSyncExternalStore } from 'react';
 import SlowChess from '@/components/games/slow-chess';
@@ -60,9 +61,7 @@ export default function GamesPage() {
             Games
           </Link>
         </nav>
-        <Link className="schedule-signin" href="/sessions">
-          My sessions
-        </Link>
+        <AccountMenu signedOut={<Link className="schedule-signin" href="/signin">Sign in</Link>} />
         <MenuToggle />
       </header>
 

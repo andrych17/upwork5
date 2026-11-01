@@ -1,9 +1,11 @@
 'use client';
 
+import AccountMenu from '@/components/account-menu';
 import Link from 'next/link';
 import { useState } from 'react';
 import { prepCards, type SessionContent } from '@/lib/session-data';
 import MenuToggle from '@/components/menu-toggle';
+import { useAccount } from '@/lib/account';
 
 const photos = [
   { src: '/images/guitar-duo.webp', alt: 'Two people sharing music with a guitar and tablet' },
@@ -130,6 +132,7 @@ const HOUSEHOLD_STEP =
   'Choose Household and invite up to 3 people by email. You share 16 sessions a month: 4 each week, shared between household members.';
 
 export default function Home() {
+  const { account } = useAccount();
   return (
     <main>
       <section className="hero" aria-label="MeetDoConnect introduction">
@@ -150,11 +153,16 @@ export default function Home() {
             <Link href="/calendar">Calendar</Link>
             <Link href="/games">Games</Link>
             <Link href="/membership">Membership</Link>
-            <Link href="/signin">Sign in</Link>
+            {!account && <Link href="/signin">Sign in</Link>}
           </nav>
-          <Link className="sign-in" href="/signup">
-            Join
-          </Link>
+          <AccountMenu
+            tone="dark"
+            signedOut={
+              <Link className="sign-in" href="/signup">
+                Join
+              </Link>
+            }
+          />
           <MenuToggle />
         </header>
         <div className="hero-copy" id="top">

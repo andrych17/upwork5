@@ -182,14 +182,22 @@ export default function AdminShell({ children }: { children: ReactNode }) {
             <div className="adm-topbar">
               <button
                 type="button"
-                className="adm-btn adm-btn-sm"
+                className="adm-menu-btn"
                 aria-expanded={navOpen}
                 aria-controls="adm-nav"
+                aria-label="Open admin menu"
                 onClick={() => setNavOpen((open) => !open)}
               >
-                Menu
+                <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true">
+                  <path d="M3 5.5h14M3 10h14M3 14.5h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                </svg>
               </button>
-              <strong>MeetDoConnect Admin</strong>
+              <strong>
+                MeetDoConnect <small>Admin</small>
+              </strong>
+              <Link className="adm-btn adm-btn-sm" href="/calendar">
+                Member site
+              </Link>
             </div>
             <main className="adm-main">{children}</main>
           </div>

@@ -6,6 +6,7 @@
 // (lib/push.ts), which the send-reminders Edge Function delivers. Email and SMS choices: components/reminder-prefs.tsx.
 // - iPhone and iPad show notifications only in the Home Screen app (iOS 16.4+), so Safari gets install steps.
 // - Android and desktop browsers show them right away; installing is optional.
+import AccountMenu from '@/components/account-menu';
 import Link from 'next/link';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import InstallButton from '@/components/install-button';
@@ -159,9 +160,7 @@ export default function RemindersPage() {
           <Link href="/#rooms">Rooms</Link>
           <Link href="/membership">Membership</Link>
         </nav>
-        <Link className="schedule-signin" href="/calendar">
-          Back to calendar
-        </Link>
+        <AccountMenu signedOut={<Link className="schedule-signin" href="/signin">Sign in</Link>} />
         <MenuToggle />
       </header>
 

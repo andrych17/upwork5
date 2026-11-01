@@ -1,5 +1,6 @@
 'use client';
 
+import AccountMenu from '@/components/account-menu';
 import Link from 'next/link';
 import { useState } from 'react';
 import { getSession } from '@/lib/session-data';
@@ -71,9 +72,7 @@ export default function BookPage({ slug }: { slug: string }) {
             <Link href="/#rooms">Rooms</Link>
             <Link href="/membership">Membership</Link>
           </nav>
-          <Link className="schedule-signin" href="/membership">
-            My account
-          </Link>
+          <AccountMenu signedOut={<Link className="schedule-signin" href="/signin">Sign in</Link>} />
           <MenuToggle />
         </header>
 
@@ -145,9 +144,7 @@ export default function BookPage({ slug }: { slug: string }) {
           <Link href="/#rooms">Rooms</Link>
           <Link href="/membership">Membership</Link>
         </nav>
-        <Link className="schedule-signin" href="/signin">
-          Sign in
-        </Link>
+        <AccountMenu signedOut={<Link className="schedule-signin" href="/signin">Sign in</Link>} />
         <MenuToggle />
       </header>
 

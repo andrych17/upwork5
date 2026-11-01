@@ -6574,3 +6574,22 @@ a {
   syntax: '*';
   inherits: false;
 }
+
+/* membership status card when the plan is not in good standing */
+.active-status[data-status='past_due'] {
+  background: #fbe0d3;
+}
+
+.active-status[data-status='past_due'] .active-status-dot {
+  background: #c2410c;
+}
+
+.active-status[data-status='paused'],
+.active-status[data-status='canceled'] {
+  background: #ebe6da;
+}
+
+.active-status[data-status='paused'] .active-status-dot,
+.active-status[data-status='canceled'] .active-status-dot {
+  background: #77736a;
+}

@@ -3,7 +3,7 @@
 // Sessions: list upcoming or past rooms, create and edit them, hide or delete unused ones.
 import { useCallback, useState } from 'react';
 import { useAdmin } from '@/components/admin/shell';
-import { adminRpc, fmtWhen, fromCentralInput, toCentralInput, useLoad } from '@/lib/admin';
+import { adminRpc, fmtWhen, fromCentralInput, revealPanel, toCentralInput, useLoad } from '@/lib/admin';
 
 interface Session {
   id: string;
@@ -199,7 +199,12 @@ export default function AdminSessions() {
         </section>
 
         {draft && (
-          <aside className="adm-card adm-panel" aria-label={draft.id ? 'Edit session' : 'New session'}>
+          <aside
+            key={draft.id ?? 'new'}
+            ref={revealPanel}
+            className="adm-card adm-panel"
+            aria-label={draft.id ? 'Edit session' : 'New session'}
+          >
             <div className="adm-card-head">
               <h2>{draft.id ? 'Edit session' : 'New session'}</h2>
               <button type="button" className="adm-btn adm-btn-sm" onClick={() => setDraft(null)}>
