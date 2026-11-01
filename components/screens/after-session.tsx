@@ -4,10 +4,13 @@ import AccountMenu from '@/components/account-menu';
 import Link from 'next/link';
 import { useState } from 'react';
 import MenuToggle from '@/components/menu-toggle';
+import BuddyRooms from '@/components/screens/buddy-rooms';
 import { MAX_PICKS, updateBuddyDemo, useBuddyDemo } from '@/lib/buddy-demo';
 import { getSession } from '@/lib/session-data';
+import { getSupabase } from '@/lib/supabase';
 
-// Sample people until real rooms arrive (Milestone 4). picksYouBack stands in for the other member's private pick.
+// With Supabase: real picks and chat (buddy-rooms.tsx). Without it (local preview) the sample below, where
+// picksYouBack stands in for the other member's private pick.
 const participants = [
   {
     name: 'Maya',
@@ -41,6 +44,10 @@ const participants = [
 ];
 
 export default function AfterSessionPage() {
+  return getSupabase() ? <BuddyRooms /> : <DemoAfterSession />;
+}
+
+function DemoAfterSession() {
   const demo = useBuddyDemo();
   const [message, setMessage] = useState('');
 
@@ -81,7 +88,13 @@ export default function AfterSessionPage() {
           <Link href="/sessions">My sessions</Link>
           <Link href="/membership">Membership</Link>
         </nav>
-        <AccountMenu signedOut={<Link className="schedule-signin" href="/signin">Sign in</Link>} />
+        <AccountMenu
+          signedOut={
+            <Link className="schedule-signin" href="/signin">
+              Sign in
+            </Link>
+          }
+        />
         <MenuToggle />
       </header>
 

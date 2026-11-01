@@ -2768,3 +2768,301 @@ revoke execute on function report_participant(uuid, uuid, text, text) from publi
 grant execute on function report_participant(uuid, uuid, text, text) to authenticated;
 revoke execute on function admin_resolve_report(uuid) from public, anon;
 grant execute on function admin_resolve_report(uuid) to authenticated;
+
+-- 26. Buddy Rooms (Kelly 27-28 Oct): after a group session each person privately picks up to 3 people from it.
+-- Two people who picked each other (in any session they shared) get a private 1:1 chat. Picks stay private
+-- unless they match. Messages are text, a session invitation ({slug}) or a game invitation ({game}).
+create table if not exists buddy_picks (
+  session_id uuid not null references sessions(id) on delete cascade,
+  picker_id uuid not null references profiles(id) on delete cascade,
+  picked_id uuid not null references profiles(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (session_id, picker_id, picked_id),
+  check (picker_id <> picked_id)
+);
+create index if not exists idx_buddy_picks_picked on buddy_picks (picked_id, picker_id);
+create index if not exists idx_buddy_picks_picker on buddy_picks (picker_id, picked_id);
+
+-- low_id < high_id: one thread per pair, whoever writes first.
+create table if not exists buddy_messages (
+  id uuid primary key default gen_random_uuid(),
+  low_id uuid not null references profiles(id) on delete cascade,
+  high_id uuid not null references profiles(id) on delete cascade,
+  sender_id uuid not null references profiles(id) on delete cascade,
+  kind text not null default 'text' check (kind in ('text', 'session', 'game')),
+  body text not null check (length(body) between 1 and 2000),
+  payload jsonb,
+  created_at timestamptz not null default now(),
+  check (low_id < high_id),
+  check (sender_id in (low_id, high_id))
+);
+create index if not exists idx_buddy_messages_pair on buddy_messages (low_id, high_id, created_at);
+create index if not exists idx_buddy_messages_high on buddy_messages (high_id);
+create index if not exists idx_buddy_messages_sender on buddy_messages (sender_id, created_at);
+
+-- Had a real seat in the session (not cancelled, not held for a Hello Video).
+-- In the room = had a seat and actually joined the live room (room_join sets joined_at), so no-shows are not picked.
+create or replace function sat_in(p_session uuid, p_user uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from bookings
+    where session_id = p_session and user_id = p_user and status in ('confirmed', 'attended') and not held
+      and joined_at is not null
+  );
+$$;
+
+-- Both picked each other, and both accounts are on.
+create or replace function buddies_matched(p_a uuid, p_b uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select p_a <> p_b
+    and exists (select 1 from buddy_picks where picker_id = p_a and picked_id = p_b)
+    and exists (select 1 from buddy_picks where picker_id = p_b and picked_id = p_a)
+    and not exists (select 1 from profiles where id in (p_a, p_b) and disabled_at is not null);
+$$;
+
+-- Used by the messages policy: true only for one of the two people, so nobody can probe other pairs.
+create or replace function buddy_room_open(p_low uuid, p_high uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select auth.uid() in (p_low, p_high) and buddies_matched(p_low, p_high);
+$$;
+
+-- Picks open when the session starts and close 24 hours after it ends ("Picks stay open for 24 hours").
+create or replace function picks_close_at(p_starts timestamptz, p_minutes int)
+returns timestamptz
+language sql
+immutable
+set search_path = public
+as $$
+  select p_starts + make_interval(mins => p_minutes) + interval '24 hours';
+$$;
+
+-- The other people in a session the caller sat in (admins: any session), with the caller's own picks.
+-- Whether someone picked the caller is only shown once it is a match.
+create or replace function get_session_people(p_session uuid)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  v_me uuid := auth.uid();
+  v_s sessions%rowtype;
+begin
+  if v_me is null then
+    return jsonb_build_object('success', false, 'error', 'Please sign in.');
+  end if;
+  select * into v_s from sessions where id = p_session;
+  if not found or not (sat_in(p_session, v_me) or is_admin()) then
+    return jsonb_build_object('success', false, 'error', 'Only people who were in this session can see who was there.');
+  end if;
+  return jsonb_build_object(
+    'success', true,
+    'session', jsonb_build_object('id', v_s.id, 'slug', v_s.slug, 'title', v_s.title, 'starts_at', v_s.starts_at,
+                                  'minutes', v_s.minutes),
+    'can_pick', sat_in(p_session, v_me) and now() >= v_s.starts_at and now() <= picks_close_at(v_s.starts_at, v_s.minutes),
+    'picks_close_at', picks_close_at(v_s.starts_at, v_s.minutes),
+    'people', coalesce((
+      select jsonb_agg(jsonb_build_object(
+        'id', p.id,
+        'first_name', coalesce(nullif(p.first_name, ''), 'Member'),
+        'avatar_url', p.avatar_url,
+        'picked', exists (select 1 from buddy_picks k
+                          where k.session_id = p_session and k.picker_id = v_me and k.picked_id = p.id),
+        'matched', buddies_matched(v_me, p.id)
+      ) order by p.first_name, p.id)
+      from profiles p
+      where p.id <> v_me and p.disabled_at is null and sat_in(p_session, p.id)
+    ), '[]'::jsonb)
+  );
+end;
+$$;
+
+-- Replaces the caller's picks for one session (up to 3). Returns who matched.
+create or replace function save_buddy_picks(p_session uuid, p_ids uuid[])
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_me uuid := auth.uid();
+  v_s sessions%rowtype;
+  v_ids uuid[];
+begin
+  if v_me is null then
+    return jsonb_build_object('success', false, 'error', 'Please sign in.');
+  end if;
+  select * into v_s from sessions where id = p_session;
+  if not found or not sat_in(p_session, v_me) then
+    return jsonb_build_object('success', false, 'error', 'You can only pick people from a session you were in.');
+  end if;
+  if now() < v_s.starts_at then
+    return jsonb_build_object('success', false, 'error', 'Picks open once the session starts.');
+  end if;
+  if now() > picks_close_at(v_s.starts_at, v_s.minutes) then
+    return jsonb_build_object('success', false, 'error', 'Picks for this session closed 24 hours after it ended.');
+  end if;
+  select coalesce(array_agg(distinct i), '{}') into v_ids from unnest(coalesce(p_ids, '{}')) i where i is not null;
+  if cardinality(v_ids) > 3 then
+    return jsonb_build_object('success', false, 'error', 'Pick up to 3 people.');
+  end if;
+  if exists (select 1 from unnest(v_ids) i where i = v_me or not sat_in(p_session, i)) then
+    return jsonb_build_object('success', false, 'error', 'Pick people who were in this session.');
+  end if;
+
+  delete from buddy_picks where session_id = p_session and picker_id = v_me;
+  insert into buddy_picks (session_id, picker_id, picked_id) select p_session, v_me, i from unnest(v_ids) i;
+
+  return jsonb_build_object('success', true, 'matched', coalesce((
+    select jsonb_agg(jsonb_build_object('id', p.id, 'first_name', coalesce(nullif(p.first_name, ''), 'Member'),
+                                        'avatar_url', p.avatar_url) order by p.first_name)
+    from profiles p where p.id = any (v_ids) and buddies_matched(v_me, p.id)
+  ), '[]'::jsonb));
+end;
+$$;
+
+-- Everyone the caller matched with, newest conversation first.
+create or replace function get_my_buddies()
+returns jsonb
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select coalesce(jsonb_agg(jsonb_build_object(
+    'id', b.id, 'first_name', b.first_name, 'avatar_url', b.avatar_url,
+    'last_body', b.last_body, 'last_kind', b.last_kind, 'last_at', b.last_at, 'last_from_me', b.last_from_me
+  ) order by b.last_at desc nulls last, b.first_name), '[]'::jsonb)
+  from (
+    select p.id, coalesce(nullif(p.first_name, ''), 'Member') as first_name, p.avatar_url,
+           m.body as last_body, m.kind as last_kind, m.created_at as last_at, m.sender_id = auth.uid() as last_from_me
+    from profiles p
+    left join lateral (
+      select body, kind, created_at, sender_id from buddy_messages
+      where low_id = least(auth.uid(), p.id) and high_id = greatest(auth.uid(), p.id)
+      order by created_at desc limit 1
+    ) m on true
+    where p.id in (select picked_id from buddy_picks where picker_id = auth.uid())
+      and buddies_matched(auth.uid(), p.id)
+  ) b;
+$$;
+
+-- Sends a message in a Buddy Room. At most 30 a minute per person.
+create or replace function send_buddy_message(p_to uuid, p_kind text, p_body text, p_payload jsonb default null)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_me uuid := auth.uid();
+  v_body text := trim(coalesce(p_body, ''));
+  v_payload jsonb;
+  v_row buddy_messages%rowtype;
+begin
+  if v_me is null then
+    return jsonb_build_object('success', false, 'error', 'Please sign in.');
+  end if;
+  if coalesce(p_kind, '') not in ('text', 'session', 'game') then
+    return jsonb_build_object('success', false, 'error', 'Unknown message type.');
+  end if;
+  if v_body = '' or length(v_body) > 2000 then
+    return jsonb_build_object('success', false, 'error', 'Write a message of up to 2,000 characters.');
+  end if;
+  if p_to is null or not buddies_matched(v_me, p_to) then
+    return jsonb_build_object('success', false, 'error', 'This Buddy Room is closed.');
+  end if;
+  if p_kind = 'session' then
+    if not exists (select 1 from sessions where slug = p_payload->>'slug' and published) then
+      return jsonb_build_object('success', false, 'error', 'That session is not on the calendar.');
+    end if;
+    v_payload := jsonb_build_object('slug', p_payload->>'slug');
+  elsif p_kind = 'game' then
+    if coalesce(p_payload->>'game', '') not in ('Word Rush', 'Slow Chess') then
+      return jsonb_build_object('success', false, 'error', 'Unknown game.');
+    end if;
+    v_payload := jsonb_build_object('game', p_payload->>'game');
+  end if;
+  if (select count(*) from buddy_messages where sender_id = v_me and created_at > now() - interval '1 minute') >= 30 then
+    return jsonb_build_object('success', false, 'error', 'That’s a lot of messages at once. Wait a minute and try again.');
+  end if;
+
+  insert into buddy_messages (low_id, high_id, sender_id, kind, body, payload)
+  values (least(v_me, p_to), greatest(v_me, p_to), v_me, p_kind, v_body, v_payload)
+  returning * into v_row;
+  return jsonb_build_object('success', true, 'id', v_row.id, 'created_at', v_row.created_at);
+end;
+$$;
+
+-- "Block": drops the caller's picks of that person, so the room closes for both. They are not told.
+create or replace function unpick_buddy(p_other uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if auth.uid() is null then
+    return jsonb_build_object('success', false, 'error', 'Please sign in.');
+  end if;
+  delete from buddy_picks where picker_id = auth.uid() and picked_id = p_other;
+  return jsonb_build_object('success', true);
+end;
+$$;
+
+alter table buddy_picks enable row level security;
+alter table buddy_messages enable row level security;
+drop policy if exists "People see their own picks" on buddy_picks;
+create policy "People see their own picks" on buddy_picks for select to authenticated
+  using (picker_id = (select auth.uid()));
+drop policy if exists "Buddies read their room" on buddy_messages;
+create policy "Buddies read their room" on buddy_messages for select to authenticated
+  using ((select auth.uid()) in (low_id, high_id) and buddy_room_open(low_id, high_id));
+revoke insert, update, delete on buddy_picks, buddy_messages from anon, authenticated;
+revoke select on buddy_picks, buddy_messages from anon;
+grant select on buddy_picks, buddy_messages to authenticated;
+
+revoke execute on function sat_in(uuid, uuid) from public, anon, authenticated;
+revoke execute on function buddies_matched(uuid, uuid) from public, anon, authenticated;
+revoke execute on function buddy_room_open(uuid, uuid) from public, anon;
+grant execute on function buddy_room_open(uuid, uuid) to authenticated;
+revoke execute on function picks_close_at(timestamptz, int) from public, anon;
+grant execute on function picks_close_at(timestamptz, int) to authenticated;
+revoke execute on function get_session_people(uuid) from public, anon;
+grant execute on function get_session_people(uuid) to authenticated;
+revoke execute on function save_buddy_picks(uuid, uuid[]) from public, anon;
+grant execute on function save_buddy_picks(uuid, uuid[]) to authenticated;
+revoke execute on function get_my_buddies() from public, anon;
+grant execute on function get_my_buddies() to authenticated;
+revoke execute on function send_buddy_message(uuid, text, text, jsonb) from public, anon;
+grant execute on function send_buddy_message(uuid, text, text, jsonb) to authenticated;
+revoke execute on function unpick_buddy(uuid) from public, anon;
+grant execute on function unpick_buddy(uuid) to authenticated;
+
+-- New messages reach an open chat through Supabase Realtime (RLS decides who receives them).
+-- Skipped where the publication is missing (local tests).
+do $do$
+begin
+  if exists (select 1 from pg_publication where pubname = 'supabase_realtime')
+     and not exists (select 1 from pg_publication_tables
+                     where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'buddy_messages') then
+    alter publication supabase_realtime add table buddy_messages;
+  end if;
+end
+$do$;

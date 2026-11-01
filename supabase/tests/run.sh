@@ -19,4 +19,5 @@ psql < tests/admin.sql
 psql < tests/schedule.sql
 psql < tests/payments.sql
 psql < tests/rooms.sql
+psql < tests/buddies.sql
 echo "schema checks: ok"

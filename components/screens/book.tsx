@@ -7,6 +7,7 @@ import AccountMenu from '@/components/account-menu';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { sendBuddyMessage } from '@/lib/buddies';
 import { updateBuddyDemo, useBuddyDemo } from '@/lib/buddy-demo';
 import { useAccount } from '@/lib/account';
 import { addMinutes, fetchRoom, roomInfo, seatLabel, seatsLeft, timeOf, when, type Room } from '@/lib/rooms';
@@ -60,10 +61,10 @@ interface Loaded {
 export default function BookPage({ slug }: { slug: string }) {
   const [cameraOff, setCameraOff] = useState(false);
   const [confirmed, setConfirmed] = useState<{ held: boolean; extra: boolean } | null>(null);
-  const [invited, setInvited] = useState<string | null>(null);
+  const [invited, setInvited] = useState<{ name: string; id: string | null; error: string } | null>(null);
   const [bookingError, setBookingError] = useState<string | null>(null);
   const [isBooking, setIsBooking] = useState(false);
-  const { inviting } = useBuddyDemo();
+  const { inviting, invitingId } = useBuddyDemo();
   const { ready, account } = useAccount();
   const now = useNow();
   const supabase = getSupabase();
@@ -142,12 +143,23 @@ export default function BookPage({ slug }: { slug: string }) {
       return;
     }
     if (inviting) {
+      // The invitation card lands in the Buddy Room for both people.
+      const sent = invitingId
+        ? await sendBuddyMessage(
+            supabase,
+            invitingId,
+            'session',
+            `Join me at ${session.title}, ${at.long} at ${at.time}?`,
+            { slug: session.slug },
+          )
+        : '';
       updateBuddyDemo((demo) => ({
         ...demo,
         inviting: null,
+        invitingId: null,
         sessionInvites: { ...demo.sessionInvites, [inviting]: session.slug },
       }));
-      setInvited(inviting);
+      setInvited({ name: inviting, id: invitingId, error: sent });
     }
     setConfirmed({ held: Boolean(res.held), extra: res.credit_type === 'addon' });
   };
@@ -188,16 +200,19 @@ export default function BookPage({ slug }: { slug: string }) {
               : ''}
             {confirmed.extra ? 'This booking used one of your extra sessions. ' : ''}
             Your prep card stays in My sessions. Reminders go out 24 hours and 1 hour before if you turned them on.
-            {invited && ` ${invited} gets the invitation in your Buddy Room and confirms with their own credit.`}
+            {invited &&
+              (invited.error
+                ? ` Your seat is saved, but the invitation to ${invited.name} didn’t go through: ${invited.error}`
+                : ` ${invited.name} gets the invitation in your Buddy Room and confirms with their own credit.`)}
           </p>
           <div className="confirmation-actions">
             {invited && (
               <Link
                 className="primary-booking-action"
-                href="/after-session"
-                onClick={() => updateBuddyDemo((demo) => ({ ...demo, chat: invited }))}
+                href={invited.id ? { pathname: '/after-session', query: { buddy: invited.id } } : '/after-session'}
+                onClick={() => updateBuddyDemo((demo) => ({ ...demo, chat: invited.name }))}
               >
-                Back to chat with {invited}
+                Back to chat with {invited.name}
               </Link>
             )}
             <Link className={invited ? 'secondary-booking-action' : 'primary-booking-action'} href="/sessions">

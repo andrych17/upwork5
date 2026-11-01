@@ -13,6 +13,7 @@ import { getSupabase, setDemoUser } from '@/lib/supabase';
 const LINKS: { href: Route; label: string }[] = [
   { href: '/calendar', label: 'Calendar' },
   { href: '/sessions', label: 'My sessions' },
+  { href: '/after-session', label: 'Buddy Rooms' },
   { href: '/membership', label: 'Membership & credits' },
   { href: '/reminders', label: 'Reminders' },
   { href: '/hello-video', label: 'Hello Video' },

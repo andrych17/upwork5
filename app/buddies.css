@@ -1,0 +1,87 @@
+/* Buddy Rooms with real data (components/screens/buddy-rooms.tsx): initials when a member has no photo,
+   sized like the board's photos in each place, plus empty and error lines. */
+.buddy-face {
+  border: 2px solid var(--ink);
+  background: var(--info);
+  color: #171717;
+  place-items: center;
+  font-weight: 900;
+  display: grid;
+}
+
+.participant-grid .buddy-face {
+  border-width: 0 0 2px;
+  width: 100%;
+  height: 220px;
+  font-size: 3.5rem;
+}
+
+.buddy-room-tabs .buddy-face {
+  border-width: 1.5px;
+  border-radius: 50%;
+  width: 34px;
+  height: 34px;
+  font-size: 0.85rem;
+}
+
+.chat-heading .buddy-face {
+  border-radius: 50%;
+  width: 90px;
+  height: 90px;
+  font-size: 2rem;
+}
+
+.buddy-opened .buddy-face {
+  border-radius: 13px;
+  width: 90px;
+  height: 90px;
+  font-size: 2rem;
+}
+
+.picker-empty {
+  border: 1.5px dashed var(--line);
+  border-radius: 14px;
+  padding: 18px;
+  font-size: 0.9rem;
+}
+
+.buddy-error {
+  border: 1.5px solid var(--danger);
+  background: #fde2e4;
+  color: #6e1423;
+  border-radius: 12px;
+  margin: 12px 0;
+  padding: 10px 14px;
+  font-size: 0.85rem;
+}
+
+@media (max-width: 700px) {
+  .participant-grid .buddy-face {
+    height: 180px;
+  }
+
+  .buddy-opened .buddy-face {
+    width: 64px;
+    height: 64px;
+  }
+}
+
+/* Recent sessions where picks are still open (no ?s= on /after-session). */
+.buddy-recent {
+  flex-direction: column;
+  gap: 8px;
+  margin: 18px 0;
+  display: flex;
+}
+
+.buddy-recent a {
+  border: 1.5px solid var(--ink);
+  background: var(--paper);
+  color: var(--ink);
+  border-radius: 14px;
+  justify-content: space-between;
+  padding: 12px 16px;
+  font-weight: 700;
+  text-decoration: none;
+  display: flex;
+}
