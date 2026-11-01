@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import GoogleButton from '@/components/google-button';
 import { getSupabase, setDemoUser } from '@/lib/supabase';
 
 export default function SigninPage() {
@@ -168,6 +169,8 @@ export default function SigninPage() {
                   {infoMsg}
                 </div>
               )}
+
+              <GoogleButton next="/calendar" label="Sign in with Google" onError={setErrorMsg} />
 
               <form onSubmit={handleSignIn}>
                 <div className="form-grid">

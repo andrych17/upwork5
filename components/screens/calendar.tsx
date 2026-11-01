@@ -189,7 +189,8 @@ export default function SchedulePage() {
     if (supabase) {
       supabase.auth.getSession().then(({ data }) => {
         if (data.session?.user) {
-          const name = data.session.user.user_metadata?.first_name || 'Member';
+          const meta = data.session.user.user_metadata ?? {};
+          const name = meta.first_name || meta.given_name || String(meta.full_name || meta.name || '').split(' ')[0] || 'Member';
           setCurrentUser(name);
         }
       });

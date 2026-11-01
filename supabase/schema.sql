@@ -229,7 +229,17 @@ declare
   v_owner profiles%rowtype;
   v_tier text;
   v_interval text;
+  v_meta jsonb := coalesce(new.raw_user_meta_data, '{}');
+  v_full text;
+  v_first text;
+  v_last text;
 begin
+  -- Email sign-up sends first_name/last_name. Google sends given_name/family_name or only full_name.
+  v_full := trim(coalesce(v_meta->>'full_name', v_meta->>'name', ''));
+  v_first := coalesce(nullif(trim(v_meta->>'first_name'), ''), nullif(trim(v_meta->>'given_name'), ''),
+                      nullif(split_part(v_full, ' ', 1), ''), 'Member');
+  v_last := coalesce(nullif(trim(v_meta->>'last_name'), ''), nullif(trim(v_meta->>'family_name'), ''),
+                     nullif(trim(substr(v_full, length(split_part(v_full, ' ', 1)) + 1)), ''), '');
   select * into v_cfg from app_config where id = 1;
   v_today := (now() at time zone v_cfg.tz)::date;
 
@@ -242,8 +252,8 @@ begin
     ) values (
       new.id,
       lower(new.email),
-      coalesce(new.raw_user_meta_data->>'first_name', 'Member'),
-      coalesce(new.raw_user_meta_data->>'last_name', ''),
+      left(v_first, 80),
+      left(v_last, 80),
       'household',
       v_owner.billing_interval,
       v_owner.billing_date,
@@ -267,8 +277,8 @@ begin
   ) values (
     new.id,
     lower(new.email),
-    coalesce(new.raw_user_meta_data->>'first_name', 'Member'),
-    coalesce(new.raw_user_meta_data->>'last_name', ''),
+    left(v_first, 80),
+    left(v_last, 80),
     v_tier,
     v_interval,
     extract(day from v_today)::int,

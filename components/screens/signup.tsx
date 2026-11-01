@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import GoogleButton from '@/components/google-button';
 import { getSupabase, setDemoUser } from '@/lib/supabase';
 
 const interests = [
@@ -155,6 +156,7 @@ export default function SignupPage() {
                 Household ($34 a month or $349 a year) in step 2 and invites up to 3 people, who share 16 sessions a
                 month. Invited by someone? Sign up with the email they invited.
               </p>
+              <GoogleButton next="/calendar" label="Sign up with Google" onError={setErrorMsg} />
               <div className="form-grid">
                 <label>
                   <span>First name</span>

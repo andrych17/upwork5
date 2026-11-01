@@ -130,3 +130,12 @@ select t((select cancel_hours = 12 and max_weekly_sessions is null and sms_kinds
 select t((select count(*) from admin_log where admin_id = :'A2') >= 10, 'admin changes are logged');
 select t((select count(*) from admin_log where action = 'member_disabled' and details->>'reason' = 'Spam') = 1,
   'turning off is logged with the reason');
+
+-- Google sign-up: names come from given_name/family_name or full_name
+insert into auth.users (id, email, raw_user_meta_data) values
+  ('00000000-0000-0000-0000-0000000000a1', 'g1@example.com', '{"given_name": "Ana", "family_name": "Diaz", "full_name": "Ana Diaz"}'),
+  ('00000000-0000-0000-0000-0000000000a2', 'g2@example.com', '{"full_name": "Lee Ann Park"}'),
+  ('00000000-0000-0000-0000-0000000000a3', 'g3@example.com', '{}');
+select t((select first_name = 'Ana' and last_name = 'Diaz' from profiles where email = 'g1@example.com'), 'google given/family name');
+select t((select first_name = 'Lee' and last_name = 'Ann Park' from profiles where email = 'g2@example.com'), 'google full name split');
+select t((select first_name = 'Member' and last_name = '' from profiles where email = 'g3@example.com'), 'no name falls back to Member');
