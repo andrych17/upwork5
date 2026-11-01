@@ -93,3 +93,30 @@ export function useMicLevel(stream: MediaStream | null): { level: number; heard:
 }
 
 export const stopStream = (stream: MediaStream | null) => stream?.getTracks().forEach((track) => track.stop());
+
+/** Devices picked on the camera check, used again by the live room (this tab only). */
+export interface RoomPrefs {
+  cameraId: string;
+  micId: string;
+  cameraOn: boolean;
+  micOn: boolean;
+}
+
+const PREFS_KEY = 'mdc-room-prefs';
+
+export function loadRoomPrefs(): RoomPrefs {
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(PREFS_KEY) ?? 'null') as Partial<RoomPrefs> | null;
+    return { cameraId: '', micId: '', cameraOn: true, micOn: true, ...saved };
+  } catch {
+    return { cameraId: '', micId: '', cameraOn: true, micOn: true };
+  }
+}
+
+export function saveRoomPrefs(prefs: RoomPrefs): void {
+  try {
+    sessionStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
+  } catch {
+    // Private mode: the room just starts with the default devices.
+  }
+}

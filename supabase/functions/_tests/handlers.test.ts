@@ -122,7 +122,16 @@ Deno.test('send-reminders sends each channel once and cleans up dead devices', a
   assert(res.status === 200, `status ${res.status}`);
   assert(
     JSON.stringify(summary) ===
-      JSON.stringify({ claimed: 2, push: 1, email: 1, sms: 1, failed: 0, removed_devices: 1, notices: 0, notices_failed: 0 }),
+      JSON.stringify({
+        claimed: 2,
+        push: 1,
+        email: 1,
+        sms: 1,
+        failed: 0,
+        removed_devices: 1,
+        notices: 0,
+        notices_failed: 0,
+      }),
     JSON.stringify(summary),
   );
   assert(!calls.some((c) => c.url.host === 'evil.test'), 'unknown push host is never called');
@@ -163,7 +172,14 @@ Deno.test('send-reminders sends each channel once and cleans up dead devices', a
     if (url.pathname === '/rest/v1/rpc/claim_member_notices') {
       return json([
         { id: 'n1', kind: 'hello_approved', note: null, first_name: 'Sam', email: 'sam@example.test', held_count: 2 },
-        { id: 'n2', kind: 'hello_redo', note: 'Too <dark>', first_name: null, email: 'pat@example.test', held_count: 0 },
+        {
+          id: 'n2',
+          kind: 'hello_redo',
+          note: 'Too <dark>',
+          first_name: null,
+          email: 'pat@example.test',
+          held_count: 0,
+        },
         { id: 'n3', kind: 'hold_released', note: 'Quiet Co-Work', first_name: 'Lee', email: null, held_count: 0 },
       ]);
     }
@@ -181,11 +197,18 @@ Deno.test('send-reminders sends each channel once and cleans up dead devices', a
   );
   const mails = JSON.parse(calls.find((c) => c.url.host === 'api.resend.com')!.body);
   assert(mails.length === 2 && mails[0].to[0] === 'sam@example.test', 'only people with an address are emailed');
-  assert(mails[0].subject === 'Your Hello Video is approved' && mails[0].text.includes('now confirmed'), 'approved email');
-  assert(mails[1].html.includes('Too &lt;dark&gt;') && !mails[1].html.includes('<dark>'), 'the team note is escaped');
-  const noticeRows = JSON.parse(calls.find((c) => c.url.pathname === '/rest/v1/rpc/record_notice_results')!.body).p_results;
   assert(
-    noticeRows[0].email_sent === true && noticeRows[2].email_sent === false && noticeRows[2].error === 'no email address',
+    mails[0].subject === 'Your Hello Video is approved' && mails[0].text.includes('now confirmed'),
+    'approved email',
+  );
+  assert(mails[1].html.includes('Too &lt;dark&gt;') && !mails[1].html.includes('<dark>'), 'the team note is escaped');
+  const noticeRows = JSON.parse(
+    calls.find((c) => c.url.pathname === '/rest/v1/rpc/record_notice_results')!.body,
+  ).p_results;
+  assert(
+    noticeRows[0].email_sent === true &&
+      noticeRows[2].email_sent === false &&
+      noticeRows[2].error === 'no email address',
     JSON.stringify(noticeRows),
   );
 
@@ -265,4 +288,87 @@ Deno.test('hello-video signs uploads, rejects oversized files and keeps the queu
   answer = () => json({ msg: 'bad jwt' }, 401);
   const anonymous = await call({ action: 'start' }, 'expired');
   assert(anonymous.status === 401, `expired token ${anonymous.status}`);
+});
+
+Deno.test('room-join creates the Daily room once and gives a token only to people the database lets in', async () => {
+  const user = '55555555-5555-5555-5555-555555555555';
+  const session = '66666666-6666-6666-6666-666666666666';
+  const call = (h: Handler, body: unknown) =>
+    h(
+      new Request('https://fn.test', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer t' },
+        body: JSON.stringify(body),
+      }),
+    );
+
+  Deno.env.delete('DAILY_API_KEY');
+  const off = await load('../room-join/index.ts?off');
+  assert((await call(off, { session_id: session })).status === 503, 'no key: not configured');
+
+  Deno.env.set('DAILY_API_KEY', 'daily-key');
+  const handler = await load('../room-join/index.ts?on');
+  const endsAt = new Date(Date.now() + 50 * 60_000).toISOString();
+  let allowed = true;
+  let roomExists = false;
+  calls = [];
+  answer = ({ url, method, body }) => {
+    if (url.pathname === '/auth/v1/user') return json({ id: user, aud: 'authenticated', role: 'authenticated' });
+    if (url.pathname === '/rest/v1/rpc/room_join') {
+      const args = JSON.parse(body);
+      assert(args.p_user === user && args.p_session === session, 'asks the database about this person');
+      return json(
+        allowed
+          ? {
+              success: true,
+              title: 'Quiet Co-Work',
+              slug: 'quiet-co-work',
+              starts_at: endsAt,
+              ends_at: endsAt,
+              locks_at: endsAt,
+              capacity: 12,
+              name: 'Rita',
+              camera_off: true,
+              is_admin: false,
+              people: [],
+            }
+          : { success: false, error: 'You don’t have a seat in this session.' },
+      );
+    }
+    if (url.host === 'api.daily.co' && url.pathname === `/v1/rooms/mdc-${session}` && method === 'GET')
+      return roomExists ? json({ url: 'https://mdc.daily.co/r' }) : json({ error: 'not-found' }, 404);
+    if (url.host === 'api.daily.co' && url.pathname === '/v1/rooms' && method === 'POST') {
+      roomExists = true;
+      return json({ url: 'https://mdc.daily.co/r' });
+    }
+    if (url.host === 'api.daily.co' && url.pathname === '/v1/meeting-tokens') return json({ token: 'meeting-token' });
+    return new Response('unexpected', { status: 599 });
+  };
+
+  assert((await call(handler, { session_id: 'nope' })).status === 400, 'bad session id');
+  const first = await call(handler, { session_id: session });
+  const firstBody = await first.json();
+  assert(
+    first.status === 200 && firstBody.token === 'meeting-token' && firstBody.url === 'https://mdc.daily.co/r',
+    'joins',
+  );
+  assert(!('capacity' in firstBody) && !('success' in firstBody), 'only what the page needs');
+  const made = JSON.parse(calls.find((c) => c.url.pathname === '/v1/rooms' && c.method === 'POST')!.body);
+  assert(made.privacy === 'private' && made.properties.max_participants === 14, 'private room capped at seats + 2');
+  const tokenReq = JSON.parse(calls.find((c) => c.url.pathname === '/v1/meeting-tokens')!.body).properties;
+  assert(
+    tokenReq.user_id === user && tokenReq.start_video_off === true && tokenReq.is_owner === false,
+    'token for this person',
+  );
+  assert(calls.find((c) => c.url.host === 'api.daily.co')!.method === 'GET', 'looks for the room first');
+
+  calls = [];
+  await call(handler, { session_id: session });
+  assert(!calls.some((c) => c.url.pathname === '/v1/rooms' && c.method === 'POST'), 'room reused');
+
+  allowed = false;
+  calls = [];
+  const refused = await call(handler, { session_id: session });
+  assert(refused.status === 403 && (await refused.json()).error.message.includes('seat'), 'database says no');
+  assert(!calls.some((c) => c.url.host === 'api.daily.co'), 'no Daily call when refused');
 });

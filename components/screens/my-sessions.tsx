@@ -287,10 +287,18 @@ export default function MySessionsPage() {
                   )}
                 </div>
                 <div className="join-session">
-                  {room.my_held ? (
+                  {room.my_held || (s?.hello_required && s.hello_status !== 'approved') ? (
                     <>
                       <strong>Waiting for approval</strong>
-                      <p>Your seat is held until your Hello Video is approved.</p>
+                      <p>
+                        Your seat is saved. Rooms open for you once your Hello Video is approved.
+                        {(s?.hello_status === 'none' || s?.hello_status === 'rejected') && (
+                          <>
+                            {' '}
+                            <Link href="/hello-video">Record it now</Link>
+                          </>
+                        )}
+                      </p>
                       <button type="button" disabled>
                         Join room
                       </button>
@@ -300,7 +308,7 @@ export default function MySessionsPage() {
                       <span className="room-open-dot" />
                       <strong>Room is open</strong>
                       <p>Closes at {timeOf(addMinutes(room.starts_at, ROOM_OPENS_MINUTES))}</p>
-                      <Link href="/camera-check">
+                      <Link href={{ pathname: '/camera-check', query: { s: room.slug } }}>
                         Join room <span aria-hidden="true">→</span>
                       </Link>
                     </>

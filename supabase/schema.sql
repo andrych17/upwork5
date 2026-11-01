@@ -2601,3 +2601,170 @@ begin
     using (bucket_id = 'avatars' and (storage.foldername(name))[1] = (select auth.uid())::text)$p$;
 end
 $do$;
+
+-- 25. Live rooms (Milestone 4). The room-join Edge Function asks room_join() who may enter, then gets a Daily
+-- room and a meeting token. Rooms open 10 minutes before the start and lock to new arrivals 10 minutes after
+-- (Kelly 28 Oct); someone who already joined can come back until the end. Kelly 31 Oct: nobody enters a room
+-- before an admin approved their Hello Video (app_config.require_hello_video). Reports go to admins only.
+alter table bookings add column if not exists joined_at timestamptz;
+
+create table if not exists room_reports (
+  id uuid primary key default gen_random_uuid(),
+  session_id uuid not null references sessions(id) on delete cascade,
+  reporter_id uuid not null references profiles(id) on delete cascade,
+  reported_id uuid references profiles(id) on delete set null,
+  reason text not null check (length(reason) between 1 and 80),
+  note text check (note is null or length(note) <= 1000),
+  status text not null default 'open' check (status in ('open', 'resolved')),
+  resolved_by uuid references profiles(id) on delete set null,
+  resolved_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_room_reports_status on room_reports (status, created_at desc);
+create index if not exists idx_room_reports_session on room_reports (session_id);
+create index if not exists idx_room_reports_reporter on room_reports (reporter_id, created_at desc);
+create index if not exists idx_room_reports_reported on room_reports (reported_id);
+create index if not exists idx_room_reports_resolved_by on room_reports (resolved_by);
+
+alter table room_reports enable row level security;
+drop policy if exists "Admins can view reports" on room_reports;
+create policy "Admins can view reports" on room_reports for select to authenticated using (is_admin());
+revoke insert, update, delete on room_reports from anon, authenticated;
+
+-- Server only (service role, from room-join): may p_user enter p_session now? Admins may enter any session
+-- while it is open, without a seat. Marks the seat as joined.
+create or replace function room_join(p_user uuid, p_session uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_cfg app_config%rowtype;
+  v_me profiles%rowtype;
+  v_s sessions%rowtype;
+  v_b bookings%rowtype;
+  v_opens timestamptz;
+  v_locks timestamptz;
+  v_ends timestamptz;
+begin
+  select * into v_cfg from app_config where id = 1;
+  select * into v_me from profiles where id = p_user;
+  if not found or v_me.disabled_at is not null then
+    return jsonb_build_object('success', false, 'error', 'This account can’t join rooms. Please contact us.');
+  end if;
+  select * into v_s from sessions where id = p_session;
+  if not found or (not v_s.published and not v_me.is_admin) then
+    return jsonb_build_object('success', false, 'error', 'This session was not found.');
+  end if;
+  v_opens := v_s.starts_at - interval '10 minutes';
+  v_locks := v_s.starts_at + interval '10 minutes';
+  v_ends := v_s.starts_at + make_interval(mins => v_s.minutes);
+  if now() < v_opens then
+    return jsonb_build_object('success', false, 'error', 'The room opens 10 minutes before the start.');
+  elsif now() >= v_ends then
+    return jsonb_build_object('success', false, 'error', 'This session has ended.');
+  end if;
+
+  if not v_me.is_admin then
+    select * into v_b from bookings
+    where session_id = p_session and user_id = p_user and status in ('confirmed', 'attended')
+    for update;
+    if not found then
+      return jsonb_build_object('success', false, 'error', 'You don’t have a seat in this session.');
+    end if;
+    if v_b.held or (v_cfg.require_hello_video and v_me.hello_status <> 'approved') then
+      return jsonb_build_object('success', false, 'error',
+        'Rooms open for you once your Hello Video is approved. Your seat is saved.');
+    end if;
+    if now() > v_locks and v_b.joined_at is null then
+      return jsonb_build_object('success', false, 'error', 'The room closed to new arrivals ten minutes after the start.');
+    end if;
+    update bookings set joined_at = coalesce(joined_at, now()) where id = v_b.id;
+  end if;
+
+  return jsonb_build_object(
+    'success', true,
+    'title', v_s.title,
+    'slug', v_s.slug,
+    'starts_at', v_s.starts_at,
+    'ends_at', v_ends,
+    'locks_at', v_locks,
+    'capacity', v_s.capacity,
+    'name', coalesce(nullif(trim(v_me.first_name), ''), 'Member'),
+    'camera_off', coalesce(v_b.camera_off, false),
+    'is_admin', v_me.is_admin,
+    'people', (
+      select coalesce(jsonb_agg(jsonb_build_object(
+        'id', p.id, 'name', coalesce(nullif(trim(p.first_name), ''), 'Member'), 'avatar_url', p.avatar_url
+      )), '[]'::jsonb)
+      from bookings b join profiles p on p.id = b.user_id
+      where b.session_id = p_session and b.status in ('confirmed', 'attended') and not b.held
+    )
+  );
+end;
+$$;
+
+-- A private report from someone in the room about someone else in it. At most 10 an hour per person.
+create or replace function report_participant(p_session uuid, p_reported uuid, p_reason text, p_note text default null)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_in_room boolean;
+begin
+  if auth.uid() is null then
+    return jsonb_build_object('success', false, 'error', 'Please sign in.');
+  end if;
+  if coalesce(trim(p_reason), '') = '' then
+    return jsonb_build_object('success', false, 'error', 'Choose what happened.');
+  end if;
+  select exists (select 1 from bookings where session_id = p_session and user_id = auth.uid()
+                 and status in ('confirmed', 'attended')) or is_admin()
+  into v_in_room;
+  if not v_in_room then
+    return jsonb_build_object('success', false, 'error', 'You can only report people from your own session.');
+  end if;
+  if p_reported is not null and (p_reported = auth.uid() or not exists (
+       select 1 from bookings where session_id = p_session and user_id = p_reported
+       and status in ('confirmed', 'attended'))) then
+    return jsonb_build_object('success', false, 'error', 'That person isn’t in this session.');
+  end if;
+  if (select count(*) from room_reports where reporter_id = auth.uid() and created_at > now() - interval '1 hour') >= 10 then
+    return jsonb_build_object('success', false, 'error', 'You’ve sent several reports. An admin will look at them soon.');
+  end if;
+  insert into room_reports (session_id, reporter_id, reported_id, reason, note)
+  values (p_session, auth.uid(), p_reported, left(trim(p_reason), 80), nullif(left(trim(coalesce(p_note, '')), 1000), ''));
+  return jsonb_build_object('success', true);
+end;
+$$;
+
+create or replace function admin_resolve_report(p_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not is_admin() then
+    return jsonb_build_object('success', false, 'error', 'Only an admin can resolve reports.');
+  end if;
+  update room_reports set status = 'resolved', resolved_by = auth.uid(), resolved_at = now()
+  where id = p_id and status = 'open';
+  if not found then
+    return jsonb_build_object('success', false, 'error', 'This report is already resolved.');
+  end if;
+  insert into admin_log (admin_id, action, details)
+  values (auth.uid(), 'report_resolved', jsonb_build_object('report_id', p_id));
+  return jsonb_build_object('success', true);
+end;
+$$;
+
+revoke execute on function room_join(uuid, uuid) from public, anon, authenticated;
+revoke execute on function report_participant(uuid, uuid, text, text) from public, anon;
+grant execute on function report_participant(uuid, uuid, text, text) to authenticated;
+revoke execute on function admin_resolve_report(uuid) from public, anon;
+grant execute on function admin_resolve_report(uuid) to authenticated;

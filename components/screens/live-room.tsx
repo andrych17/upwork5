@@ -1,106 +1,355 @@
 'use client';
 
+// Live room (/live-room?s=<session slug>), Milestone 4. The room-join Edge Function checks the seat, the time
+// window and the Hello Video, then returns a private Daily room and a token for this person. Video runs on
+// Daily's call object (daily-js) inside the board's own layout: tiles, the activity guide, Safety (mute
+// someone just for you, report privately to the admins) and Leave, which goes on to Buddy picks.
+import type { DailyCall, DailyParticipant } from '@daily-co/daily-js';
 import Link from 'next/link';
-import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { callEdge } from '@/lib/edge';
+import { loadRoomPrefs } from '@/lib/media';
+import { catalogFor, fetchRoom, type Room } from '@/lib/rooms';
+import { getSupabase } from '@/lib/supabase';
+import { useQueryParam } from '@/lib/use-query';
 
-const people = [
-  { name: 'Maya', image: '/images/community-painting.webp', role: 'Starter' },
-  { name: 'Jon', image: '/images/guy-chair.webp', role: 'Timekeeper' },
-  { name: 'Nina', image: '/images/girl-glasses-guitar.webp', role: '' },
-  { name: 'Alex', image: '/images/purpose-solo.webp', role: 'Closer' },
-  { name: 'Sam', image: '/images/guitar-duo.webp', role: '' },
-  { name: 'Priya', image: '/images/purpose-together.webp', role: '' },
-  { name: 'Luis', image: '/images/guy-library.webp', role: '' },
-  { name: 'Tess', image: '/images/gma-granddaughter-cooking.webp', role: '' },
-  { name: 'Drew', image: '/images/dad-child-drawing.webp', role: '' },
-  { name: 'Casey', image: '/images/couple-cooking.webp', role: '' },
-  { name: 'Robin', image: '/images/dad-child-baking.webp', role: '' },
-];
+interface Person {
+  id: string;
+  name: string;
+  avatar_url: string | null;
+}
+
+interface JoinInfo {
+  url: string;
+  token: string;
+  title: string;
+  slug: string;
+  starts_at: string;
+  ends_at: string;
+  locks_at: string;
+  name: string;
+  camera_off: boolean;
+  is_admin: boolean;
+  people: Person[];
+}
+
+interface Tile {
+  key: string;
+  userId: string;
+  name: string;
+  local: boolean;
+  video: MediaStreamTrack | null;
+  audio: MediaStreamTrack | null;
+  videoOn: boolean;
+  audioOn: boolean;
+}
+
+type Phase = 'loading' | 'joining' | 'in' | 'error';
+type SafetyStep = 'menu' | 'mute' | 'report' | 'sent';
 
 const reportReasons = ['Made me uncomfortable', 'Rude or disrespectful', 'Inappropriate on camera', 'Something else'];
 
-type SafetyStep = 'menu' | 'mute' | 'report' | 'sent';
+const playable = (track: DailyParticipant['tracks']['video']) =>
+  track.state === 'playable' ? (track.persistentTrack ?? track.track ?? null) : null;
+
+function toTile(p: DailyParticipant): Tile {
+  return {
+    key: p.session_id,
+    userId: p.user_id,
+    name: p.local ? 'You' : p.user_name || 'Guest',
+    local: p.local,
+    video: playable(p.tracks.video),
+    audio: p.local ? null : playable(p.tracks.audio),
+    videoOn: p.tracks.video.state === 'playable' || p.tracks.video.state === 'loading',
+    audioOn: p.tracks.audio.state === 'playable' || p.tracks.audio.state === 'loading',
+  };
+}
+
+/** "5 min: hello. 45 min: work. Last 10 min: share." -> timed steps of the hour. */
+function steps(run: string | undefined, total: number) {
+  const parts = (run ?? '').split(/(?=(?:Last\s+)?\d+\s*min:)/i).map((s) => s.trim());
+  const parsed = parts
+    .map((p) => p.match(/^(Last\s+)?(\d+)\s*min:\s*(.+)$/i))
+    .filter((m): m is RegExpMatchArray => Boolean(m))
+    .map((m) => ({ last: Boolean(m[1]), minutes: Number(m[2]), text: m[3].trim() }));
+  let at = 0;
+  return parsed.map((s) => {
+    const start = s.last ? total - s.minutes : at;
+    at = start + s.minutes;
+    return { ...s, start };
+  });
+}
+
+const clock = (ms: number) => {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+};
+
+function Media({ track, kind, muted }: { track: MediaStreamTrack | null; kind: 'video' | 'audio'; muted?: boolean }) {
+  const ref = useCallback(
+    (el: HTMLMediaElement | null) => {
+      if (!el) return;
+      const current = (el.srcObject as MediaStream | null)?.getTracks()[0];
+      if (track && current?.id !== track.id) el.srcObject = new MediaStream([track]);
+      if (!track) el.srcObject = null;
+    },
+    [track],
+  );
+  return kind === 'video' ? <video ref={ref} autoPlay muted playsInline /> : <audio ref={ref} autoPlay muted={muted} />;
+}
 
 export default function LiveRoomPage() {
-  const [muted, setMuted] = useState(false);
-  const [cameraOn, setCameraOn] = useState(true);
-  const [captions, setCaptions] = useState(false);
+  const router = useRouter();
+  const slug = useQueryParam('s');
+  const [phase, setPhase] = useState<Phase>('loading');
+  const [error, setError] = useState('');
+  const [room, setRoom] = useState<Room | null>(null);
+  const [info, setInfo] = useState<JoinInfo | null>(null);
+  const [tiles, setTiles] = useState<Tile[]>([]);
+  const [speaker, setSpeaker] = useState('');
+  const [now, setNow] = useState(0);
   const [safety, setSafety] = useState<SafetyStep | null>(null);
-  // Sample only: in Milestone 4 mute turns off that person's audio for you, and reports go to the admin page.
   const [mutedPeople, setMutedPeople] = useState<string[]>([]);
   const [reportWho, setReportWho] = useState('');
   const [reportWhy, setReportWhy] = useState('');
   const [reportNote, setReportNote] = useState('');
+  const [reportError, setReportError] = useState('');
+  const call = useRef<DailyCall | null>(null);
+
+  // Join: room info, permission from the server, then Daily.
+  useEffect(() => {
+    const supabase = getSupabase();
+    if (!slug || !supabase) return;
+    let alive = true;
+    (async () => {
+      const r = await fetchRoom(supabase, slug);
+      if (!alive) return;
+      if (!r) {
+        setError('This session was not found.');
+        setPhase('error');
+        return;
+      }
+      setRoom(r);
+      const joined = await callEdge<JoinInfo>('room-join', { session_id: r.id });
+      if (!alive) return;
+      if (joined.error !== null) {
+        setError(joined.error);
+        setPhase('error');
+        return;
+      }
+      setInfo(joined.data);
+      setPhase('joining');
+      const prefs = loadRoomPrefs();
+      const { default: Daily } = await import('@daily-co/daily-js');
+      if (!alive) return;
+      const c = Daily.createCallObject({
+        audioSource: prefs.micId || true,
+        videoSource: prefs.cameraId || true,
+        subscribeToTracksAutomatically: true,
+      });
+      call.current = c;
+      const refresh = () => setTiles(Object.values(c.participants()).map(toTile));
+      for (const ev of [
+        'participant-joined',
+        'participant-updated',
+        'participant-left',
+        'track-started',
+        'track-stopped',
+      ] as const)
+        c.on(ev, refresh);
+      c.on('active-speaker-change', (e) => setSpeaker(e?.activeSpeaker?.peerId ?? ''));
+      c.on('left-meeting', () => alive && router.push(`/after-session?s=${encodeURIComponent(slug)}`));
+      c.on('error', (e) => {
+        setError(e?.errorMsg?.includes('exp') ? 'This session has ended.' : 'The video connection dropped.');
+        setPhase('error');
+      });
+      try {
+        await c.join({
+          url: joined.data.url,
+          token: joined.data.token,
+          startVideoOff: joined.data.camera_off || !prefs.cameraOn,
+          startAudioOff: !prefs.micOn,
+        });
+        if (!alive) return;
+        refresh();
+        setPhase('in');
+      } catch {
+        if (!alive) return;
+        setError('The camera or microphone didn’t start, or the connection failed. Check them and try again.');
+        setPhase('error');
+      }
+    })();
+    return () => {
+      alive = false;
+      const c = call.current;
+      call.current = null;
+      if (c) void c.leave().finally(() => c.destroy());
+    };
+  }, [slug, router]);
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const me = tiles.find((t) => t.local);
+  const others = tiles.filter((t) => !t.local);
+  const person = (userId: string) => info?.people.find((p) => p.id === userId);
+  const ends = info ? new Date(info.ends_at).getTime() : 0;
+  const starts = info ? new Date(info.starts_at).getTime() : 0;
+  const locked = info ? now > new Date(info.locks_at).getTime() : false;
+  const plan = steps(room ? catalogFor(room)?.run : undefined, room?.minutes ?? 60);
+  const elapsedMin = now && starts ? (now - starts) / 60_000 : 0;
+  const currentIdx = plan.findIndex((s) => elapsedMin >= s.start && elapsedMin < s.start + s.minutes);
+  const current = plan[currentIdx];
+  const next = currentIdx >= 0 ? plan[currentIdx + 1] : plan.find((s) => s.start > elapsedMin);
 
   const closeSafety = () => {
     setSafety(null);
     setReportWho('');
     setReportWhy('');
     setReportNote('');
+    setReportError('');
   };
-  const toggleMute = (name: string) =>
-    setMutedPeople((current) =>
-      current.includes(name) ? current.filter((item) => item !== name) : [...current, name],
+  const leave = async () => {
+    const c = call.current;
+    if (c) await c.leave();
+    else router.push(slug ? `/after-session?s=${encodeURIComponent(slug)}` : '/sessions');
+  };
+  const sendReport = async () => {
+    const supabase = getSupabase();
+    if (!supabase || !room) return;
+    setReportError('');
+    const { data, error: rpcError } = await supabase.rpc('report_participant', {
+      p_session: room.id,
+      p_reported: reportWho || null,
+      p_reason: reportWhy,
+      p_note: reportNote || null,
+    });
+    const res = data as { success: boolean; error?: string } | null;
+    if (rpcError || !res?.success) return setReportError(res?.error || 'The report didn’t send. Please try again.');
+    setSafety('sent');
+  };
+  const reportName = others.find((t) => t.userId === reportWho)?.name ?? 'they';
+
+  const preview = !getSupabase();
+  if (phase === 'error' || !slug || preview) {
+    return (
+      <main className="live-room-page">
+        <header className="live-topbar">
+          <div>
+            <strong>{room?.title ?? 'Live room'}</strong>
+          </div>
+        </header>
+        <section className="room-message">
+          <h1>{slug && !preview ? 'You can’t join right now.' : 'Pick a session first.'}</h1>
+          <p>
+            {preview
+              ? 'Live rooms need member accounts, which are not connected on this preview.'
+              : slug
+                ? error
+                : 'Rooms open from My sessions, 10 minutes before the start.'}
+          </p>
+          <Link className="enter-room" href="/sessions">
+            Back to My sessions <span aria-hidden="true">→</span>
+          </Link>
+        </section>
+      </main>
     );
+  }
 
   return (
     <main className="live-room-page">
       <header className="live-topbar">
         <div>
           <span className="live-dot" />
-          <strong>Quiet Co-Work</strong>
-          <span>12 people · Room locked</span>
+          <strong>{info?.title ?? room?.title ?? 'Live room'}</strong>
+          <span>
+            {phase === 'in' ? `${tiles.length} ${tiles.length === 1 ? 'person' : 'people'}` : 'Connecting…'}
+            {locked ? ' · Room locked' : ''}
+          </span>
         </div>
         <div className="live-time">
-          <span>10:16 am</span>
-          <strong>43:12 left</strong>
+          <span>{now ? new Date(now).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : ''}</span>
+          <strong>{ends ? `${clock(ends - now)} left` : ''}</strong>
         </div>
       </header>
 
       <div className="live-layout">
         <section className="video-grid" aria-label="Room participants">
-          <article className="video-tile speaking">
-            <img src="/images/community-crafting.webp" alt="" />
-            <div className="tile-bottom">
-              <strong>You · KC</strong>
-              <span>Mic on</span>
-            </div>
-          </article>
-          {people.map((person, index) => (
-            <article className={`video-tile ${index === 0 ? 'speaking' : ''}`} key={person.name}>
-              <img src={person.image} alt="" />
-              {person.role && <span className="role-badge">{person.role}</span>}
-              <div className="tile-bottom">
-                <strong>{person.name}</strong>
-                <span>
-                  {mutedPeople.includes(person.name) ? 'Muted by you' : index === 0 ? 'Speaking' : 'Listening'}
-                </span>
+          {phase !== 'in' && (
+            <article className="video-tile">
+              <div className="tile-fallback">
+                <span>…</span>
               </div>
-              {captions && index === 0 && (
-                <p className="tile-caption">“My goal is to finish the first section today.”</p>
-              )}
+              <div className="tile-bottom">
+                <strong>Joining the room</strong>
+              </div>
             </article>
-          ))}
+          )}
+          {[...(me ? [me] : []), ...others].map((t) => {
+            const muted = mutedPeople.includes(t.userId);
+            const photo = person(t.userId)?.avatar_url;
+            return (
+              <article className={`video-tile ${t.key === speaker && !t.local ? 'speaking' : ''}`} key={t.key}>
+                {t.video && t.videoOn ? (
+                  <Media track={t.video} kind="video" />
+                ) : photo ? (
+                  <img src={photo} alt="" />
+                ) : (
+                  <div className="tile-fallback">
+                    <span>{t.name.charAt(0).toUpperCase()}</span>
+                  </div>
+                )}
+                {!t.local && <Media track={t.audio} kind="audio" muted={muted} />}
+                <div className="tile-bottom">
+                  <strong>{t.local ? `You · ${info?.name ?? ''}` : t.name}</strong>
+                  <span>
+                    {muted ? 'Muted by you' : !t.audioOn ? 'Mic off' : t.key === speaker ? 'Speaking' : 'Listening'}
+                  </span>
+                </div>
+              </article>
+            );
+          })}
         </section>
 
         <aside className="room-guide">
           <div className="current-prompt">
             <p className="section-label">What we’re doing now</p>
-            <span className="prompt-time">45 min focus · 31:08 left</span>
-            <h1>Work quietly on the one thing you brought.</h1>
-            <p>Conversation pauses here. Encouragement comes from everyone’s presence.</p>
+            {current ? (
+              <>
+                <span className="prompt-time">
+                  {current.minutes} min · {clock((current.start + current.minutes - elapsedMin) * 60_000)} left
+                </span>
+                <h1>{current.text}</h1>
+              </>
+            ) : (
+              <h1>{elapsedMin < 0 ? 'Settling in. We start on the hour.' : 'Enjoy the hour together.'}</h1>
+            )}
             <div className="progress-track">
-              <span />
+              <span
+                style={{
+                  transform: `scaleX(${current ? Math.min(1, (elapsedMin - current.start) / current.minutes) : 0})`,
+                  transformOrigin: 'left',
+                }}
+              />
             </div>
           </div>
-          <div className="next-prompt">
-            <span>Up next</span>
-            <strong>10-minute check-out</strong>
-            <p>Share what got done or name your next small step.</p>
-          </div>
+          {next && (
+            <div className="next-prompt">
+              <span>Up next</span>
+              <strong>{next.minutes}-minute step</strong>
+              <p>{next.text}</p>
+            </div>
+          )}
           <div className="your-role">
-            <span className="role-badge">Participant</span>
-            <p>No role this round. Keep working and let the Timekeeper guide the transition.</p>
+            <span className="role-badge">{info?.is_admin ? 'Admin' : 'Participant'}</span>
+            <p>
+              {info?.is_admin
+                ? 'You can see everyone in the room. Members can report privately from Safety controls.'
+                : 'Mute, Report and Leave are one tap away under Safety controls.'}
+            </p>
           </div>
         </aside>
       </div>
@@ -135,17 +384,20 @@ export default function LiveRoomPage() {
               <strong>Mute someone</strong>
               <p>Only you stop hearing them. Nobody is told.</p>
               <div className="safety-list">
-                {people.map((person) => {
-                  const isMuted = mutedPeople.includes(person.name);
+                {others.length === 0 && <p>Nobody else is here yet.</p>}
+                {others.map((t) => {
+                  const isMuted = mutedPeople.includes(t.userId);
                   return (
                     <button
                       className={isMuted ? 'safety-picked' : ''}
                       type="button"
                       aria-pressed={isMuted}
-                      key={person.name}
-                      onClick={() => toggleMute(person.name)}
+                      key={t.key}
+                      onClick={() =>
+                        setMutedPeople((list) => (isMuted ? list.filter((id) => id !== t.userId) : [...list, t.userId]))
+                      }
                     >
-                      <span>{person.name}</span>
+                      <span>{t.name}</span>
                       <span>{isMuted ? 'Muted' : 'Mute'}</span>
                     </button>
                   );
@@ -161,7 +413,7 @@ export default function LiveRoomPage() {
             <form
               onSubmit={(event) => {
                 event.preventDefault();
-                if (reportWho && reportWhy) setSafety('sent');
+                if (reportWhy) void sendReport();
               }}
             >
               <strong>Report privately</strong>
@@ -170,8 +422,10 @@ export default function LiveRoomPage() {
                 <span>Who</span>
                 <select value={reportWho} onChange={(event) => setReportWho(event.target.value)} required>
                   <option value="">Choose a person</option>
-                  {people.map((person) => (
-                    <option key={person.name}>{person.name}</option>
+                  {others.map((t) => (
+                    <option key={t.key} value={t.userId}>
+                      {t.name}
+                    </option>
                   ))}
                 </select>
               </label>
@@ -199,6 +453,7 @@ export default function LiveRoomPage() {
                   onChange={(event) => setReportNote(event.target.value)}
                 />
               </label>
+              {reportError && <p role="alert">{reportError}</p>}
               <button className="safety-primary" type="submit" disabled={!reportWho || !reportWhy}>
                 Send report
               </button>
@@ -212,12 +467,12 @@ export default function LiveRoomPage() {
             <>
               <strong>Report sent</strong>
               <p>
-                Thank you. An admin will review it, and {reportWho} won’t know who reported. If you feel unsafe, you can
-                leave the room now.
+                Thank you. An admin will review it, and {reportName} won’t know who reported. If you feel unsafe, you
+                can leave the room now.
               </p>
-              <Link className="safety-leave" href="/sessions">
+              <button className="safety-leave" type="button" onClick={() => void leave()}>
                 Leave the room
-              </Link>
+              </button>
               <button type="button" onClick={closeSafety}>
                 Back to the room
               </button>
@@ -228,27 +483,32 @@ export default function LiveRoomPage() {
 
       <footer className="live-controls">
         <div>
-          <button className={muted ? 'control-off' : ''} type="button" onClick={() => setMuted((value) => !value)}>
-            {muted ? 'Unmute microphone' : 'Mute microphone'}
-          </button>
           <button
-            className={cameraOn ? '' : 'control-off'}
+            className={me?.audioOn ? '' : 'control-off'}
             type="button"
-            onClick={() => setCameraOn((value) => !value)}
+            disabled={phase !== 'in'}
+            onClick={() => call.current?.setLocalAudio(!me?.audioOn)}
           >
-            {cameraOn ? 'Turn camera off' : 'Turn camera on'}
+            {me?.audioOn ? 'Mute microphone' : 'Unmute microphone'}
           </button>
-          <button className={captions ? 'control-on' : ''} type="button" onClick={() => setCaptions((value) => !value)}>
-            Captions {captions ? 'on' : 'off'}
-          </button>
+          {!info?.camera_off && (
+            <button
+              className={me?.videoOn ? '' : 'control-off'}
+              type="button"
+              disabled={phase !== 'in'}
+              onClick={() => call.current?.setLocalVideo(!me?.videoOn)}
+            >
+              {me?.videoOn ? 'Turn camera off' : 'Turn camera on'}
+            </button>
+          )}
         </div>
         <div>
           <button className="safety-control" type="button" onClick={() => setSafety('menu')}>
             Safety controls
           </button>
-          <Link className="leave-room" href="/after-session">
+          <button className="leave-room" type="button" onClick={() => void leave()}>
             Leave room & finish <span aria-hidden="true">→</span>
-          </Link>
+          </button>
         </div>
       </footer>
     </main>
