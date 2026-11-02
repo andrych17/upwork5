@@ -214,3 +214,106 @@ a.confirm-booking {
 .sessions-toast.is-error {
   background: #f4c6cd;
 }
+
+/* ---------- install card (components/install-button.tsx) ---------- */
+.install-card {
+  position: fixed;
+  right: max(20px, env(safe-area-inset-right));
+  bottom: calc(20px + env(safe-area-inset-bottom));
+  z-index: 34;
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  gap: 12px 14px;
+  align-items: start;
+  width: min(380px, calc(100vw - 40px));
+  padding: 16px;
+  border: 2px solid var(--ink);
+  border-radius: var(--radius-card);
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: 5px 6px 0 var(--ink);
+  animation: install-card-in 0.5s var(--motion-ease) both;
+}
+.install-card img {
+  width: 48px;
+  height: 48px;
+  border: 2px solid var(--ink);
+  border-radius: 14px;
+}
+.install-card-copy strong {
+  display: block;
+  font-size: 0.95rem;
+  line-height: 1.25;
+}
+.install-card-copy p {
+  margin: 4px 0 0;
+  color: #555;
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+.install-card-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.install-card-actions button {
+  min-height: 44px;
+  padding: 0 18px;
+  border: 1.5px solid var(--ink);
+  border-radius: 999px;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition: transform 0.2s var(--motion-ease);
+}
+.install-card-actions button:active {
+  transform: scale(0.96);
+}
+.install-card-go {
+  background: var(--berry);
+  border-color: var(--berry);
+  color: #fff;
+}
+.install-card-later {
+  background: var(--paper);
+  color: var(--ink);
+}
+@keyframes install-card-in {
+  from {
+    opacity: 0;
+    translate: 0 24px;
+  }
+}
+@media (max-width: 700px) {
+  .install-card {
+    right: 12px;
+    bottom: calc(12px + env(safe-area-inset-bottom));
+    left: 12px;
+    width: auto;
+  }
+}
+/* Above the tab bar where members have one. */
+@media (max-width: 960px) {
+  body:has(.member-tabs) .install-card {
+    bottom: calc(var(--tabs-h) + env(safe-area-inset-bottom) + 12px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .install-card {
+    animation: none;
+  }
+}
+
+/* Install the app in the account menu */
+.account-pop .account-install {
+  margin-top: 4px;
+  border-top: 1px solid var(--line);
+  border-radius: 0 0 12px 12px;
+}
+.account-pop .account-install + .account-admin {
+  margin-top: 0;
+  border-radius: 12px;
+  border-top: 0;
+}

@@ -4,7 +4,7 @@ import Script from 'next/script';
 import type { ReactNode } from 'react';
 import RegisterSW from '@/components/register-sw';
 import Reveal from '@/components/reveal';
-import InstallButton from '@/components/install-button';
+import InstallButton, { InstallCard } from '@/components/install-button';
 import MemberTabs from '@/components/member-tabs';
 import { PAGES, SITE_NAME, SITE_URL, TAGLINE, isDemo, noindex } from '@/lib/site';
 import './globals.css';
@@ -53,6 +53,7 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
           <InstallButton />
         </footer>
         <MemberTabs />
+        <InstallCard />
         <RegisterSW />
         <Reveal />
       </body>

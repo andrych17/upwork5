@@ -16,7 +16,7 @@ import { useNow } from '@/lib/use-now';
 const OPEN_DAYS = 7;
 
 // Pages with their own full-screen layout or no member context.
-const HIDDEN = ['/admin', '/signin', '/signup', '/live-room', '/camera-check', '/states', '/p2', '/offline'];
+export const HIDDEN = ['/admin', '/signin', '/signup', '/live-room', '/camera-check', '/states', '/p2', '/offline'];
 
 const icon = (d: ReactNode) => (
   <svg
