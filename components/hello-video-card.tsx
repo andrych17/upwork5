@@ -49,7 +49,7 @@ export default function HelloVideoCard() {
         <h2>{text.title}</h2>
       </div>
       <p className="household-intro">
-        30 seconds to 2 minutes, recorded right in your browser: your first name and why you joined. Only the
+        30 to 60 seconds, recorded right in your browser: your first name and why you joined. Only the
         MeetDoConnect team watches it, and it’s deleted as soon as it’s reviewed.
         {view.hello_required &&
           view.hello_status !== 'pending' &&

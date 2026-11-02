@@ -8,11 +8,19 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import MenuToggle from '@/components/menu-toggle';
 import { useAccount } from '@/lib/account';
-import { addMinutes, fetchMine, roomInfo, timeOf, when, type Room } from '@/lib/rooms';
+import {
+  ROOM_LOCKS_MINUTES,
+  ROOM_OPENS_MINUTES,
+  addMinutes,
+  fetchMine,
+  roomInfo,
+  timeOf,
+  when,
+  type Room,
+} from '@/lib/rooms';
 import { getSupabase, type MembershipSummary } from '@/lib/supabase';
 import { useNow } from '@/lib/use-now';
 
-const ROOM_OPENS_MINUTES = 10;
 const STATUS = {
   pending: 'Not started',
   active: 'Active',
@@ -227,7 +235,7 @@ export default function MySessionsPage() {
             const isOff = Boolean(room.my_camera_off);
             const bookingId = room.my_booking_id as string;
             const opens = new Date(addMinutes(room.starts_at, -ROOM_OPENS_MINUTES)).getTime();
-            const closes = new Date(addMinutes(room.starts_at, ROOM_OPENS_MINUTES)).getTime();
+            const closes = new Date(addMinutes(room.starts_at, ROOM_LOCKS_MINUTES)).getTime();
             const started = new Date(room.starts_at).getTime() <= now;
             const freeCancel = new Date(room.cancel_by).getTime() > now;
             return (
@@ -307,7 +315,7 @@ export default function MySessionsPage() {
                     <>
                       <span className="room-open-dot" />
                       <strong>Room is open</strong>
-                      <p>Closes at {timeOf(addMinutes(room.starts_at, ROOM_OPENS_MINUTES))}</p>
+                      <p>Closes at {timeOf(addMinutes(room.starts_at, ROOM_LOCKS_MINUTES))}</p>
                       <Link href={{ pathname: '/camera-check', query: { s: room.slug } }}>
                         Join room <span aria-hidden="true">→</span>
                       </Link>
@@ -315,7 +323,7 @@ export default function MySessionsPage() {
                   ) : now > closes ? (
                     <>
                       <strong>In progress</strong>
-                      <p>The room closed to new arrivals ten minutes after the start.</p>
+                      <p>The room closed to new arrivals {ROOM_LOCKS_MINUTES} minutes after the start.</p>
                       <button type="button" disabled>
                         Join room
                       </button>

@@ -78,16 +78,17 @@ select t(jsonb_array_length(get_my_buddies()) = 1 and get_my_buddies()->0->>'fir
 select t((send_buddy_message(:'B2', 'text', '  Hello Cal  ')->>'success')::boolean, 'matched people can chat');
 select t(send_buddy_message(:'B2', 'video', 'x')->>'error' = 'Unknown message type.', 'unknown message type refused');
 select t(send_buddy_message(:'B2', 'text', '   ')->>'error' like 'Write a message%', 'empty message refused');
-select t(send_buddy_message(:'B2', 'game', 'Chess?', '{"game": "Poker"}')->>'error' = 'Unknown game.', 'unknown game refused');
-select t((send_buddy_message(:'B2', 'game', 'Slow Chess?', '{"game": "Slow Chess", "x": 1}')->>'success')::boolean,
-  'game invitation');
+select t(send_buddy_message(:'B2', 'game', 'Chess?', '{"game": "Poker"}')->>'error' = 'Unknown message type.',
+  'game cards only come from start_buddy_game');
+select t((start_buddy_game(:'B2', 'Slow Chess')->>'success')::boolean, 'game invitation');
 select t(send_buddy_message(:'B2', 'session', 'Join me', '{"slug": "nope"}')->>'error' like 'That session is not%',
   'unknown session refused');
 select t((send_buddy_message(:'B2', 'session', 'Join me', '{"slug": "buddy-future"}')->>'success')::boolean,
   'session invitation');
 reset role;
 select t((select body from buddy_messages where kind = 'text') = 'Hello Cal', 'messages are trimmed');
-select t((select payload from buddy_messages where kind = 'game') = '{"game": "Slow Chess"}', 'only known payload is kept');
+select t((select payload ->> 'game' from buddy_messages where kind = 'game') = 'Slow Chess'
+         and (select payload ? 'game_id' from buddy_messages where kind = 'game'), 'the card names the game');
 
 select set_config('request.jwt.claim.sub', :'B2', false);
 set role authenticated;

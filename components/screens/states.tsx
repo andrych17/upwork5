@@ -211,8 +211,8 @@ export default function P1StatesPage() {
         <div className="room-state-grid">
           <article>
             <span>Waiting</span>
-            <strong>Room opens at 6:50 pm</strong>
-            <p>Come back ten minutes before the start.</p>
+            <strong>Room opens at 6:55 pm</strong>
+            <p>Come back five minutes before the start.</p>
             <button disabled type="button">
               Join room
             </button>

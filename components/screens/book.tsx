@@ -10,13 +10,22 @@ import { useEffect, useState } from 'react';
 import { sendBuddyMessage } from '@/lib/buddies';
 import { updateBuddyDemo, useBuddyDemo } from '@/lib/buddy-demo';
 import { useAccount } from '@/lib/account';
-import { addMinutes, fetchRoom, roomInfo, seatLabel, seatsLeft, timeOf, when, type Room } from '@/lib/rooms';
+import {
+  ROOM_LOCKS_MINUTES,
+  ROOM_OPENS_MINUTES,
+  addMinutes,
+  fetchRoom,
+  roomInfo,
+  seatLabel,
+  seatsLeft,
+  timeOf,
+  when,
+  type Room,
+} from '@/lib/rooms';
 import { getSupabase, type MembershipSummary } from '@/lib/supabase';
 import { useNow } from '@/lib/use-now';
 import InviteBanner from '@/components/invite-banner';
 import MenuToggle from '@/components/menu-toggle';
-
-const ROOM_OPENS_MINUTES = 10;
 
 function Header({ active }: { active: boolean }) {
   return (
@@ -436,7 +445,9 @@ export default function BookPage({ slug }: { slug: string }) {
           </div>
           <div className="booking-help">
             <strong>Booking closes at {timeOf(session.closes_at)}.</strong>
-            <p>The room opens at {opensAt} and closes ten minutes after the start.</p>
+            <p>
+              The room opens at {opensAt} and closes to new arrivals {ROOM_LOCKS_MINUTES} minutes after the start.
+            </p>
           </div>
         </aside>
       </section>

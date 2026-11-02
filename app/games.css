@@ -557,3 +557,117 @@
     font-size: 0.5rem;
   }
 }
+
+/* Dropdowns for skill level and round length (Kelly 2 Nov) */
+.game-settings {
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+  margin-top: 14px;
+  display: flex;
+}
+
+.game-settings label {
+  text-transform: uppercase;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  display: flex;
+}
+
+.game-settings select {
+  border: 1.5px solid var(--ink);
+  background: var(--paper);
+  cursor: pointer;
+  border-radius: 999px;
+  min-width: 150px;
+  min-height: 42px;
+  padding: 0 14px;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: none;
+}
+
+.game-settings select:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Games with a buddy: one row per buddy, so several games can run at once */
+.buddy-picker {
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 25px;
+  display: flex;
+}
+
+.buddy-picker h3 {
+  letter-spacing: -0.03em;
+  margin: 0;
+  font-family: 'Bricolage Grotesque', sans-serif;
+  font-size: 1.4rem;
+}
+
+.buddy-picker-list {
+  border-top: 1px solid var(--line);
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.buddy-picker-list li {
+  border-bottom: 1px solid var(--line);
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  display: flex;
+}
+
+.buddy-picker-list li > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.buddy-picker-list strong,
+.buddy-picker-list li > div > span {
+  font-size: 0.82rem;
+  display: block;
+}
+
+.buddy-picker-list li > div > span {
+  margin-top: 2px;
+  font-size: 0.72rem;
+}
+
+.buddy-picker-list button {
+  border: 1.5px solid var(--ink);
+  cursor: pointer;
+  background: var(--paper);
+  border-radius: 999px;
+  min-width: 84px;
+  min-height: 42px;
+  padding: 0 16px;
+  font-size: 0.74rem;
+  font-weight: 800;
+}
+
+.buddy-picker-list button.buddy-play-now {
+  background: var(--ink);
+  color: #fff;
+}
+
+.buddy-picker-list button:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+
+.word-online-note {
+  background: var(--info);
+  border-radius: 12px;
+  margin: 0;
+  padding: 16px;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}

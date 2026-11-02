@@ -28,16 +28,16 @@ interface Clip {
 }
 
 export const MIN_SECONDS = 30;
-export const MAX_SECONDS = 120;
+export const MAX_SECONDS = 60;
 const MAX_BYTES = 100 * 1024 * 1024;
 // Safari records MP4, Chrome and Firefox WebM. Both play in the admin page.
 const TYPES = ['video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'];
 // Shown one after another while recording, so nobody freezes up.
 const PROMPTS = [
   { at: 0, text: 'Say your first name and where you’re joining from.' },
-  { at: 15, text: 'What made you sign up?' },
-  { at: 35, text: 'Which activity are you looking forward to?' },
-  { at: 60, text: 'Anything else you’d like us to know? You can stop any time now.' },
+  { at: 12, text: 'What made you sign up?' },
+  { at: 28, text: 'Which activity are you looking forward to?' },
+  { at: 45, text: 'Anything else you’d like us to know? Wrap up whenever you’re ready.' },
 ];
 
 const noop = () => () => {};
@@ -230,8 +230,8 @@ export default function HelloRecorder({ onSent, title = 'Record your Hello Video
             Turn on camera <span aria-hidden="true">→</span>
           </button>
           <p className="reminders-tip">
-            Your browser asks for the camera and microphone. Nothing is recorded until you press Record. 30 seconds to 2
-            minutes.
+            Your browser asks for the camera and microphone. Nothing is recorded until you press Record. 30 to 60
+            seconds.
           </p>
         </>
       )}
@@ -344,7 +344,7 @@ export default function HelloRecorder({ onSent, title = 'Record your Hello Video
                 {seconds < MIN_SECONDS ? `Keep going: ${MIN_SECONDS - seconds} s to the minimum` : 'Stop'}
                 <span aria-hidden="true">■</span>
               </button>
-              <p className="reminders-tip">Recording stops by itself at 2 minutes.</p>
+              <p className="reminders-tip">Recording stops by itself at 1 minute.</p>
             </>
           )}
         </>

@@ -27,11 +27,11 @@ const hour = reminderText(
   new Date('2026-11-07T15:00:00Z'),
 );
 assert.equal(hour.title, 'Quiet Co-Work starts in 1 hour');
-assert.equal(hour.body, 'The room opens at 9:50 am. Tap to check your camera and mic.');
+assert.equal(hour.body, 'The room opens at 9:55 am. Tap to check your camera and mic.');
 assert.equal(hour.url, '/camera-check');
 assert.equal(
   hour.sms,
-  'MeetDoConnect: Quiet Co-Work starts in 1 hour (10:00 am CST). Room opens 9:50 am. https://meetdoconnect.com/camera-check Reply STOP to opt out.',
+  'MeetDoConnect: Quiet Co-Work starts in 1 hour (10:00 am CST). Room opens 9:55 am. https://meetdoconnect.com/camera-check Reply STOP to opt out.',
 );
 
 // Names and titles typed by people are escaped in the email.

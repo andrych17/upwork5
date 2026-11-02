@@ -3,6 +3,9 @@
 // Word Rush in the board's look. The engine changes players in place, so the running round lives in a ref
 // and every change publishes a fresh snapshot (view) that the render reads.
 import { useEffect, useEffectEvent, useRef, useState, useSyncExternalStore } from 'react';
+import BuddyPicker from '@/components/games/buddy-picker';
+import { otherOf, reportScore, type BuddyGame } from '@/lib/buddy-games';
+import { getSupabase } from '@/lib/supabase';
 import {
   LEVELS,
   MIN_LENGTH,
@@ -19,6 +22,16 @@ import {
 } from '@/lib/word-rush/engine';
 
 type Mode = 'computer' | 'solo' | 'buddy';
+
+/** A Word Rush game with a buddy from the database: same deal and minutes for both, one timed round each. */
+export interface OnlineWord {
+  game: BuddyGame;
+  me: string;
+  buddyName: string;
+  onGame: (game: BuddyGame) => void;
+  onNewDeal: () => void;
+  onLeave: () => void;
+}
 
 interface Round {
   code: string;
@@ -101,7 +114,22 @@ function readRound(r: Round, now: number) {
   };
 }
 
-function result(v: View, mode: Mode, buddy: string): { title: string; text: string } {
+/** Both scores side by side once the buddy has finished too. */
+function onlineResult(mine: number, theirs: { score: number; done: boolean } | undefined, buddyName: string) {
+  if (!theirs?.done)
+    return {
+      title: `Time. You scored ${mine}`,
+      text: theirs
+        ? `${buddyName} is still playing. Their score updates here.`
+        : `${buddyName} hasn’t played yet. Their score will show here.`,
+    };
+  if (mine === theirs.score) return { title: `A tie at ${mine}`, text: 'Same tiles, same clock, same score.' };
+  return mine > theirs.score
+    ? { title: `You win, ${mine} to ${theirs.score}`, text: `Same tiles, same clock. Nice one.` }
+    : { title: `${buddyName} wins, ${theirs.score} to ${mine}`, text: 'Same tiles, same clock. Ask for a rematch.' };
+}
+
+function result(v: View): { title: string; text: string } {
   const best = v.best && `${v.best.word.toUpperCase()} for ${v.best.pts} points`;
   if (v.house) {
     const h = v.house.score;
@@ -111,23 +139,25 @@ function result(v: View, mode: Mode, buddy: string): { title: string; text: stri
     return { title: `A tie at ${v.score}`, text: 'Same tiles, same clock, same score.' };
   }
   const title = `Time. You scored ${v.score}`;
-  if (mode === 'buddy')
-    return {
-      title,
-      text: `Send ${buddy || 'your buddy'} your score and the deal. Same tiles, so the higher score wins.`,
-    };
   return { title, text: best ? `Your best word was ${best}.` : 'No words this time. Try again.' };
 }
 
-export default function WordRush({ deal, buddy }: { deal: string; buddy: string }) {
+export default function WordRush({ deal, online }: { deal: string; online?: OnlineWord }) {
+  const supabase = getSupabase();
   const suggested = useSyncExternalStore(noSubscribe, getSuggestedCode, () => '');
   const origin = useSyncExternalStore(noSubscribe, getOrigin, () => '');
   const [picked, setPicked] = useState<Mode | null>(null);
-  const mode: Mode = picked ?? (deal || buddy ? 'buddy' : 'computer');
+  const mode: Mode = online ? 'buddy' : (picked ?? (deal ? 'solo' : 'computer'));
   const [level, setLevel] = useState<Level>('medium');
-  const [minutes, setMinutes] = useState(1);
+  const [chosenMinutes, setMinutes] = useState(1);
+  const minutes = online?.game.minutes ?? chosenMinutes;
   const [typed, setTyped] = useState<string | null>(null);
-  const code = typed ?? (deal || suggested);
+  const code = online?.game.deal ?? typed ?? (deal || suggested);
+  const [syncError, setSyncError] = useState('');
+  const syncChain = useRef<Promise<unknown>>(Promise.resolve());
+  const buddyName = online?.buddyName ?? 'your buddy';
+  const mineSaved = online?.game.scores[online.me];
+  const theirs = online ? online.game.scores[otherOf(online.game, online.me)] : undefined;
   const [view, setView] = useState<View | null>(null);
   const [copyMsg, setCopyMsg] = useState('');
   const round = useRef<Round | null>(null);
@@ -157,6 +187,37 @@ export default function WordRush({ deal, buddy }: { deal: string; buddy: string 
 
   useEffect(() => () => window.clearTimeout(feedbackTimer.current), []);
 
+  // Buddy game: my running score goes to the database so the buddy sees it on their scoreboard. Calls run one
+  // after another, so the final one (done) always lands last.
+  function sync(done: boolean) {
+    const r = round.current;
+    if (!online || !supabase || !r) return;
+    const { id } = online.game;
+    syncChain.current = syncChain.current
+      .then(() => reportScore(supabase, id, r.me.score, r.me.log.length, done))
+      .then((res) => {
+        if (res.game) online.onGame(res.game);
+        else if (res.error) setSyncError(res.error);
+      });
+  }
+
+  async function startOnline() {
+    if (!online || !supabase) return;
+    setSyncError('');
+    const res = await reportScore(supabase, online.game.id, 0, 0, false);
+    if (res.error) return setSyncError(res.error);
+    if (res.game) online.onGame(res.game);
+    start();
+  }
+
+  function finishSaved() {
+    if (!online || !supabase) return;
+    void reportScore(supabase, online.game.id, mineSaved?.score ?? 0, mineSaved?.words ?? 0, true).then((res) => {
+      if (res.game) online.onGame(res.game);
+      else if (res.error) setSyncError(res.error);
+    });
+  }
+
   function start() {
     const dealCode = cleanCode(code) || randomCode();
     const at = now();
@@ -179,6 +240,7 @@ export default function WordRush({ deal, buddy }: { deal: string; buddy: string 
   function end() {
     if (!round.current || !view || view.over) return;
     round.current.endsAt = Math.min(round.current.endsAt, now());
+    sync(true);
     publish({ over: true, sel: [], trading: null, msg: { text: '', bad: false } });
   }
 
@@ -206,7 +268,10 @@ export default function WordRush({ deal, buddy }: { deal: string; buddy: string 
     const r = round.current;
     if (!r || !running || !view || view.trading || !view.sel.length) return;
     const res = playWord(r.me, view.sel);
-    if (res.ok) return publish({ sel: [], msg: say(`${res.word.toUpperCase()} +${res.pts}`) });
+    if (res.ok) {
+      sync(false);
+      return publish({ sel: [], msg: say(`${res.word.toUpperCase()} +${res.pts}`) });
+    }
     const reason =
       res.reason === 'short'
         ? `Use at least ${MIN_LENGTH} letters`
@@ -229,6 +294,7 @@ export default function WordRush({ deal, buddy }: { deal: string; buddy: string 
     if (!view.trading.length) return publish({ msg: say('Pick at least one tile to trade', true) });
     const n = view.trading.length;
     tradeTiles(r.me, view.trading);
+    sync(false);
     publish({ trading: null, msg: say(`Traded ${n} tile${n === 1 ? '' : 's'} (−${TRADE_COST})`) });
   }
 
@@ -265,8 +331,16 @@ export default function WordRush({ deal, buddy }: { deal: string; buddy: string 
       ? 'Race the computer on the same tiles.'
       : mode === 'solo'
         ? 'Race your own best score.'
-        : `Same tiles for you and ${buddy || 'your buddy'}.`;
-  const outcome = view?.over ? result(view, mode, buddy) : null;
+        : `Same tiles for you and ${buddyName}.`;
+  // After a reload the round itself is gone, but the saved score still tells the story.
+  const savedDone = !!online && !!mineSaved?.done && !view;
+  const outcome = view?.over
+    ? online
+      ? onlineResult(view.score, theirs, buddyName)
+      : result(view)
+    : savedDone
+      ? onlineResult(mineSaved.score, theirs, buddyName)
+      : null;
   const share =
     view &&
     `MeetDoConnect Word Rush · Deal ${view.code} · ${view.minutes} min\nMy score: ${view.score}${
@@ -278,46 +352,69 @@ export default function WordRush({ deal, buddy }: { deal: string; buddy: string 
       <div className="word-instructions">
         <p className="section-label">Word Rush</p>
         <h2>{headline}</h2>
-        <div className="word-mode-switch" role="group" aria-label="Who you play">
-          {(
-            [
-              ['computer', 'Vs computer'],
-              ['solo', 'Solo'],
-              ['buddy', 'With a buddy'],
-            ] as const
-          ).map(([value, label]) => (
-            <button
-              className={mode === value ? 'selected' : ''}
-              type="button"
-              aria-pressed={mode === value}
-              disabled={running}
-              key={value}
-              onClick={() => {
-                setPicked(value);
-                setView(null);
-              }}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-        {mode === 'computer' && (
-          <div className="word-mode-switch word-level" role="group" aria-label="Computer level">
-            {LEVEL_NAMES.map(([value, label]) => (
+        {!online && (
+          <div className="word-mode-switch" role="group" aria-label="Who you play">
+            {(
+              [
+                ['computer', 'Vs computer'],
+                ['solo', 'Solo'],
+                ['buddy', 'With a buddy'],
+              ] as const
+            ).map(([value, label]) => (
               <button
-                className={level === value ? 'selected' : ''}
+                className={mode === value ? 'selected' : ''}
                 type="button"
-                aria-pressed={level === value}
+                aria-pressed={mode === value}
                 disabled={running}
                 key={value}
                 onClick={() => {
-                  setLevel(value);
+                  setPicked(value);
                   setView(null);
                 }}
               >
                 {label}
               </button>
             ))}
+          </div>
+        )}
+        {!online && (
+          <div className="game-settings">
+            {mode === 'computer' && (
+              <label>
+                Skill level
+                <select
+                  value={level}
+                  disabled={running}
+                  onChange={(event) => {
+                    setLevel(event.target.value as Level);
+                    setView(null);
+                  }}
+                >
+                  {LEVEL_NAMES.map(([value, label]) => (
+                    <option value={value} key={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            <label>
+              Round length
+              <select
+                value={chosenMinutes}
+                disabled={running}
+                onChange={(event) => {
+                  setMinutes(Number(event.target.value));
+                  setView(null);
+                }}
+              >
+                {MINUTES.map((value) => (
+                  <option value={value} key={value}>
+                    {value === 1 ? '1 minute' : `${value} minutes`}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
         )}
         <div
@@ -375,153 +472,179 @@ export default function WordRush({ deal, buddy }: { deal: string; buddy: string 
       </div>
 
       <div className="word-play">
-        <div className="timer-score word-scores">
-          <div>
-            <span>Time</span>
-            <strong className={live && live.left <= LOW_TIME_MS ? 'time-low' : ''} role="timer">
-              {clock(view?.left ?? minutes * 60_000)}
-            </strong>
-          </div>
-          <div>
-            <span>You</span>
-            <strong>{view?.score ?? 0}</strong>
-            <small>{view?.best ? `Best: ${view.best.word.toUpperCase()} +${view.best.pts}` : ''}</small>
-          </div>
-          {mode === 'computer' && (
-            <div>
-              <span>Computer · {view?.house?.level ?? level}</span>
-              <strong>{view?.house?.score ?? 0}</strong>
-              <small>
-                {view?.house?.log[0] ? `${view.house.log[0].word.toUpperCase()} +${view.house.log[0].pts}` : ''}
-              </small>
-            </div>
-          )}
-        </div>
-
-        {live ? (
+        {mode === 'buddy' && !online ? (
+          <BuddyPicker game="Word Rush" minutes={minutes} />
+        ) : (
           <>
-            <label className={`word-entry ${live.msg.bad ? 'word-rejected' : ''}`}>
-              <span className="sr-only">Type a word or choose tiles</span>
-              <input
-                value={word.toLowerCase()}
-                onChange={(event) => typeWord(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') submit();
-                }}
-                readOnly={!!live.trading}
-                autoComplete="off"
-                autoCapitalize="off"
-                spellCheck={false}
-                placeholder="Tap tiles or type a word…"
-              />
-              <button type="button" onClick={submit} disabled={!selected.length}>
-                Play word
-              </button>
-            </label>
-            <p className={`word-feedback ${live.msg.bad ? '' : 'word-feedback-ok'}`} role="status">
-              {live.msg.text}
-            </p>
-            <button className="end-round" type="button" onClick={end}>
-              End round
-            </button>
-          </>
-        ) : outcome ? null : (
-          <div className="word-setup">
-            <div className="word-deal">
-              <label htmlFor="word-deal">Deal code</label>
-              <input
-                id="word-deal"
-                value={code}
-                maxLength={20}
-                autoComplete="off"
-                spellCheck={false}
-                onChange={(event) => setTyped(cleanCode(event.target.value))}
-              />
-              <button type="button" onClick={() => setTyped(randomCode())}>
-                New deal
-              </button>
-              <button type="button" onClick={() => setTyped(dailyCode())}>
-                Today’s deal
-              </button>
+            <div className="timer-score word-scores">
+              <div>
+                <span>Time</span>
+                <strong className={live && live.left <= LOW_TIME_MS ? 'time-low' : ''} role="timer">
+                  {clock(view?.left ?? minutes * 60_000)}
+                </strong>
+              </div>
+              <div>
+                <span>You</span>
+                <strong>{view?.score ?? mineSaved?.score ?? 0}</strong>
+                <small>{view?.best ? `Best: ${view.best.word.toUpperCase()} +${view.best.pts}` : ''}</small>
+              </div>
+              {mode === 'computer' && (
+                <div>
+                  <span>Computer · {view?.house?.level ?? level}</span>
+                  <strong>{view?.house?.score ?? 0}</strong>
+                  <small>
+                    {view?.house?.log[0] ? `${view.house.log[0].word.toUpperCase()} +${view.house.log[0].pts}` : ''}
+                  </small>
+                </div>
+              )}
+              {online && (
+                <div>
+                  <span>{buddyName}</span>
+                  <strong>{theirs?.score ?? 0}</strong>
+                  <small>{theirs ? (theirs.done ? 'Finished' : 'Playing now') : 'Has not played yet'}</small>
+                </div>
+              )}
             </div>
-            <div className="word-mode-switch word-timer" role="group" aria-label="Timer">
-              {MINUTES.map((value) => (
-                <button
-                  className={minutes === value ? 'selected' : ''}
-                  type="button"
-                  aria-pressed={minutes === value}
-                  key={value}
-                  onClick={() => setMinutes(value)}
-                >
-                  {value} min
+
+            {live ? (
+              <>
+                <label className={`word-entry ${live.msg.bad ? 'word-rejected' : ''}`}>
+                  <span className="sr-only">Type a word or choose tiles</span>
+                  <input
+                    value={word.toLowerCase()}
+                    onChange={(event) => typeWord(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') submit();
+                    }}
+                    readOnly={!!live.trading}
+                    autoComplete="off"
+                    autoCapitalize="off"
+                    spellCheck={false}
+                    placeholder="Tap tiles or type a word…"
+                  />
+                  <button type="button" onClick={submit} disabled={!selected.length}>
+                    Play word
+                  </button>
+                </label>
+                <p className={`word-feedback ${live.msg.bad ? '' : 'word-feedback-ok'}`} role="status">
+                  {live.msg.text}
+                </p>
+                <button className="end-round" type="button" onClick={end}>
+                  End round
                 </button>
-              ))}
-            </div>
-            {mode === 'buddy' && (
-              <div className="word-share">
-                <strong>Send {buddy || 'your buddy'} this deal</strong>
-                <span>They get the same tiles in the same order. Play when you like, then compare scores.</span>
-                <input readOnly value={dealLink} aria-label="Deal link" onFocus={(event) => event.target.select()} />
-                <button type="button" onClick={() => copy(dealLink)}>
-                  Copy link
-                </button>
-                <small role="status">{copyMsg}</small>
+              </>
+            ) : outcome ? null : online ? (
+              <div className="word-setup">
+                <p className="word-online-note">
+                  {mineSaved
+                    ? `Your round was interrupted at ${mineSaved.score} points. Finish it to lock in your score.`
+                    : `One ${minutes === 1 ? '60-second' : `${minutes}-minute`} round each, same tiles. You can play now or later. ${buddyName}’s score shows up here as they play.`}
+                </p>
+              </div>
+            ) : (
+              <div className="word-setup">
+                <div className="word-deal">
+                  <label htmlFor="word-deal">Deal code</label>
+                  <input
+                    id="word-deal"
+                    value={code}
+                    maxLength={20}
+                    autoComplete="off"
+                    spellCheck={false}
+                    onChange={(event) => setTyped(cleanCode(event.target.value))}
+                  />
+                  <button type="button" onClick={() => setTyped(randomCode())}>
+                    New deal
+                  </button>
+                  <button type="button" onClick={() => setTyped(dailyCode())}>
+                    Today’s deal
+                  </button>
+                </div>
               </div>
             )}
-          </div>
-        )}
 
-        {outcome && view && share && (
-          <div className="round-finished" role="status">
-            <strong>{outcome.title}</strong>
-            {outcome.text && <span>{outcome.text}</span>}
-            {mode !== 'computer' && (
+            {outcome && (
+              <div className="round-finished" role="status">
+                <strong>{outcome.title}</strong>
+                {outcome.text && <span>{outcome.text}</span>}
+                {mode === 'solo' && view && share && (
+                  <>
+                    <textarea
+                      readOnly
+                      value={share}
+                      aria-label="Your result"
+                      onFocus={(event) => event.target.select()}
+                    />
+                    <button className="round-copy" type="button" onClick={() => copy(share)}>
+                      Copy result
+                    </button>
+                    <small>{copyMsg}</small>
+                  </>
+                )}
+              </div>
+            )}
+            {syncError && (
+              <p className="chess-error" role="alert">
+                {syncError}
+              </p>
+            )}
+
+            {!running && !online && (
+              <button className="start-game" type="button" onClick={start}>
+                {outcome
+                  ? 'Play this deal again'
+                  : minutes === 1
+                    ? 'Start 60-second round'
+                    : `Start ${minutes}-minute round`}
+              </button>
+            )}
+            {!running && online && !outcome && (
+              <button className="start-game" type="button" onClick={mineSaved ? finishSaved : () => void startOnline()}>
+                {mineSaved
+                  ? 'Finish my round'
+                  : minutes === 1
+                    ? 'Start 60-second round'
+                    : `Start ${minutes}-minute round`}
+              </button>
+            )}
+            {online && outcome && (
               <>
-                <textarea readOnly value={share} aria-label="Your result" onFocus={(event) => event.target.select()} />
-                <button className="round-copy" type="button" onClick={() => copy(share)}>
-                  Copy result
+                <button className="start-game" type="button" onClick={online.onNewDeal}>
+                  Play a new deal with {buddyName}
                 </button>
-                <small>{copyMsg}</small>
+                <button className="new-deal" type="button" onClick={online.onLeave}>
+                  All games
+                </button>
               </>
             )}
-          </div>
-        )}
+            {!online && outcome && (
+              <button
+                className="new-deal"
+                type="button"
+                onClick={() => {
+                  setTyped(randomCode());
+                  setView(null);
+                }}
+              >
+                New deal
+              </button>
+            )}
 
-        {!running && (
-          <button className="start-game" type="button" onClick={start}>
-            {outcome
-              ? 'Play this deal again'
-              : minutes === 1
-                ? 'Start 60-second round'
-                : `Start ${minutes}-minute round`}
-          </button>
-        )}
-        {outcome && (
-          <button
-            className="new-deal"
-            type="button"
-            onClick={() => {
-              setTyped(randomCode());
-              setView(null);
-            }}
-          >
-            New deal
-          </button>
-        )}
-
-        {view && (view.log.length > 0 || !!view.house?.log.length) && (
-          <div className="found-words" aria-label="Words played">
-            {view.log.map((play) => (
-              <span key={`me-${play.word}`}>
-                {play.word} +{play.pts}
-              </span>
-            ))}
-            {view.house?.log.map((play) => (
-              <span className="player-two-word" key={`cpu-${play.word}`}>
-                CPU · {play.word} +{play.pts}
-              </span>
-            ))}
-          </div>
+            {view && (view.log.length > 0 || !!view.house?.log.length) && (
+              <div className="found-words" aria-label="Words played">
+                {view.log.map((play) => (
+                  <span key={`me-${play.word}`}>
+                    {play.word} +{play.pts}
+                  </span>
+                ))}
+                {view.house?.log.map((play) => (
+                  <span className="player-two-word" key={`cpu-${play.word}`}>
+                    CPU · {play.word} +{play.pts}
+                  </span>
+                ))}
+              </div>
+            )}
+          </>
         )}
       </div>
     </section>

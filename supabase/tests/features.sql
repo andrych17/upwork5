@@ -62,7 +62,8 @@ select t((:'v1'::jsonb->>'success')::boolean and :'v1'::jsonb->>'key' like 'hell
 select hello_video_start(:'S', 'video/mp4', 2000000, 60) as v2 \gset
 select t(:'v2'::jsonb->'replaced_keys' ? (:'v1'::jsonb->>'key'), 'recording again replaces the earlier try');
 select t(hello_video_start(:'S', 'video/avi', 1, 45)->>'error' like '%unsupported%', 'other video types are refused');
-select t(hello_video_start(:'S', 'video/webm', 1, 10)->>'error' like '%30 to 120%', 'under 30 seconds is refused');
+select t(hello_video_start(:'S', 'video/webm', 1, 10)->>'error' like '%30 to 60%', 'under 30 seconds is refused');
+select t(hello_video_start(:'S', 'video/webm', 1000000, 90)->>'error' like '%30 to 60%', 'over a minute is refused');
 select t(hello_video_start(:'S', 'video/webm', 200000000, 60)->>'error' like '%too large%', 'over 100 MB is refused');
 select t(hello_video_uploaded(:'S', (:'v1'::jsonb->>'id')::uuid, 1000)->>'error' like '%replaced%',
   'a replaced upload cannot be finished');

@@ -37,8 +37,8 @@ select t(room_join(:'R3', :'SOPEN')->>'error' like 'Rooms open for you once your
 update bookings set held = true where session_id = :'SOPEN' and user_id = :'R2';
 select t(room_join(:'R2', :'SOPEN')->>'error' like 'Rooms open for you once%', 'held seats cannot enter');
 update bookings set held = false where session_id = :'SOPEN' and user_id = :'R2';
-select t(room_join(:'R1', :'SLATER')->>'error' = 'The room opens 10 minutes before the start.', 'too early');
-select t(room_join(:'R2', :'SLATER')->>'error' = 'The room opens 10 minutes before the start.', 'too early, even without a seat');
+select t(room_join(:'R1', :'SLATER')->>'error' = 'The room opens 5 minutes before the start.', 'too early');
+select t(room_join(:'R2', :'SLATER')->>'error' = 'The room opens 5 minutes before the start.', 'too early, even without a seat');
 select t(room_join(:'R1', :'SLOCK')->>'error' like 'The room closed to new arrivals%', 'locked 10 minutes after the start');
 select t((room_join(:'R2', :'SLOCK')->>'success')::boolean, 'someone who already joined can come back');
 select t(room_join(:'R1', :'SDONE')->>'error' = 'This session has ended.', 'ended sessions are closed');

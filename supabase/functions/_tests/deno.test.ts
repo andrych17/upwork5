@@ -18,7 +18,7 @@ Deno.test('push payload decrypts on the device side', () => {
   const authSecret = randomBytes(16);
   const payload = JSON.stringify({
     title: 'Quiet Co-Work starts in 1 hour',
-    body: 'The room opens at 9:50 am.',
+    body: 'The room opens at 9:55 am.',
     url: '/camera-check',
   });
 

@@ -26,7 +26,7 @@ const TESTS = {
   hour: {
     label: 'Test the 1-hour reminder',
     title: 'Quiet Co-Work starts in 1 hour',
-    body: 'The room opens at 9:50 am. Tap to check your camera and mic.',
+    body: 'The room opens at 9:55 am. Tap to check your camera and mic.',
     url: '/camera-check',
   },
 } as const;
@@ -157,10 +157,15 @@ export default function RemindersPage() {
         <nav aria-label="Reminders navigation">
           <Link href="/">Home</Link>
           <Link href="/calendar">Calendar</Link>
-          <Link href="/#rooms">Rooms</Link>
           <Link href="/membership">Membership</Link>
         </nav>
-        <AccountMenu signedOut={<Link className="schedule-signin" href="/signin">Sign in</Link>} />
+        <AccountMenu
+          signedOut={
+            <Link className="schedule-signin" href="/signin">
+              Sign in
+            </Link>
+          }
+        />
         <MenuToggle />
       </header>
 
@@ -195,7 +200,7 @@ export default function RemindersPage() {
             <div>
               <span>02</span>
               <p>
-                <strong>1 hour before</strong>Time to set up. The room opens 10 minutes before the start.
+                <strong>1 hour before</strong>Time to set up. The room opens 5 minutes before the start.
               </p>
             </div>
             <div>

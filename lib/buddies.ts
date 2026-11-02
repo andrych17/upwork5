@@ -41,7 +41,7 @@ export interface BuddyMessage {
   sender_id: string;
   kind: MessageKind;
   body: string;
-  payload: { slug?: string; game?: GameName } | null;
+  payload: { slug?: string; game?: GameName; game_id?: string } | null;
   created_at: string;
 }
 
@@ -139,6 +139,5 @@ export function subscribeMessages(
 
 export const initials = (name: string) => name.trim().charAt(0).toUpperCase() || '?';
 
-/** The /games hash that opens a game with a buddy: "Slow Chess" -> play=chess&with=Maya */
-export const gameHash = (game: GameName | string | undefined, name: string) =>
-  `play=${game === 'Slow Chess' ? 'chess' : 'word'}&with=${encodeURIComponent(name)}`;
+/** Opens one buddy game (schema section 27) on the Games page. */
+export const gameLink = (id: string): `/games#game=${string}` => `/games#game=${id}`;

@@ -989,7 +989,7 @@ revoke insert, update, delete on credit_grants from anon, authenticated;
 revoke execute on function admin_give_credits(uuid, int, text) from public, anon;
 grant execute on function admin_give_credits(uuid, int, text) to authenticated;
 
--- 19. Hello Video (Kelly 29 Oct): 30 to 120 seconds per person, only admins watch it.
+-- 19. Hello Video (Kelly 29 Oct, shortened 2 Nov): 30 to 60 seconds per person, only admins watch it.
 -- Files live in a private Cloudflare R2 bucket. The hello-video Edge Function checks who is
 -- asking, signs short-lived upload and viewing links, and calls the functions below with the
 -- service role. A file is deleted as soon as it is reviewed (approved or not).
@@ -1042,8 +1042,8 @@ begin
   if p_size is null or p_size < 1 or p_size > 104857600 then
     return jsonb_build_object('success', false, 'error', 'The video is too large. Please record a shorter one.');
   end if;
-  if p_duration is null or p_duration < 30 or p_duration > 125 then
-    return jsonb_build_object('success', false, 'error', 'Hello Videos are 30 to 120 seconds long.');
+  if p_duration is null or p_duration < 30 or p_duration > 65 then
+    return jsonb_build_object('success', false, 'error', 'Hello Videos are 30 to 60 seconds long.');
   end if;
   if (select count(*) from hello_videos where user_id = p_user and created_at > now() - interval '1 day') >= 10 then
     return jsonb_build_object('success', false, 'error', 'Too many tries today. Please record again tomorrow.');
@@ -2603,7 +2603,7 @@ end
 $do$;
 
 -- 25. Live rooms (Milestone 4). The room-join Edge Function asks room_join() who may enter, then gets a Daily
--- room and a meeting token. Rooms open 10 minutes before the start and lock to new arrivals 10 minutes after
+-- room and a meeting token. Rooms open 5 minutes before the start (Kelly 2 Nov, was 10) and lock to new arrivals 10 minutes after
 -- (Kelly 28 Oct); someone who already joined can come back until the end. Kelly 31 Oct: nobody enters a room
 -- before an admin approved their Hello Video (app_config.require_hello_video). Reports go to admins only.
 alter table bookings add column if not exists joined_at timestamptz;
@@ -2658,11 +2658,11 @@ begin
   if not found or (not v_s.published and not v_me.is_admin) then
     return jsonb_build_object('success', false, 'error', 'This session was not found.');
   end if;
-  v_opens := v_s.starts_at - interval '10 minutes';
+  v_opens := v_s.starts_at - interval '5 minutes';
   v_locks := v_s.starts_at + interval '10 minutes';
   v_ends := v_s.starts_at + make_interval(mins => v_s.minutes);
   if now() < v_opens then
-    return jsonb_build_object('success', false, 'error', 'The room opens 10 minutes before the start.');
+    return jsonb_build_object('success', false, 'error', 'The room opens 5 minutes before the start.');
   elsif now() >= v_ends then
     return jsonb_build_object('success', false, 'error', 'This session has ended.');
   end if;
@@ -2771,7 +2771,8 @@ grant execute on function admin_resolve_report(uuid) to authenticated;
 
 -- 26. Buddy Rooms (Kelly 27-28 Oct): after a group session each person privately picks up to 3 people from it.
 -- Two people who picked each other (in any session they shared) get a private 1:1 chat. Picks stay private
--- unless they match. Messages are text, a session invitation ({slug}) or a game invitation ({game}).
+-- unless they match. Messages are text, a session invitation ({slug}) or a game invitation ({game, game_id},
+-- written by start_buddy_game in section 27).
 create table if not exists buddy_picks (
   session_id uuid not null references sessions(id) on delete cascade,
   picker_id uuid not null references profiles(id) on delete cascade,
@@ -2963,7 +2964,7 @@ as $$
   ) b;
 $$;
 
--- Sends a message in a Buddy Room. At most 30 a minute per person.
+-- Sends a text or session invitation in a Buddy Room. At most 30 a minute per person.
 create or replace function send_buddy_message(p_to uuid, p_kind text, p_body text, p_payload jsonb default null)
 returns jsonb
 language plpgsql
@@ -2979,7 +2980,7 @@ begin
   if v_me is null then
     return jsonb_build_object('success', false, 'error', 'Please sign in.');
   end if;
-  if coalesce(p_kind, '') not in ('text', 'session', 'game') then
+  if coalesce(p_kind, '') not in ('text', 'session') then
     return jsonb_build_object('success', false, 'error', 'Unknown message type.');
   end if;
   if v_body = '' or length(v_body) > 2000 then
@@ -2993,11 +2994,6 @@ begin
       return jsonb_build_object('success', false, 'error', 'That session is not on the calendar.');
     end if;
     v_payload := jsonb_build_object('slug', p_payload->>'slug');
-  elsif p_kind = 'game' then
-    if coalesce(p_payload->>'game', '') not in ('Word Rush', 'Slow Chess') then
-      return jsonb_build_object('success', false, 'error', 'Unknown game.');
-    end if;
-    v_payload := jsonb_build_object('game', p_payload->>'game');
   end if;
   if (select count(*) from buddy_messages where sender_id = v_me and created_at > now() - interval '1 minute') >= 30 then
     return jsonb_build_object('success', false, 'error', 'That’s a lot of messages at once. Wait a minute and try again.');
@@ -3063,6 +3059,232 @@ begin
      and not exists (select 1 from pg_publication_tables
                      where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'buddy_messages') then
     alter publication supabase_realtime add table buddy_messages;
+  end if;
+end
+$do$;
+
+-- 27. Buddy games (Kelly 2 Nov): Slow Chess and Word Rush between two matched buddies, saved here so both people
+-- see the same board and scoreboard, and one person can have a game going with each buddy at the same time.
+-- One active game per pair and game. Slow Chess keeps the engine's move tokens ('e2e4', 'e7e8q', 'r' = resign);
+-- Word Rush keeps one deal code and each person's score for their own timed round.
+create table if not exists buddy_games (
+  id uuid primary key default gen_random_uuid(),
+  low_id uuid not null references profiles(id) on delete cascade,
+  high_id uuid not null references profiles(id) on delete cascade,
+  game text not null check (game in ('Word Rush', 'Slow Chess')),
+  status text not null default 'active' check (status in ('active', 'done')),
+  white_id uuid references profiles(id) on delete cascade,
+  moves text[] not null default '{}',
+  result text check (result in ('w', 'b', 'd')),
+  deal text,
+  minutes int check (minutes in (1, 3, 5)),
+  scores jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  check (low_id < high_id),
+  check (white_id is null or white_id in (low_id, high_id)),
+  check (game <> 'Slow Chess' or white_id is not null),
+  check (game <> 'Word Rush' or (deal is not null and minutes is not null))
+);
+create unique index if not exists uq_buddy_games_active on buddy_games (low_id, high_id, game) where status = 'active';
+create index if not exists idx_buddy_games_high on buddy_games (high_id, status);
+create index if not exists idx_buddy_games_white on buddy_games (white_id);
+
+-- Starts a game with a buddy, or returns the one already going (one tap from the Buddy Room or the Games page).
+-- A new game puts a card in the Buddy Room chat. Word Rush: if I already played the open deal, it is closed and
+-- a new deal starts. Slow Chess: the person who starts plays White.
+create or replace function start_buddy_game(p_with uuid, p_game text, p_minutes int default 1)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_me uuid := auth.uid();
+  v_low uuid;
+  v_high uuid;
+  v_g buddy_games%rowtype;
+  v_have boolean := false;
+  v_id uuid;
+  v_deal text := null;
+  v_chars constant text := 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+begin
+  if v_me is null then
+    return jsonb_build_object('success', false, 'error', 'Please sign in.');
+  end if;
+  if coalesce(p_game, '') not in ('Word Rush', 'Slow Chess') then
+    return jsonb_build_object('success', false, 'error', 'Unknown game.');
+  end if;
+  if p_with is null or not buddies_matched(v_me, p_with) then
+    return jsonb_build_object('success', false, 'error', 'This Buddy Room is closed.');
+  end if;
+  if p_game = 'Word Rush' and coalesce(p_minutes, 0) not in (1, 3, 5) then
+    return jsonb_build_object('success', false, 'error', 'Choose 1, 3 or 5 minutes.');
+  end if;
+  v_low := least(v_me, p_with);
+  v_high := greatest(v_me, p_with);
+  -- Two taps at once (or both buddies at once) still make a single game.
+  perform pg_advisory_xact_lock(hashtextextended(v_low::text || v_high::text || p_game, 0));
+
+  select * into v_g from buddy_games
+  where low_id = v_low and high_id = v_high and game = p_game and status = 'active'
+  for update;
+  if found then
+    if p_game = 'Word Rush' and coalesce((v_g.scores -> v_me::text ->> 'done')::boolean, false) then
+      update buddy_games set status = 'done', updated_at = now() where id = v_g.id;
+    else
+      return jsonb_build_object('success', true, 'id', v_g.id, 'created', false);
+    end if;
+  end if;
+
+  if p_game = 'Word Rush' then
+    select string_agg(substr(v_chars, 1 + floor(random() * length(v_chars))::int, 1), '') into v_deal
+    from generate_series(1, 5);
+  end if;
+  insert into buddy_games (low_id, high_id, game, white_id, deal, minutes)
+  values (v_low, v_high, p_game,
+          case when p_game = 'Slow Chess' then v_me end,
+          v_deal,
+          case when p_game = 'Word Rush' then p_minutes end)
+  returning id into v_id;
+  insert into buddy_messages (low_id, high_id, sender_id, kind, body, payload)
+  values (v_low, v_high, v_me, 'game', 'Want to play ' || p_game || '?',
+          jsonb_build_object('game', p_game, 'game_id', v_id));
+  return jsonb_build_object('success', true, 'id', v_id, 'created', true);
+end;
+$$;
+
+-- Slow Chess: the person whose turn it is adds one move. p_ply is the number of moves the caller saw, so a stale
+-- screen cannot overwrite a newer move. p_result ('w', 'b', 'd') is sent by the client when the move ends the game
+-- (the rules live in the browser engine); a resignation sets it here.
+create or replace function buddy_game_move(p_game uuid, p_ply int, p_token text, p_result text default null)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_me uuid := auth.uid();
+  v_g buddy_games%rowtype;
+  v_mover uuid;
+  v_result text := p_result;
+begin
+  if v_me is null then
+    return jsonb_build_object('success', false, 'error', 'Please sign in.');
+  end if;
+  select * into v_g from buddy_games where id = p_game for update;
+  if not found or v_g.game <> 'Slow Chess' or v_me not in (v_g.low_id, v_g.high_id)
+     or not buddies_matched(v_g.low_id, v_g.high_id) then
+    return jsonb_build_object('success', false, 'error', 'This game is closed.');
+  end if;
+  if v_g.status <> 'active' then
+    return jsonb_build_object('success', false, 'error', 'This game is over.');
+  end if;
+  if cardinality(v_g.moves) <> coalesce(p_ply, -1) then
+    return jsonb_build_object('success', false, 'error', 'The board changed. Reload to see the latest move.');
+  end if;
+  v_mover := case when cardinality(v_g.moves) % 2 = 0 then v_g.white_id
+                  else case when v_g.white_id = v_g.low_id then v_g.high_id else v_g.low_id end end;
+  if v_mover <> v_me then
+    return jsonb_build_object('success', false, 'error', 'It is not your move.');
+  end if;
+  if coalesce(p_token, '') !~ '^([a-h][1-8][a-h][1-8][qrbn]?|r)$' or cardinality(v_g.moves) >= 600 then
+    return jsonb_build_object('success', false, 'error', 'That move is not valid.');
+  end if;
+  if p_token = 'r' then
+    v_result := case when v_mover = v_g.white_id then 'b' else 'w' end;
+  elsif v_result is not null and v_result not in ('w', 'b', 'd') then
+    return jsonb_build_object('success', false, 'error', 'That result is not valid.');
+  end if;
+
+  update buddy_games
+  set moves = array_append(moves, p_token),
+      result = v_result,
+      status = case when v_result is null then 'active' else 'done' end,
+      updated_at = now()
+  where id = p_game
+  returning * into v_g;
+  return jsonb_build_object('success', true, 'game', to_jsonb(v_g));
+end;
+$$;
+
+-- Word Rush: each person plays the deal once. The first call starts their round (so the buddy sees "playing now"),
+-- later calls update the running score, and p_done closes it. When both are done the game is over.
+-- A round that runs more than 30 seconds past its time is closed with the last saved score.
+create or replace function buddy_game_score(p_game uuid, p_score int, p_words int, p_done boolean default false)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_me uuid := auth.uid();
+  v_g buddy_games%rowtype;
+  v_mine jsonb;
+  v_started timestamptz;
+  v_late boolean;
+begin
+  if v_me is null then
+    return jsonb_build_object('success', false, 'error', 'Please sign in.');
+  end if;
+  select * into v_g from buddy_games where id = p_game for update;
+  if not found or v_g.game <> 'Word Rush' or v_me not in (v_g.low_id, v_g.high_id)
+     or not buddies_matched(v_g.low_id, v_g.high_id) then
+    return jsonb_build_object('success', false, 'error', 'This game is closed.');
+  end if;
+  if v_g.status <> 'active' then
+    return jsonb_build_object('success', false, 'error', 'This game is over.');
+  end if;
+  if p_score is null or p_score not between -100 and 3000 or p_words is null or p_words not between 0 and 300 then
+    return jsonb_build_object('success', false, 'error', 'That score is not valid.');
+  end if;
+  v_mine := v_g.scores -> v_me::text;
+  if v_mine is not null and (v_mine ->> 'done')::boolean then
+    return jsonb_build_object('success', false, 'error', 'You already played this deal.');
+  end if;
+  v_started := coalesce((v_mine ->> 'started_at')::timestamptz, now());
+  v_late := now() > v_started + make_interval(mins => v_g.minutes) + interval '30 seconds';
+  if v_late and v_mine is not null then
+    p_score := (v_mine ->> 'score')::int;
+    p_words := (v_mine ->> 'words')::int;
+    p_done := true;
+  end if;
+
+  update buddy_games
+  set scores = scores || jsonb_build_object(v_me::text, jsonb_build_object(
+        'score', p_score, 'words', p_words, 'done', coalesce(p_done, false), 'started_at', v_started)),
+      updated_at = now()
+  where id = p_game
+  returning * into v_g;
+  if (select count(*) from jsonb_each(v_g.scores) e where (e.value ->> 'done')::boolean) = 2 then
+    update buddy_games set status = 'done' where id = p_game returning * into v_g;
+  end if;
+  return jsonb_build_object('success', true, 'game', to_jsonb(v_g));
+end;
+$$;
+
+alter table buddy_games enable row level security;
+drop policy if exists "Buddies read their games" on buddy_games;
+create policy "Buddies read their games" on buddy_games for select to authenticated
+  using ((select auth.uid()) in (low_id, high_id) and buddy_room_open(low_id, high_id));
+revoke insert, update, delete on buddy_games from anon, authenticated;
+revoke select on buddy_games from anon;
+grant select on buddy_games to authenticated;
+
+revoke execute on function start_buddy_game(uuid, text, int) from public, anon;
+grant execute on function start_buddy_game(uuid, text, int) to authenticated;
+revoke execute on function buddy_game_move(uuid, int, text, text) from public, anon;
+grant execute on function buddy_game_move(uuid, int, text, text) to authenticated;
+revoke execute on function buddy_game_score(uuid, int, int, boolean) from public, anon;
+grant execute on function buddy_game_score(uuid, int, int, boolean) to authenticated;
+
+-- Moves and scores reach the other person's open game through Supabase Realtime (RLS decides who receives them).
+do $do$
+begin
+  if exists (select 1 from pg_publication where pubname = 'supabase_realtime')
+     and not exists (select 1 from pg_publication_tables
+                     where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'buddy_games') then
+    alter publication supabase_realtime add table buddy_games;
   end if;
 end
 $do$;

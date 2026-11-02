@@ -145,6 +145,10 @@ export const timeOf = (iso: string) => time.format(new Date(iso)).toLowerCase();
 export const addMinutes = (iso: string, minutes: number) =>
   new Date(new Date(iso).getTime() + minutes * 60_000).toISOString();
 
+/** The live room opens this long before the start (Kelly 2 Nov: 5) and locks to new arrivals this long after it. */
+export const ROOM_OPENS_MINUTES = 5;
+export const ROOM_LOCKS_MINUTES = 10;
+
 // ---------- loading ----------
 
 export async function fetchRooms(supabase: SupabaseClient, fromDay: string, toDay: string): Promise<Room[] | null> {

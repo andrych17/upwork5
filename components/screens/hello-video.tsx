@@ -120,7 +120,7 @@ export default function HelloVideoPage() {
           <h1>
             Say hi
             <br />
-            <span>in two minutes.</span>
+            <span>in a minute.</span>
           </h1>
         </div>
         <div className="public-note" role="status">

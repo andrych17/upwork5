@@ -12,7 +12,7 @@ import MenuToggle from '@/components/menu-toggle';
 import { useAccount } from '@/lib/account';
 import {
   fetchMessages,
-  gameHash,
+  gameLink,
   getMyBuddies,
   getSessionPeople,
   initials,
@@ -27,6 +27,7 @@ import {
   type SessionPeople,
 } from '@/lib/buddies';
 import { updateBuddyDemo } from '@/lib/buddy-demo';
+import { fetchGames, gameStatus, otherOf, startBuddyGame, subscribeMyGames, type BuddyGame } from '@/lib/buddy-games';
 import { fetchRoom, when } from '@/lib/rooms';
 import { getSupabase } from '@/lib/supabase';
 import { useNow } from '@/lib/use-now';
@@ -455,8 +456,25 @@ function ChatRoom({ me, buddy, buddies, onOpen, onClosed }: ChatProps) {
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
+  const [games, setGames] = useState<BuddyGame[]>([]);
   const bottom = useRef<HTMLDivElement>(null);
+  const router = useRouter();
   const name = buddy.first_name;
+
+  // My games with this buddy, kept current so the cards in the chat show whose move it is.
+  useEffect(() => {
+    let live = true;
+    const load = () =>
+      fetchGames(supabase).then((all) => {
+        if (live && all) setGames(all.filter((g) => otherOf(g, me) === buddy.id));
+      });
+    void load();
+    const stop = subscribeMyGames(supabase, me, () => void load());
+    return () => {
+      live = false;
+      stop();
+    };
+  }, [supabase, me, buddy.id]);
 
   useEffect(() => {
     let live = true;
@@ -481,7 +499,7 @@ function ChatRoom({ me, buddy, buddies, onOpen, onClosed }: ChatProps) {
     bottom.current?.scrollIntoView({ block: 'end' });
   }, [messages?.length]);
 
-  const send = async (kind: 'text' | 'game', body: string, payload: BuddyMessage['payload'] = null) => {
+  const send = async (kind: 'text', body: string, payload: BuddyMessage['payload'] = null) => {
     const text = body.trim();
     if (!text || sending) return;
     setSending(true);
@@ -498,7 +516,19 @@ function ChatRoom({ me, buddy, buddies, onOpen, onClosed }: ChatProps) {
     if (fresh) setThread({ id: buddy.id, messages: fresh });
   };
 
-  const inviteToGame = (game: GameName) => void send('game', `Want to play ${game}?`, { game });
+  // One tap: starts the game (or opens the one already going) and lands on the board.
+  const playGame = async (game: GameName) => {
+    if (sending) return;
+    setSending(true);
+    setError('');
+    const started = await startBuddyGame(supabase, buddy.id, game);
+    if (started.error) {
+      setSending(false);
+      setError(started.error);
+      return;
+    }
+    router.push(gameLink(started.id));
+  };
 
   const block = async () => {
     if (!window.confirm(`Close your Buddy Room with ${name}? ${name} isn’t told, and the chat closes for both of you.`))
@@ -559,21 +589,24 @@ function ChatRoom({ me, buddy, buddies, onOpen, onClosed }: ChatProps) {
                 </Link>
               </div>
             );
-          if (m.kind === 'game')
+          if (m.kind === 'game') {
+            const g = m.payload?.game_id ? games.find((x) => x.id === m.payload?.game_id) : undefined;
+            const status = g ? gameStatus(g, me, name) : null;
             return (
               <div className="game-invite-message" key={m.id}>
                 <div>
-                  <span>{mine ? 'Game invitation sent' : `${name} invited you to a game`}</span>
+                  <span>{mine ? 'Game started' : `${name} started a game`}</span>
                   <strong>
                     {m.payload?.game} with {mine ? name : 'you'}
                   </strong>
-                  <p>{m.body}</p>
+                  <p>{status ? status.text : m.body}</p>
                 </div>
-                <Link href={`/games#${gameHash(m.payload?.game, name)}`}>
-                  Open game <span aria-hidden="true">→</span>
+                <Link href={gameLink(m.payload?.game_id ?? '')}>
+                  {status?.mine ? 'Play' : 'Open game'} <span aria-hidden="true">→</span>
                 </Link>
               </div>
             );
+          }
           return (
             <div className={mine ? 'your-message' : 'their-message'} key={m.id}>
               <strong>{mine ? 'You' : name}</strong>
@@ -597,11 +630,11 @@ function ChatRoom({ me, buddy, buddies, onOpen, onClosed }: ChatProps) {
             >
               Choose a session <span aria-hidden="true">↗</span>
             </Link>
-            <button type="button" disabled={sending} onClick={() => inviteToGame('Word Rush')}>
-              Invite to Word Rush
+            <button type="button" disabled={sending} onClick={() => void playGame('Word Rush')}>
+              Play Word Rush
             </button>
-            <button type="button" disabled={sending} onClick={() => inviteToGame('Slow Chess')}>
-              Invite to Slow Chess
+            <button type="button" disabled={sending} onClick={() => void playGame('Slow Chess')}>
+              Play Slow Chess
             </button>
           </div>
         </div>

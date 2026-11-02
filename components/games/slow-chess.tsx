@@ -1,10 +1,11 @@
 'use client';
 
-// Slow Chess in the board's look. The whole game lives in the link (#g=…), so a buddy game needs no server:
-// you make one move, send the link, and your buddy answers the same way. Games against the computer use the
-// same link with &ai=<level>, and games on this device are also kept in localStorage. The store below is the
-// only place that changes the game; the screen reads its snapshot, so opening a link works like tapping Open.
+// Slow Chess in the board's look. This file holds the board and the games against the computer: the game lives
+// in the link (#g=…&ai=<level>) and in localStorage on this device. Games with a buddy are saved in the
+// database and live in buddy-chess.tsx. The store below is the only place that changes a computer game; the
+// screen reads its snapshot, so opening a link works like tapping Open.
 import { useState, useSyncExternalStore } from 'react';
+import BuddyPicker from '@/components/games/buddy-picker';
 import { bestMove } from '@/lib/slow-chess/computer';
 import {
   AI_LEVELS,
@@ -27,7 +28,7 @@ const KEY = 'meetdoconnect.slowchess.games';
 const THINK_MS = 450;
 const GLYPH: Record<string, string> = { k: '♚', q: '♛', r: '♜', b: '♝', n: '♞', p: '♟' };
 const NAME: Record<string, string> = { p: 'pawn', n: 'knight', b: 'bishop', r: 'rook', q: 'queen', k: 'king' };
-const PROMO = [
+export const PROMO = [
   ['q', 'Queen'],
   ['r', 'Rook'],
   ['b', 'Bishop'],
@@ -36,8 +37,8 @@ const PROMO = [
 const LEVEL_NAME: Record<AiLevel, string> = { easy: 'Easy', medium: 'Medium', hard: 'Hard' };
 const START = replay([]) as Replay;
 // U+FE0E asks for the plain text glyph, not an emoji.
-const glyph = (p: string) => `${GLYPH[p.toLowerCase()]}︎`;
-const initials = (name: string) =>
+export const glyph = (p: string) => `${GLYPH[p.toLowerCase()]}︎`;
+export const initials = (name: string) =>
   name
     .split(/\s+/)
     .map((part) => part.charAt(0))
@@ -45,11 +46,7 @@ const initials = (name: string) =>
     .slice(0, 2)
     .toUpperCase();
 
-interface Game extends GameRef {
-  /** moves that came in with the link; in a buddy game you make one move after them, then send the link */
-  loadedLen: number;
-  sent: boolean;
-}
+type Game = GameRef;
 interface Listed {
   id: string;
   title: string;
@@ -162,16 +159,14 @@ function computerReply(game: Game) {
 function open(g: GameRef) {
   const r = replay(g.tokens);
   if ('error' in r) return set({ error: r.error });
-  const game: Game = { ...g, tokens: [...g.tokens], loadedLen: g.tokens.length, sent: false };
-  show(game, r, { flipped: !g.ai && !r.over && r.state.turn === 'b' });
+  show({ ...g, tokens: [...g.tokens] }, r);
 }
 function update(game: Game) {
   const r = replay(game.tokens);
   if (!('error' in r)) show(game, r);
 }
 function undo(game: Game, r: Replay) {
-  if (!game.ai) return update({ ...game, tokens: game.tokens.slice(0, game.loadedLen), sent: false });
-  // Against the computer, take back its reply too, so it is your turn again.
+  // Take back the computer's reply too, so it is your turn again.
   const back = game.tokens.at(-1) === 'r' || r.state.turn === 'b' ? 1 : 2;
   update({ ...game, tokens: game.tokens.slice(0, Math.max(0, game.tokens.length - back)) });
 }
@@ -184,7 +179,7 @@ function subscribe(onChange: () => void) {
   listeners.add(onChange);
   const fromHash = () => {
     const g = parseGameHash(location.hash);
-    if (!g) return;
+    if (!g?.ai) return; // links from the old buddy-by-link flow are not games any more
     open(g);
     requestAnimationFrame(() => document.getElementById('slow-chess')?.scrollIntoView({ block: 'start' }));
   };
@@ -195,11 +190,9 @@ function subscribe(onChange: () => void) {
     window.removeEventListener('hashchange', fromHash);
   };
 }
-const noSubscribe = () => () => {};
-const getPageUrl = () => location.origin + location.pathname;
 
 /* ---------- screen ---------- */
-function Board({
+export function Board({
   r,
   flipped = false,
   sel = -1,
@@ -278,17 +271,12 @@ function Board({
   );
 }
 
-function Setup({ list, error, buddy }: { list: Listed[]; error: string; buddy: string }) {
-  const [picked, setPicked] = useState<'computer' | 'buddy' | null>(null);
-  const opponent = picked ?? (buddy ? 'buddy' : 'computer');
+function Setup({ list, error }: { list: Listed[]; error: string }) {
+  const [opponent, setOpponent] = useState<'computer' | 'buddy'>('computer');
   const [level, setLevel] = useState<AiLevel>('medium');
-  const [me, setMe] = useState('');
-  const [them, setThem] = useState<string | null>(null);
-  const themName = them ?? buddy;
 
   function start() {
-    if (opponent === 'computer') open({ id: newId(), w: 'You', b: 'Computer', tokens: [], ai: level });
-    else open({ id: newId(), w: cleanName(me, 'White'), b: cleanName(themName, 'Black'), tokens: [] });
+    open({ id: newId(), w: 'You', b: 'Computer', tokens: [], ai: level });
   }
   function remove(id: string) {
     if (!confirm('Delete this game from this device?')) return;
@@ -308,8 +296,8 @@ function Setup({ list, error, buddy }: { list: Listed[]; error: string; buddy: s
         <p className="section-label">Slow Chess</p>
         <h2>Play the computer or a buddy.</h2>
         <p>
-          Against the computer, it answers in a moment. With a buddy, you make one move, send them the link, and they
-          answer whenever they return. The whole game lives in the link, and every rule is in: castling, en passant,
+          Against the computer, it answers in a moment. With a buddy, you make a move and press Play. They answer
+          whenever they return, and you can have a game going with each buddy. Every rule is in: castling, en passant,
           promotion, check, checkmate and draws.
         </p>
         <div className="word-mode-switch" role="group" aria-label="Who you play">
@@ -317,7 +305,7 @@ function Setup({ list, error, buddy }: { list: Listed[]; error: string; buddy: s
             className={opponent === 'computer' ? 'selected' : ''}
             type="button"
             aria-pressed={opponent === 'computer'}
-            onClick={() => setPicked('computer')}
+            onClick={() => setOpponent('computer')}
           >
             Vs computer
           </button>
@@ -325,53 +313,31 @@ function Setup({ list, error, buddy }: { list: Listed[]; error: string; buddy: s
             className={opponent === 'buddy' ? 'selected' : ''}
             type="button"
             aria-pressed={opponent === 'buddy'}
-            onClick={() => setPicked('buddy')}
+            onClick={() => setOpponent('buddy')}
           >
             With a buddy
           </button>
         </div>
         {opponent === 'computer' ? (
-          <div className="word-mode-switch word-level" role="group" aria-label="Computer level">
-            {AI_LEVELS.map((value) => (
-              <button
-                className={level === value ? 'selected' : ''}
-                type="button"
-                aria-pressed={level === value}
-                key={value}
-                onClick={() => setLevel(value)}
-              >
-                {LEVEL_NAME[value]}
-              </button>
-            ))}
+          <div className="game-settings">
+            <label>
+              Skill level
+              <select value={level} onChange={(event) => setLevel(event.target.value as AiLevel)}>
+                {AI_LEVELS.map((value) => (
+                  <option value={value} key={value}>
+                    {LEVEL_NAME[value]}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
         ) : (
-          <div className="chess-names">
-            <label>
-              Your name (White)
-              <input
-                value={me}
-                maxLength={20}
-                autoComplete="off"
-                placeholder="White"
-                onChange={(e) => setMe(e.target.value)}
-              />
-            </label>
-            <label>
-              Your buddy (Black)
-              <input
-                value={themName}
-                maxLength={20}
-                autoComplete="off"
-                placeholder="Black"
-                onChange={(e) => setThem(e.target.value)}
-              />
-            </label>
-          </div>
+          <BuddyPicker game="Slow Chess" />
         )}
         {error && <p className="chess-error">{error}</p>}
         {list.length > 0 && (
           <div className="chess-saved">
-            <h3>Your games on this device</h3>
+            <h3>Your games against the computer on this device</h3>
             {list.map((g) => (
               <div key={g.id}>
                 <div>
@@ -391,62 +357,38 @@ function Setup({ list, error, buddy }: { list: Listed[]; error: string; buddy: s
       </div>
       <div className="chess-board-wrap">
         <Board r={START} />
-        <button className="send-move" type="button" onClick={start}>
-          {opponent === 'computer' ? `Start a game vs the computer (${LEVEL_NAME[level]})` : 'Start game'}{' '}
-          <span aria-hidden="true">→</span>
-        </button>
-        <p className="chess-note">
-          {opponent === 'computer'
-            ? 'You play White and move first.'
-            : 'You play White and move first. Then you get a link to send your buddy.'}
-        </p>
+        {opponent === 'computer' && (
+          <>
+            <button className="send-move" type="button" onClick={start}>
+              Start a game vs the computer ({LEVEL_NAME[level]}) <span aria-hidden="true">→</span>
+            </button>
+            <p className="chess-note">You play White and move first.</p>
+          </>
+        )}
       </div>
     </section>
   );
 }
 
-export default function SlowChess({ buddy }: { buddy: string }) {
+export default function SlowChess() {
   const s = useSyncExternalStore(subscribe, getSnap, () => SERVER);
-  const pageUrl = useSyncExternalStore(noSubscribe, getPageUrl, () => '');
-  const [copyMsg, setCopyMsg] = useState('');
   const { game, r } = s;
-  if (!game || !r) return <Setup list={s.list} error={s.error} buddy={buddy} />;
+  if (!game || !r || !game.ai) return <Setup list={s.list} error={s.error} />;
 
   const st = r.state;
-  const vsComputer = !!game.ai;
-  const moved = game.tokens.length > game.loadedLen;
-  const canMove = !r.over && !s.thinking && !s.promo && (vsComputer ? st.turn === 'w' : !moved);
-  const canUndo = !s.thinking && (vsComputer ? game.tokens.length > 0 : moved && !game.sent);
-  const mover = st.turn === 'w' ? game.w : game.b;
-  const waitingFor = st.turn === 'w' ? game.w : game.b;
-  const link = pageUrl + gameHash(game);
+  const level = game.ai;
+  const canMove = !r.over && !s.thinking && !s.promo;
+  const canUndo = !s.thinking && game.tokens.length > 0;
   const pairs = Array.from({ length: Math.ceil(r.sans.length / 2) }, (_, k) => r.sans.slice(k * 2, k * 2 + 2));
 
   let status: { title: string; text: string };
   if (r.over)
     status = {
-      title:
-        r.over === 'd'
-          ? 'Draw'
-          : vsComputer
-            ? r.over === 'w'
-              ? 'You win'
-              : 'The computer wins'
-            : `${r.over === 'w' ? game.w : game.b} wins`,
+      title: r.over === 'd' ? 'Draw' : r.over === 'w' ? 'You win' : 'The computer wins',
       text: `${r.why}.`,
     };
   else if (s.thinking) status = { title: 'The computer is thinking…', text: 'It plays Black.' };
-  else if (vsComputer)
-    status = { title: r.check ? 'Check. Your move' : 'Your move', text: 'Tap a piece, then tap where it goes.' };
-  else if (game.sent)
-    status = { title: 'Move sent', text: `Waiting for ${waitingFor}. Their move comes back as a new link.` };
-  else if (moved)
-    status = { title: 'Move ready', text: `Confirm it, then send ${waitingFor} the link. Changed your mind? Undo.` };
-  else
-    status = {
-      title: `${r.check ? 'Check. ' : ''}${mover}’s move`,
-      text: 'Tap a piece, then tap where it goes. Dots show legal moves.',
-    };
+  else status = { title: r.check ? 'Check. Your move' : 'Your move', text: 'Tap a piece, then tap where it goes.' };
 
   function tap(i: number) {
     if (!game || !r || !canMove) return;
@@ -458,34 +400,24 @@ export default function SlowChess({ buddy }: { buddy: string }) {
     const p = st.b[i];
     set({ sel: p && colorOf(p) === st.turn && s.sel !== i ? i : -1 });
   }
-  function copyLink() {
-    const fail = () => setCopyMsg('Select the link and copy it.');
-    if (!navigator.clipboard) return fail();
-    navigator.clipboard.writeText(link).then(() => setCopyMsg('Copied.'), fail);
-  }
-  const canShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function';
 
   return (
     <section className="chess-game" id="slow-chess">
       <div className="chess-copy">
         <p className="section-label">Slow Chess</p>
-        <h2>{vsComputer ? 'You against the computer.' : 'One move now. Another whenever you return.'}</h2>
+        <h2>You against the computer.</h2>
         <div className="chess-players">
-          {(['w', 'b'] as const).map((color) => {
-            const name = color === 'w' ? game.w : game.b;
-            const label = vsComputer && color === 'b' ? `Computer · ${LEVEL_NAME[game.ai!]}` : name;
-            return (
-              <div className={`chess-opponent ${!r.over && st.turn === color ? 'chess-to-move' : ''}`} key={color}>
-                <div className={`opponent-mark ${color === 'w' ? 'mark-white' : ''}`}>
-                  {vsComputer ? (color === 'w' ? 'You' : 'CPU') : initials(name)}
-                </div>
-                <div>
-                  <strong>{label}</strong>
-                  <span>{color === 'w' ? 'White' : 'Black'}</span>
-                </div>
+          {(['w', 'b'] as const).map((color) => (
+            <div className={`chess-opponent ${!r.over && st.turn === color ? 'chess-to-move' : ''}`} key={color}>
+              <div className={`opponent-mark ${color === 'w' ? 'mark-white' : ''}`}>
+                {color === 'w' ? 'You' : 'CPU'}
               </div>
-            );
-          })}
+              <div>
+                <strong>{color === 'w' ? game.w : `Computer · ${LEVEL_NAME[level]}`}</strong>
+                <span>{color === 'w' ? 'White' : 'Black'}</span>
+              </div>
+            </div>
+          ))}
         </div>
         <div className={`move-status ${r.check || r.over ? 'move-status-alert' : ''}`} role="status" aria-live="polite">
           <strong>{status.title}</strong>
@@ -493,17 +425,15 @@ export default function SlowChess({ buddy }: { buddy: string }) {
         </div>
         <div className="chess-actions">
           <button type="button" disabled={!canUndo} onClick={() => undo(game, r)}>
-            {vsComputer ? 'Take back' : 'Undo my move'}
+            Take back
           </button>
           <button type="button" onClick={() => set({ flipped: !s.flipped })}>
             Flip board
           </button>
           <button
             type="button"
-            disabled={!!r.over || s.thinking || (!vsComputer && moved)}
-            onClick={() =>
-              confirm('Resign this game?') && update({ ...game, tokens: [...game.tokens, 'r'], sent: false })
-            }
+            disabled={!!r.over || s.thinking}
+            onClick={() => confirm('Resign this game?') && update({ ...game, tokens: [...game.tokens, 'r'] })}
           >
             Resign
           </button>
@@ -545,43 +475,6 @@ export default function SlowChess({ buddy }: { buddy: string }) {
                 </button>
               );
             })}
-          </div>
-        )}
-        {!vsComputer && !r.over && (
-          <button
-            className="send-move"
-            type="button"
-            disabled={!moved || game.sent}
-            onClick={() => set({ game: { ...game, sent: true } })}
-          >
-            {game.sent ? `Waiting for ${waitingFor}` : 'Confirm move'} <span aria-hidden="true">→</span>
-          </button>
-        )}
-        {!vsComputer && (game.sent || r.over) && (
-          <div className="move-notification chess-share">
-            <label htmlFor="chess-link">{r.over ? 'Send the finished game' : `Send this link to ${waitingFor}`}</label>
-            <input id="chess-link" readOnly value={link} onFocus={(e) => e.target.select()} />
-            <div>
-              <button type="button" onClick={copyLink}>
-                Copy link
-              </button>
-              {canShare && (
-                <button
-                  type="button"
-                  onClick={() =>
-                    navigator
-                      .share({ title: 'Slow Chess', text: 'Your move in our chess game', url: link })
-                      .catch(() => {})
-                  }
-                >
-                  Share…
-                </button>
-              )}
-              <span role="status">{copyMsg}</span>
-            </div>
-            <p>
-              Always use the newest link. Once member accounts are live, the move reaches your Buddy Room by itself.
-            </p>
           </div>
         )}
       </div>

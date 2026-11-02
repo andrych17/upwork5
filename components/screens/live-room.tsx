@@ -249,7 +249,7 @@ export default function LiveRoomPage() {
               ? 'Live rooms need member accounts, which are not connected on this preview.'
               : slug
                 ? error
-                : 'Rooms open from My sessions, 10 minutes before the start.'}
+                : 'Rooms open from My sessions, 5 minutes before the start.'}
           </p>
           <Link className="enter-room" href="/sessions">
             Back to My sessions <span aria-hidden="true">→</span>

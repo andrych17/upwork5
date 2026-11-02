@@ -86,6 +86,24 @@ export default function SchedulePage() {
   }, [supabase, ready, from, to, key]);
 
   const current = loaded?.key === key ? loaded : null;
+
+  // The first look at an empty current week (for example the Invite flow from a Buddy Room) goes to the first
+  // week that has a session, instead of leaving the member on a blank calendar.
+  const [moved, setMoved] = useState(false);
+  const emptyNow = view === 'week' && weekOffset === 0 && current?.rooms?.length === 0;
+  useEffect(() => {
+    if (!supabase || !emptyNow || moved) return;
+    let live = true;
+    fetchRooms(supabase, thisMonday, addDays(thisMonday, (WEEKS_AHEAD + 1) * 7)).then((rooms) => {
+      const first = rooms?.[0];
+      if (!live || !first) return;
+      setMoved(true);
+      setWeekOffset(Math.min(WEEKS_AHEAD, weeksBetween(thisMonday, mondayOf(centralDay(new Date(first.starts_at))))));
+    });
+    return () => {
+      live = false;
+    };
+  }, [supabase, emptyNow, moved, thisMonday]);
   const rooms = (current?.rooms ?? []).filter((room) => matches(room, filter));
   const loading = Boolean(supabase) && !current;
   const failed = current?.rooms === null;
@@ -108,7 +126,6 @@ export default function SchedulePage() {
           <Link className="active" href="/calendar">
             Calendar
           </Link>
-          <Link href="/#rooms">Rooms</Link>
           <Link href="/membership">Membership</Link>
         </nav>
         <AccountMenu
@@ -196,6 +213,7 @@ export default function SchedulePage() {
                   onClick={() => {
                     if (view === 'week') setWeekOffset((n) => n - 1);
                     else setMonthOffset((n) => n - 1);
+                    setMoved(true);
                     setExpanded(null);
                   }}
                 >
@@ -211,6 +229,7 @@ export default function SchedulePage() {
                   onClick={() => {
                     if (view === 'week') setWeekOffset((n) => n + 1);
                     else setMonthOffset((n) => n + 1);
+                    setMoved(true);
                     setExpanded(null);
                   }}
                 >

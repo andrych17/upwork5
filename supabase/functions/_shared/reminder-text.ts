@@ -24,7 +24,7 @@ export interface ReminderText {
 }
 
 // The room opens this many minutes before the start (live room rule).
-const ROOM_OPENS_MINUTES = 10;
+const ROOM_OPENS_MINUTES = 5;
 
 function clock(date: Date, tz: string): string {
   return new Intl.DateTimeFormat('en-US', { timeZone: tz, hour: 'numeric', minute: '2-digit' })

@@ -46,7 +46,7 @@ const SAMPLE: QueueItem[] = [
     email: 'jordan@example.com',
     tier: 'household',
     household_member: true,
-    duration_seconds: 95,
+    duration_seconds: 52,
     created_at: '2026-10-30T16:40:00Z',
     url: null,
   },

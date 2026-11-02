@@ -47,7 +47,7 @@ export const DEFAULT_CONFIG: Config = {
   bookAheadDays: 14,
   bhdPerMonth: 3,
   graceDays: 3,
-  joinOpensMinutes: 10,
+  joinOpensMinutes: 5,
   joinClosesMinutes: 10,
 };
 export const cfgOf = (c?: Partial<Config>): Config => ({ ...DEFAULT_CONFIG, ...c });
