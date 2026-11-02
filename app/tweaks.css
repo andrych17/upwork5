@@ -656,3 +656,63 @@
   color: var(--danger);
   font-weight: 700;
 }
+
+/* Last 5 minutes of a session (Kelly 2 Nov): countdown banner above the room controls */
+.live-time strong.live-time-low {
+  background: var(--highlight);
+  color: var(--ink);
+}
+
+.wrap-up-banner {
+  z-index: 4;
+  color: var(--ink);
+  background: var(--highlight);
+  border: 2px solid var(--ink);
+  border-radius: 999px;
+  align-items: center;
+  gap: 14px;
+  width: max-content;
+  max-width: calc(100vw - 32px);
+  padding: 8px 22px 8px 8px;
+  display: flex;
+  position: fixed;
+  bottom: 90px;
+  left: 50%;
+  transform: translateX(-50%);
+  box-shadow: 4px 5px 0 var(--ink);
+  animation: wrap-up-in 0.5s cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+
+.wrap-up-banner strong {
+  color: #fff;
+  background: var(--ink);
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-variant-numeric: tabular-nums;
+  font-size: 1rem;
+}
+
+.wrap-up-banner span {
+  font-size: 0.95rem;
+  font-weight: 800;
+  line-height: 1.3;
+}
+
+@keyframes wrap-up-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 16px);
+  }
+}
+
+@media (max-width: 650px) {
+  .wrap-up-banner {
+    bottom: 138px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wrap-up-banner {
+    animation: none;
+  }
+}

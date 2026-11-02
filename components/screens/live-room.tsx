@@ -81,6 +81,10 @@ function steps(run: string | undefined, total: number) {
   });
 }
 
+// The last minutes of a session: a banner above the controls counts down to the end (Kelly, 2 Nov).
+const WRAP_UP_MINUTES = 5;
+const WRAP_UP_TEXT = 'It’s not goodbye… it’s until we meet again.';
+
 const clock = (ms: number) => {
   const s = Math.max(0, Math.floor(ms / 1000));
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
@@ -199,6 +203,7 @@ export default function LiveRoomPage() {
   const ends = info ? new Date(info.ends_at).getTime() : 0;
   const starts = info ? new Date(info.starts_at).getTime() : 0;
   const locked = info ? now > new Date(info.locks_at).getTime() : false;
+  const wrapUp = ends > 0 && now > 0 && ends > now && ends - now <= WRAP_UP_MINUTES * 60_000;
   const plan = steps(room ? catalogFor(room)?.run : undefined, room?.minutes ?? 60);
   const elapsedMin = now && starts ? (now - starts) / 60_000 : 0;
   const currentIdx = plan.findIndex((s) => elapsedMin >= s.start && elapsedMin < s.start + s.minutes);
@@ -272,7 +277,7 @@ export default function LiveRoomPage() {
         </div>
         <div className="live-time">
           <span>{now ? new Date(now).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : ''}</span>
-          <strong>{ends ? `${clock(ends - now)} left` : ''}</strong>
+          <strong className={wrapUp ? 'live-time-low' : ''}>{ends ? `${clock(ends - now)} left` : ''}</strong>
         </div>
       </header>
 
@@ -478,6 +483,13 @@ export default function LiveRoomPage() {
               </button>
             </>
           )}
+        </div>
+      )}
+
+      {wrapUp && (
+        <div className="wrap-up-banner">
+          <strong aria-hidden="true">{clock(ends - now)}</strong>
+          <span role="status">{WRAP_UP_TEXT}</span>
         </div>
       )}
 
