@@ -1,20 +1,30 @@
 'use client';
 
 import { useCallback, useState } from 'react';
-import { DataTable, Pager, type Column } from '@/components/admin/data-table';
+import { DataTable, Pager, usePaging, type Column } from '@/components/admin/data-table';
+import { DateRange, FilterBar, SearchBox, SelectFilter, TabFilter } from '@/components/admin/filters';
 import MemberDetail from '@/components/admin/member-detail';
 import { useAdmin } from '@/components/admin/shell';
 import {
-  PAGE_SIZE,
   PROFILE_COLUMNS,
   STATUS_LABEL,
   fmtDate,
+  fromCentralInput,
   fullName,
   searchTerm,
   statusBadge,
   useLoad,
   type AdminProfile,
 } from '@/lib/admin';
+import { nextDay } from '@/lib/date-range';
+
+type Plan = 'all' | 'individual' | 'household';
+
+const PLANS: { key: Plan; label: string }[] = [
+  { key: 'all', label: 'Any plan' },
+  { key: 'individual', label: 'Solo' },
+  { key: 'household', label: 'Household' },
+];
 
 type Filter = 'all' | 'pending' | 'active' | 'past_due' | 'paused' | 'canceled' | 'off' | 'admins';
 
@@ -76,10 +86,12 @@ const COLUMNS: Column<AdminProfile>[] = [
 
 export default function AdminMembers() {
   const { supabase } = useAdmin();
+  const paging = usePaging();
   const [filter, setFilter] = useState<Filter>('all');
-  const [query, setQuery] = useState('');
+  const [plan, setPlan] = useState<Plan>('all');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
   const [search, setSearch] = useState('');
-  const [page, setPage] = useState(0);
   const [selected, setSelected] = useState<string | null>(null);
 
   const fetchMembers = useCallback(async () => {
@@ -87,7 +99,10 @@ export default function AdminMembers() {
       .from('profiles')
       .select(PROFILE_COLUMNS, { count: 'exact' })
       .order('created_at', { ascending: false })
-      .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
+      .range(paging.page * paging.size, paging.page * paging.size + paging.size - 1);
+    if (plan !== 'all') q = q.eq('tier', plan);
+    if (from) q = q.gte('created_at', fromCentralInput(`${from}T00:00`) ?? '');
+    if (to) q = q.lt('created_at', fromCentralInput(`${nextDay(to)}T00:00`) ?? '');
     if (filter === 'off') q = q.not('disabled_at', 'is', null);
     else if (filter === 'admins') q = q.eq('is_admin', true);
     else if (filter !== 'all') q = q.eq('payment_status', filter);
@@ -99,14 +114,28 @@ export default function AdminMembers() {
       total: count ?? 0,
       error: error ? 'Could not load members. Refresh to try again.' : '',
     };
-  }, [supabase, filter, search, page]);
+  }, [supabase, filter, plan, from, to, search, paging.page, paging.size]);
 
   const { data: result, loading, reload } = useLoad(fetchMembers);
   const rows = result?.rows ?? [];
   const total = result?.total ?? 0;
   const error = result?.error ?? '';
 
-  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const filtered = filter !== 'all' || plan !== 'all' || from !== '' || to !== '' || search !== '';
+  const change =
+    <T,>(set: (value: T) => void) =>
+    (value: T) => {
+      set(value);
+      paging.reset();
+    };
+  const reset = () => {
+    setFilter('all');
+    setPlan('all');
+    setFrom('');
+    setTo('');
+    setSearch('');
+    paging.reset();
+  };
 
   return (
     <>
@@ -118,43 +147,20 @@ export default function AdminMembers() {
       </header>
       <div className={selected ? 'adm-split' : undefined}>
         <section className="adm-card">
-          <div className="adm-card-head">
-            <div className="adm-tabs" role="group" aria-label="Filter members">
-              {FILTERS.map((f) => (
-                <button
-                  key={f.key}
-                  type="button"
-                  aria-pressed={filter === f.key}
-                  onClick={() => {
-                    setFilter(f.key);
-                    setPage(0);
-                  }}
-                >
-                  {f.label}
-                </button>
-              ))}
-            </div>
-            <form
-              className="adm-toolbar"
-              onSubmit={(e) => {
-                e.preventDefault();
-                setPage(0);
-                setSearch(query);
+          <FilterBar onReset={filtered ? reset : undefined}>
+            <TabFilter label="Status" value={filter} options={FILTERS} onChange={change(setFilter)} />
+            <SelectFilter label="Plan" value={plan} options={PLANS} onChange={change(setPlan)} />
+            <DateRange
+              from={from}
+              to={to}
+              onChange={(f, t) => {
+                setFrom(f);
+                setTo(t);
+                paging.reset();
               }}
-            >
-              <input
-                className="adm-input"
-                type="search"
-                placeholder="Name or email"
-                aria-label="Search members"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-              />
-              <button type="submit" className="adm-btn">
-                Search
-              </button>
-            </form>
-          </div>
+            />
+            <SearchBox label="Search members" placeholder="Name or email" value={search} onSearch={change(setSearch)} />
+          </FilterBar>
           {error && (
             <p className="adm-msg adm-msg-error" style={{ margin: '1rem' }}>
               {error}
@@ -165,17 +171,18 @@ export default function AdminMembers() {
             rows={rows}
             rowKey={(m) => m.id}
             loading={loading}
-            empty="No members match."
+            empty={filtered ? 'No members match these filters.' : 'No members yet.'}
             selectedKey={selected}
             onRowClick={(m) => setSelected(m.id)}
           />
           <Pager
-            page={page}
-            pages={pages}
+            page={paging.page}
+            size={paging.size}
             total={total}
             noun={['member', 'members']}
             loading={loading}
-            onPage={setPage}
+            onPage={paging.setPage}
+            onSize={paging.setSize}
           />
         </section>
         {selected && (

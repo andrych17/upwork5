@@ -1,60 +1,118 @@
 'use client';
 
-// Bookings: who sits in each upcoming room, with cancel (credit back) for a single seat.
+// Bookings: one row per seat, with filters (when, dates, status, credit, member) and paging done in the database
+// (admin_list_bookings, schema section 30). Cancel returns the credit for a seat in a room that has not started.
 import { useCallback, useState } from 'react';
-import { DataTable, type Column } from '@/components/admin/data-table';
+import { DataTable, Pager, usePaging, type Column } from '@/components/admin/data-table';
+import { DateRange, FilterBar, SearchBox, SelectFilter, TabFilter } from '@/components/admin/filters';
 import { useAdmin } from '@/components/admin/shell';
-import { adminRpc, fmtWhen, fullName, useLoad } from '@/lib/admin';
+import { adminRpc, fmtWhen, fromCentralInput, fullName, useLoad } from '@/lib/admin';
+import { nextDay } from '@/lib/date-range';
 
 interface Seat {
   id: string;
+  status: 'confirmed' | 'cancelled' | 'late_cancelled' | 'attended';
+  credit_type: 'monthly' | 'addon';
   held: boolean;
   camera_off: boolean;
-  credit_type: 'monthly' | 'addon';
-  member: { first_name: string | null; last_name: string | null; email: string | null } | null;
+  created_at: string;
+  release_reason: string | null;
+  session: { id: string; title: string; starts_at: string };
+  member: { first_name: string | null; last_name: string | null; email: string | null };
 }
 
-interface Room {
-  id: string;
-  title: string;
-  starts_at: string;
-  capacity: number;
-  published: boolean;
-  bookings: Seat[];
-}
+type When = 'upcoming' | 'past' | 'all';
+type Status = 'all' | 'confirmed' | 'held' | 'cancelled' | 'late_cancelled' | 'attended';
+type Credit = 'all' | 'monthly' | 'addon';
 
-const RANGES = [
-  { days: 1, label: 'Today' },
-  { days: 7, label: 'Next 7 days' },
-  { days: 14, label: 'Next 14 days' },
-] as const;
+const WHEN: { key: When; label: string }[] = [
+  { key: 'upcoming', label: 'Upcoming' },
+  { key: 'past', label: 'Past' },
+  { key: 'all', label: 'All' },
+];
+
+const STATUSES: { key: Status; label: string }[] = [
+  { key: 'all', label: 'Any status' },
+  { key: 'confirmed', label: 'Confirmed' },
+  { key: 'held', label: 'Held for Hello Video' },
+  { key: 'cancelled', label: 'Cancelled, credit returned' },
+  { key: 'late_cancelled', label: 'Cancelled late, credit kept' },
+  { key: 'attended', label: 'Attended' },
+];
+
+const CREDITS: { key: Credit; label: string }[] = [
+  { key: 'all', label: 'Any credit' },
+  { key: 'monthly', label: 'Monthly' },
+  { key: 'addon', label: 'Extra' },
+];
+
+const STATUS_BADGE: Record<Seat['status'], { cls: string; label: string }> = {
+  confirmed: { cls: 'adm-badge adm-badge-good', label: 'Confirmed' },
+  attended: { cls: 'adm-badge adm-badge-good', label: 'Attended' },
+  cancelled: { cls: 'adm-badge', label: 'Cancelled' },
+  late_cancelled: { cls: 'adm-badge adm-badge-warn', label: 'Late cancel' },
+};
+
+const later = (a: string | null, b: string | null) => (a && b ? (a > b ? a : b) : (a ?? b));
+const earlier = (a: string | null, b: string | null) => (a && b ? (a < b ? a : b) : (a ?? b));
 
 export default function AdminBookings() {
   const { supabase } = useAdmin();
-  const [days, setDays] = useState<number>(7);
+  const paging = usePaging();
+  const [when, setWhen] = useState<When>('upcoming');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [status, setStatus] = useState<Status>('all');
+  const [credit, setCredit] = useState<Credit>('all');
+  const [search, setSearch] = useState('');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ text: string; error: boolean } | null>(null);
 
-  const fetchRooms = useCallback(async () => {
-    const { data, error } = await supabase
-      .from('sessions')
-      .select(
-        'id,title,starts_at,capacity,published,' +
-          'bookings(id,held,camera_off,credit_type,member:profiles!bookings_user_id_fkey(first_name,last_name,email))',
-      )
-      .eq('bookings.status', 'confirmed')
-      .gte('starts_at', new Date().toISOString())
-      .lt('starts_at', new Date(Date.now() + days * 864e5).toISOString())
-      .order('starts_at')
-      .limit(100);
-    return { rooms: (data ?? []) as unknown as Room[], error: Boolean(error) };
-  }, [supabase, days]);
+  const fetchSeats = useCallback(async () => {
+    // "Upcoming" and "Past" split at this moment; the day pickers narrow it further (Central-time days).
+    const nowIso = new Date().toISOString();
+    const lower = later(when === 'upcoming' ? nowIso : null, from ? fromCentralInput(`${from}T00:00`) : null);
+    const upper = earlier(when === 'past' ? nowIso : null, to ? fromCentralInput(`${nextDay(to)}T00:00`) : null);
+    const res = await adminRpc(supabase, 'admin_list_bookings', {
+      p_search: search || null,
+      p_status: status === 'all' ? null : status,
+      p_credit: credit === 'all' ? null : credit,
+      p_from: lower,
+      p_to: upper,
+      p_newest_first: when === 'past',
+      p_offset: paging.page * paging.size,
+      p_limit: paging.size,
+    });
+    return {
+      rows: res.ok ? (res.data.rows as Seat[]) : [],
+      total: res.ok ? Number(res.data.total) : 0,
+      error: !res.ok,
+    };
+  }, [supabase, when, from, to, status, credit, search, paging.page, paging.size]);
 
-  const { data: result, loading, reload } = useLoad(fetchRooms);
-  const rooms = result?.rooms ?? [];
+  const { data: result, loading, reload } = useLoad(fetchSeats);
+  const rows = result?.rows ?? [];
+
+  const filtered =
+    when !== 'upcoming' || from !== '' || to !== '' || status !== 'all' || credit !== 'all' || search !== '';
+  const change =
+    <T,>(set: (value: T) => void) =>
+    (value: T) => {
+      set(value);
+      paging.reset();
+    };
+  const reset = () => {
+    setWhen('upcoming');
+    setFrom('');
+    setTo('');
+    setStatus('all');
+    setCredit('all');
+    setSearch('');
+    paging.reset();
+  };
 
   const cancel = async (seat: Seat) => {
-    const who = seat.member ? fullName(seat.member) : 'this member';
+    const who = fullName(seat.member);
     const reason = window.prompt(`Cancel ${who}'s seat? The credit goes back. Reason:`);
     if (!reason?.trim()) return;
     setBusy(true);
@@ -70,35 +128,60 @@ export default function AdminBookings() {
 
   const columns: Column<Seat>[] = [
     {
-      header: 'Member',
+      header: 'Session',
       cell: (s) => (
         <>
-          <strong>{s.member ? fullName(s.member) : 'Member'}</strong>
-          <span className="adm-sub">{s.member?.email}</span>
+          <strong>{s.session.title}</strong>
+          <span className="adm-sub">{fmtWhen(s.session.starts_at)}</span>
         </>
       ),
     },
-    { header: 'Credit', width: '8rem', cell: (s) => (s.credit_type === 'addon' ? 'Extra' : 'Monthly') },
     {
-      header: 'Notes',
-      width: '15rem',
-      cell: (s) =>
-        [s.camera_off && 'Bad Hair Day', s.held && 'Held for Hello Video'].filter(Boolean).join(' · ') || '—',
+      header: 'Member',
+      cell: (s) => (
+        <>
+          {fullName(s.member)}
+          <span className="adm-sub">{s.member.email}</span>
+        </>
+      ),
     },
+    { header: 'Credit', width: '6.5rem', cell: (s) => (s.credit_type === 'addon' ? 'Extra' : 'Monthly') },
+    {
+      header: 'Status',
+      width: '13rem',
+      cell: (s) => {
+        const b = STATUS_BADGE[s.status];
+        const notes = [
+          s.held && s.status === 'confirmed' && 'Held for Hello Video',
+          s.camera_off && 'Bad Hair Day',
+          s.release_reason,
+        ]
+          .filter(Boolean)
+          .join(' · ');
+        return (
+          <>
+            <span className={b.cls}>{b.label}</span>
+            {notes && <span className="adm-sub">{notes}</span>}
+          </>
+        );
+      },
+    },
+    { header: 'Booked', width: '10rem', cell: (s) => fmtWhen(s.created_at) },
     {
       header: '',
       align: 'right',
-      width: '7rem',
-      cell: (s) => (
-        <button
-          type="button"
-          className="adm-btn adm-btn-sm adm-btn-danger"
-          disabled={busy}
-          onClick={() => void cancel(s)}
-        >
-          Cancel
-        </button>
-      ),
+      width: '6.5rem',
+      cell: (s) =>
+        s.status === 'confirmed' && new Date(s.session.starts_at) > new Date() ? (
+          <button
+            type="button"
+            className="adm-btn adm-btn-sm adm-btn-danger"
+            disabled={busy}
+            onClick={() => void cancel(s)}
+          >
+            Cancel
+          </button>
+        ) : null,
     },
   ];
 
@@ -107,43 +190,49 @@ export default function AdminBookings() {
       <header className="adm-head">
         <div>
           <h1>Bookings</h1>
-          <p>Confirmed seats in the rooms coming up.</p>
-        </div>
-        <div className="adm-tabs" role="group" aria-label="Range">
-          {RANGES.map((r) => (
-            <button key={r.days} type="button" aria-pressed={days === r.days} onClick={() => setDays(r.days)}>
-              {r.label}
-            </button>
-          ))}
+          <p>Every seat in every room. Filter by when, status, credit or member.</p>
         </div>
       </header>
       {result?.error && <p className="adm-msg adm-msg-error">Could not load bookings. Refresh to try again.</p>}
       {msg && <p className={msg.error ? 'adm-msg adm-msg-error' : 'adm-msg'}>{msg.text}</p>}
-      {!loading && rooms.length === 0 && (
-        <section className="adm-card">
-          <p className="adm-empty">No sessions in this range.</p>
-        </section>
-      )}
-      {rooms.map((room) => (
-        <section key={room.id} className="adm-card">
-          <div className="adm-card-head">
-            <div>
-              <h2>{room.title}</h2>
-              <span className="adm-sub">
-                {fmtWhen(room.starts_at)} · {room.bookings.length} of {room.capacity} seats
-                {room.published ? '' : ' · hidden'}
-              </span>
-            </div>
-          </div>
-          <DataTable
-            columns={columns}
-            rows={room.bookings}
-            rowKey={(s) => s.id}
-            loading={loading}
-            empty="No one booked yet."
+      <section className="adm-card">
+        <FilterBar onReset={filtered ? reset : undefined}>
+          <TabFilter label="When" value={when} options={WHEN} onChange={change(setWhen)} />
+          <SelectFilter label="Status" value={status} options={STATUSES} onChange={change(setStatus)} />
+          <SelectFilter label="Credit" value={credit} options={CREDITS} onChange={change(setCredit)} />
+          <DateRange
+            from={from}
+            to={to}
+            onChange={(f, t) => {
+              setFrom(f);
+              setTo(t);
+              paging.reset();
+            }}
           />
-        </section>
-      ))}
+          <SearchBox
+            label="Search members"
+            placeholder="Member name or email"
+            value={search}
+            onSearch={change(setSearch)}
+          />
+        </FilterBar>
+        <DataTable
+          columns={columns}
+          rows={rows}
+          rowKey={(s) => s.id}
+          loading={loading}
+          empty={filtered ? 'No seats match these filters.' : 'No upcoming seats yet.'}
+        />
+        <Pager
+          page={paging.page}
+          size={paging.size}
+          total={result?.total ?? 0}
+          noun={['seat', 'seats']}
+          loading={loading}
+          onPage={paging.setPage}
+          onSize={paging.setSize}
+        />
+      </section>
     </>
   );
 }

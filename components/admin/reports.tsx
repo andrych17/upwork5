@@ -3,9 +3,11 @@
 // Reports: private reports members sent from a live room (schema section 25). Only admins see them; the
 // reported person is never told. Resolve when handled (talk to them, turn the account off from Members).
 import { useCallback, useState } from 'react';
-import { DataTable, type Column } from '@/components/admin/data-table';
+import { DataTable, Pager, usePaging, type Column } from '@/components/admin/data-table';
+import { DateRange, FilterBar, SearchBox, TabFilter } from '@/components/admin/filters';
 import { useAdmin } from '@/components/admin/shell';
-import { adminRpc, fmtWhen, fullName, useLoad } from '@/lib/admin';
+import { adminRpc, fmtWhen, fromCentralInput, fullName, searchTerm, useLoad } from '@/lib/admin';
+import { nextDay } from '@/lib/date-range';
 
 type Who = { first_name: string | null; last_name: string | null; email: string | null } | null;
 
@@ -23,26 +25,48 @@ interface Report {
 
 export default function AdminReports() {
   const { supabase, refreshCounts } = useAdmin();
+  const paging = usePaging();
   const [status, setStatus] = useState<'open' | 'resolved'>('open');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [search, setSearch] = useState('');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ text: string; error: boolean } | null>(null);
 
   const fetchReports = useCallback(async () => {
-    const { data, error } = await supabase
+    const term = searchTerm(search);
+    // The search is on the person reported; !inner drops other people's reports instead of blanking the name.
+    let q = supabase
       .from('room_reports')
       .select(
         'id,reason,note,status,created_at,resolved_at,session:sessions(title,starts_at),' +
           'reporter:profiles!room_reports_reporter_id_fkey(first_name,last_name,email),' +
-          'reported:profiles!room_reports_reported_id_fkey(first_name,last_name,email)',
+          `reported:profiles!room_reports_reported_id_fkey${term ? '!inner' : ''}(first_name,last_name,email)`,
+        { count: 'exact' },
       )
       .eq('status', status)
       .order('created_at', { ascending: false })
-      .limit(100);
-    return { rows: (data ?? []) as unknown as Report[], error: Boolean(error) };
-  }, [supabase, status]);
+      .range(paging.page * paging.size, paging.page * paging.size + paging.size - 1);
+    if (from) q = q.gte('created_at', fromCentralInput(`${from}T00:00`) ?? '');
+    if (to) q = q.lt('created_at', fromCentralInput(`${nextDay(to)}T00:00`) ?? '');
+    if (term) {
+      q = q.or(`first_name.ilike.*${term}*,last_name.ilike.*${term}*,email.ilike.*${term}*`, {
+        referencedTable: 'reported',
+      });
+    }
+    const { data, error, count } = await q;
+    return { rows: (data ?? []) as unknown as Report[], count: count ?? 0, error: Boolean(error) };
+  }, [supabase, status, from, to, search, paging.page, paging.size]);
 
   const { data: result, loading, reload } = useLoad(fetchReports);
   const rows = result?.rows ?? [];
+  const filtered = from !== '' || to !== '' || search !== '';
+  const reset = () => {
+    setFrom('');
+    setTo('');
+    setSearch('');
+    paging.reset();
+  };
 
   const resolve = async (r: Report) => {
     setBusy(true);
@@ -116,23 +140,63 @@ export default function AdminReports() {
           <h1>Reports</h1>
           <p>Private reports from live rooms. The person reported is never told who reported them.</p>
         </div>
-        <div className="adm-tabs" role="group" aria-label="Status">
-          {(['open', 'resolved'] as const).map((s) => (
-            <button key={s} type="button" aria-pressed={status === s} onClick={() => setStatus(s)}>
-              {s === 'open' ? 'Open' : 'Resolved'}
-            </button>
-          ))}
-        </div>
       </header>
       {result?.error && <p className="adm-msg adm-msg-error">Could not load reports. Refresh to try again.</p>}
       {msg && <p className={msg.error ? 'adm-msg adm-msg-error' : 'adm-msg'}>{msg.text}</p>}
       <section className="adm-card">
+        <FilterBar onReset={filtered ? reset : undefined}>
+          <TabFilter
+            label="Status"
+            value={status}
+            options={[
+              { key: 'open', label: 'Open' },
+              { key: 'resolved', label: 'Resolved' },
+            ]}
+            onChange={(s) => {
+              setStatus(s);
+              paging.reset();
+            }}
+          />
+          <DateRange
+            from={from}
+            to={to}
+            onChange={(f, t) => {
+              setFrom(f);
+              setTo(t);
+              paging.reset();
+            }}
+          />
+          <SearchBox
+            label="Search the person reported"
+            placeholder="Person reported"
+            value={search}
+            onSearch={(text) => {
+              setSearch(text);
+              paging.reset();
+            }}
+          />
+        </FilterBar>
         <DataTable
           columns={columns}
           rows={rows}
           rowKey={(r) => r.id}
           loading={loading}
-          empty={status === 'open' ? 'No open reports.' : 'Nothing resolved yet.'}
+          empty={
+            filtered
+              ? 'No reports match these filters.'
+              : status === 'open'
+                ? 'No open reports.'
+                : 'Nothing resolved yet.'
+          }
+        />
+        <Pager
+          page={paging.page}
+          size={paging.size}
+          total={result?.count ?? 0}
+          noun={['report', 'reports']}
+          loading={loading}
+          onPage={paging.setPage}
+          onSize={paging.setSize}
         />
       </section>
     </>

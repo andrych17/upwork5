@@ -3404,3 +3404,83 @@ $$;
 
 revoke execute on function get_plans() from public;
 grant execute on function get_plans() to anon, authenticated;
+
+-- 30. Bookings list for the admin (Andry, 3 Nov): one row per seat, filtered and paged on the server. Search matches the
+-- member's name or email; status 'held' means a confirmed seat still waiting for the Hello Video; p_from/p_to bound the
+-- session start (from inclusive, to exclusive). Admin only.
+create or replace function admin_list_bookings(
+  p_search text default null,
+  p_status text default null,
+  p_credit text default null,
+  p_from timestamptz default null,
+  p_to timestamptz default null,
+  p_newest_first boolean default false,
+  p_offset int default 0,
+  p_limit int default 25
+)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  v_term text := nullif(trim(coalesce(p_search, '')), '');
+  v_like text;
+  v_total int;
+  v_rows jsonb;
+begin
+  if not is_admin() then
+    return jsonb_build_object('success', false, 'error', 'Only an admin can list bookings.');
+  end if;
+  if p_status is not null and p_status not in ('confirmed', 'held', 'cancelled', 'late_cancelled', 'attended') then
+    return jsonb_build_object('success', false, 'error', 'Unknown status.');
+  end if;
+  if p_credit is not null and p_credit not in ('monthly', 'addon') then
+    return jsonb_build_object('success', false, 'error', 'Unknown credit type.');
+  end if;
+  p_limit := least(greatest(coalesce(p_limit, 25), 1), 100);
+  p_offset := greatest(coalesce(p_offset, 0), 0);
+  -- the search text is plain text: % and _ must not act as wildcards
+  v_like := '%' || replace(replace(replace(coalesce(v_term, ''), '\', '\\'), '%', '\%'), '_', '\_') || '%';
+
+  with f as materialized (
+    select b.id, b.status, b.credit_type, b.held, b.camera_off, b.created_at, b.cancelled_at, b.release_reason,
+           s.id as session_id, s.title, s.starts_at, s.minutes,
+           p.id as member_id, p.first_name, p.last_name, p.email
+    from bookings b
+    join sessions s on s.id = b.session_id
+    join profiles p on p.id = b.user_id
+    where (p_status is null
+           or (p_status = 'held' and b.held and b.status = 'confirmed')
+           or (p_status <> 'held' and b.status = p_status))
+      and (p_credit is null or b.credit_type = p_credit)
+      and (p_from is null or s.starts_at >= p_from)
+      and (p_to is null or s.starts_at < p_to)
+      and (v_term is null or concat_ws(' ', p.first_name, p.last_name) ilike v_like or p.email ilike v_like)
+  )
+  select (select count(*) from f),
+         coalesce((
+           select jsonb_agg(jsonb_build_object(
+                    'id', x.id, 'status', x.status, 'credit_type', x.credit_type, 'held', x.held,
+                    'camera_off', x.camera_off, 'created_at', x.created_at, 'cancelled_at', x.cancelled_at,
+                    'release_reason', x.release_reason,
+                    'session', jsonb_build_object('id', x.session_id, 'title', x.title, 'starts_at', x.starts_at,
+                                                  'minutes', x.minutes),
+                    'member', jsonb_build_object('id', x.member_id, 'first_name', x.first_name,
+                                                 'last_name', x.last_name, 'email', x.email))
+                  order by case when p_newest_first then x.starts_at end desc,
+                           case when not p_newest_first then x.starts_at end asc, x.created_at, x.id)
+           from (select * from f
+                 order by case when p_newest_first then starts_at end desc,
+                          case when not p_newest_first then starts_at end asc, created_at, id
+                 limit p_limit offset p_offset) x
+         ), '[]'::jsonb)
+  into v_total, v_rows;
+
+  return jsonb_build_object('success', true, 'total', v_total, 'rows', v_rows);
+end;
+$$;
+
+revoke execute on function admin_list_bookings(text, text, text, timestamptz, timestamptz, boolean, int, int) from public, anon;
+grant execute on function admin_list_bookings(text, text, text, timestamptz, timestamptz, boolean, int, int) to authenticated;

@@ -175,3 +175,37 @@ select t((admin_save_usage_limits(20000, 50000)->>'success')::boolean, 'admin sa
 select t((admin_usage()->>'daily_limit')::int = 20000 and (admin_usage()->>'resend_limit')::int = 50000, 'saved limits show up');
 reset role;
 select t((select count(*) from admin_log where action = 'usage_limits_updated') = 1, 'limit change is logged');
+
+-- Bookings list (section 30): filters, search and paging happen in the database
+select set_config('request.jwt.claim.sub', :'U2', false);
+set role authenticated;
+select t(admin_list_bookings()->>'success' = 'false', 'member cannot list bookings');
+reset role;
+
+select set_config('request.jwt.claim.sub', :'A2', false);
+set role authenticated;
+select admin_list_bookings() as bl_all \gset
+select t((:'bl_all'::jsonb->>'success')::boolean and (:'bl_all'::jsonb->>'total')::int >= 3, 'admin lists every seat');
+select t((admin_list_bookings(p_limit => 1)->'rows')::jsonb->0->'session'->>'title' is not null
+         and jsonb_array_length(admin_list_bookings(p_limit => 1)->'rows') = 1
+         and (admin_list_bookings(p_limit => 1)->>'total')::int >= 3, 'paging returns one row and the full count');
+select t(jsonb_array_length(admin_list_bookings(p_offset => 1000)->'rows') = 0
+         and (admin_list_bookings(p_offset => 1000)->>'total')::int >= 3, 'a page past the end is empty, the count stays');
+select t((select bool_and(r->'member'->>'first_name' = 'Uma') from jsonb_array_elements(admin_list_bookings('uma')->'rows') r)
+         and (admin_list_bookings('uma')->>'total')::int >= 1, 'search matches the first name, any case');
+select t((admin_list_bookings('u2@example.com')->>'total')::int >= 1, 'search matches the email');
+select t((admin_list_bookings('%')->>'total')::int = 0 and (admin_list_bookings('_')->>'total')::int = 0,
+  'percent and underscore are plain text in search');
+select t((admin_list_bookings(p_status => 'confirmed')->>'total')::int >= 2
+         and (select bool_and(r->>'status' = 'confirmed') from jsonb_array_elements(admin_list_bookings(p_status => 'confirmed')->'rows') r),
+  'status filter');
+select t((admin_list_bookings(p_credit => 'addon')->>'total')::int = 0, 'credit filter');
+select t(admin_list_bookings(p_status => 'nope')->>'error' = 'Unknown status.', 'unknown status refused');
+select t(admin_list_bookings(p_credit => 'gold')->>'error' = 'Unknown credit type.', 'unknown credit type refused');
+select t((admin_list_bookings(p_from => now() + interval '1 day')->>'total')::int
+         < (admin_list_bookings()->>'total')::int, 'from-date drops earlier sessions');
+select t((admin_list_bookings(p_to => now() - interval '10 days')->>'total')::int = 0, 'to-date is exclusive and bounds the session start');
+select t((admin_list_bookings(p_newest_first => true)->'rows')::jsonb->0->'session'->>'starts_at'
+         >= (admin_list_bookings(p_newest_first => false)->'rows')::jsonb->0->'session'->>'starts_at', 'newest first flips the order');
+select t(jsonb_array_length(admin_list_bookings(p_limit => 100000)->'rows') <= 100, 'page size is capped at 100');
+reset role;
