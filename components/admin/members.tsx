@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useState } from 'react';
+import { DataTable, Pager, type Column } from '@/components/admin/data-table';
 import MemberDetail from '@/components/admin/member-detail';
 import { useAdmin } from '@/components/admin/shell';
 import {
@@ -26,6 +27,51 @@ const FILTERS: { key: Filter; label: string }[] = [
   { key: 'canceled', label: 'Canceled' },
   { key: 'off', label: 'Turned off' },
   { key: 'admins', label: 'Admins' },
+];
+
+const COLUMNS: Column<AdminProfile>[] = [
+  {
+    header: 'Member',
+    cell: (m) => (
+      <>
+        <strong>{fullName(m)}</strong>
+        {m.is_admin && (
+          <span className="adm-badge adm-badge-accent" style={{ marginLeft: 6 }}>
+            Admin
+          </span>
+        )}
+        <span className="adm-sub">{m.email}</span>
+      </>
+    ),
+  },
+  {
+    header: 'Plan',
+    cell: (m) => (
+      <>
+        {m.household_owner_id ? 'Household member' : m.tier === 'household' ? 'Household' : 'Solo'}
+        <span className="adm-sub">{m.household_owner_id ? 'Shares the holder’s plan' : m.billing_interval}</span>
+      </>
+    ),
+  },
+  {
+    header: 'Credits',
+    cell: (m) => (
+      <>
+        {m.monthly_credits} monthly
+        <span className="adm-sub">{m.addon_credits} extra</span>
+      </>
+    ),
+  },
+  {
+    header: 'Status',
+    cell: (m) =>
+      m.disabled_at ? (
+        <span className="adm-badge adm-badge-bad">Turned off</span>
+      ) : (
+        <span className={statusBadge(m.payment_status)}>{STATUS_LABEL[m.payment_status]}</span>
+      ),
+  },
+  { header: 'Joined', cell: (m) => fmtDate(m.created_at) },
 ];
 
 export default function AdminMembers() {
@@ -114,87 +160,23 @@ export default function AdminMembers() {
               {error}
             </p>
           )}
-          <div className="adm-table-wrap">
-            <table className="adm-table">
-              <thead>
-                <tr>
-                  <th>Member</th>
-                  <th>Plan</th>
-                  <th>Credits</th>
-                  <th>Status</th>
-                  <th>Joined</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((m) => (
-                  <tr
-                    key={m.id}
-                    className="adm-row-click"
-                    aria-selected={selected === m.id}
-                    tabIndex={0}
-                    onClick={() => setSelected(m.id)}
-                    onKeyDown={(e) => e.key === 'Enter' && setSelected(m.id)}
-                  >
-                    <td>
-                      <strong>{fullName(m)}</strong>
-                      {m.is_admin && (
-                        <span className="adm-badge adm-badge-accent" style={{ marginLeft: 6 }}>
-                          Admin
-                        </span>
-                      )}
-                      <span className="adm-sub">{m.email}</span>
-                    </td>
-                    <td>
-                      {m.household_owner_id ? 'Household member' : m.tier === 'household' ? 'Household' : 'Solo'}
-                      <span className="adm-sub">
-                        {m.household_owner_id ? 'Shares the holder’s plan' : m.billing_interval}
-                      </span>
-                    </td>
-                    <td>
-                      {m.monthly_credits} monthly
-                      <span className="adm-sub">{m.addon_credits} extra</span>
-                    </td>
-                    <td>
-                      {m.disabled_at ? (
-                        <span className="adm-badge adm-badge-bad">Turned off</span>
-                      ) : (
-                        <span className={statusBadge(m.payment_status)}>{STATUS_LABEL[m.payment_status]}</span>
-                      )}
-                    </td>
-                    <td>{fmtDate(m.created_at)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {!loading && rows.length === 0 && <p className="adm-empty">No members match.</p>}
-          </div>
-          <div className="adm-pager">
-            <span>
-              {total} {total === 1 ? 'member' : 'members'}
-              {loading ? ' · loading…' : ''}
-            </span>
-            <div className="adm-toolbar">
-              <button
-                type="button"
-                className="adm-btn adm-btn-sm"
-                disabled={page === 0}
-                onClick={() => setPage(page - 1)}
-              >
-                Previous
-              </button>
-              <span>
-                Page {page + 1} of {pages}
-              </span>
-              <button
-                type="button"
-                className="adm-btn adm-btn-sm"
-                disabled={page + 1 >= pages}
-                onClick={() => setPage(page + 1)}
-              >
-                Next
-              </button>
-            </div>
-          </div>
+          <DataTable
+            columns={COLUMNS}
+            rows={rows}
+            rowKey={(m) => m.id}
+            loading={loading}
+            empty="No members match."
+            selectedKey={selected}
+            onRowClick={(m) => setSelected(m.id)}
+          />
+          <Pager
+            page={page}
+            pages={pages}
+            total={total}
+            noun={['member', 'members']}
+            loading={loading}
+            onPage={setPage}
+          />
         </section>
         {selected && (
           <MemberDetail

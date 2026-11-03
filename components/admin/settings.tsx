@@ -21,6 +21,12 @@ interface Config {
   require_hello_video: boolean;
   hello_hold_bookings: boolean;
   sms_kinds: string[];
+  solo_monthly_cents: number;
+  solo_annual_cents: number;
+  household_monthly_cents: number;
+  household_annual_cents: number;
+  extra_1_cents: number;
+  extra_5_cents: number;
 }
 
 type NumberKey = {
@@ -29,15 +35,56 @@ type NumberKey = {
 
 const NUMBERS: { key: NumberKey; label: string; hint: string; min: number; max: number }[] = [
   { key: 'monthly_credits', label: 'Solo credits per month', hint: 'Given at each renewal.', min: 0, max: 100 },
-  { key: 'household_monthly_credits', label: 'Household credits per month', hint: 'Shared by everyone on the plan.', min: 0, max: 100 },
-  { key: 'household_max_people', label: 'People per Household', hint: 'Including the account holder.', min: 1, max: 10 },
+  {
+    key: 'household_monthly_credits',
+    label: 'Household credits per month',
+    hint: 'Shared by everyone on the plan.',
+    min: 0,
+    max: 100,
+  },
+  {
+    key: 'household_max_people',
+    label: 'People per Household',
+    hint: 'Including the account holder.',
+    min: 1,
+    max: 10,
+  },
   { key: 'welcome_trial_days', label: 'Welcome trial days', hint: 'Length of the free start.', min: 0, max: 60 },
   { key: 'welcome_credits', label: 'Welcome credits', hint: 'Credits during the trial.', min: 0, max: 50 },
-  { key: 'cancel_hours', label: 'Free cancel window (hours)', hint: 'Later cancels keep the credit used.', min: 0, max: 168 },
+  {
+    key: 'cancel_hours',
+    label: 'Free cancel window (hours)',
+    hint: 'Later cancels keep the credit used.',
+    min: 0,
+    max: 168,
+  },
   { key: 'grace_days', label: 'Payment grace days', hint: 'Before a past-due account loses access.', min: 0, max: 30 },
   { key: 'bhd_per_month', label: 'Bad Hair Day cards per month', hint: 'Camera-off sessions.', min: 0, max: 20 },
-  { key: 'booking_closes_minutes', label: 'Booking closes (minutes before)', hint: 'No new seats after this.', min: 0, max: 240 },
+  {
+    key: 'booking_closes_minutes',
+    label: 'Booking closes (minutes before)',
+    hint: 'No new seats after this.',
+    min: 0,
+    max: 240,
+  },
   { key: 'book_ahead_days', label: 'Book ahead (days)', hint: 'How far the calendar opens.', min: 1, max: 180 },
+];
+
+type PriceKey =
+  | 'solo_monthly_cents'
+  | 'solo_annual_cents'
+  | 'household_monthly_cents'
+  | 'household_annual_cents'
+  | 'extra_1_cents'
+  | 'extra_5_cents';
+
+const PRICES: { key: PriceKey; label: string; hint: string }[] = [
+  { key: 'solo_monthly_cents', label: 'Solo, monthly ($)', hint: 'Charged each month.' },
+  { key: 'solo_annual_cents', label: 'Solo, annual ($)', hint: 'Charged once a year.' },
+  { key: 'household_monthly_cents', label: 'Household, monthly ($)', hint: 'Charged each month.' },
+  { key: 'household_annual_cents', label: 'Household, annual ($)', hint: 'Charged once a year.' },
+  { key: 'extra_1_cents', label: '1 extra session ($)', hint: 'Extra sessions never expire.' },
+  { key: 'extra_5_cents', label: '5 extra sessions ($)', hint: 'The 5-pack.' },
 ];
 
 const SMS_KINDS = [
@@ -51,6 +98,8 @@ export default function AdminSettings() {
   const [edits, setEdits] = useState<Config | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ text: string; error: boolean } | null>(null);
+  // What is typed in a price box, so "26." survives until the next digit
+  const [priceText, setPriceText] = useState<Record<string, string>>({});
 
   const fetchConfig = useCallback(async () => {
     const { data } = await supabase
@@ -58,7 +107,8 @@ export default function AdminSettings() {
       .select(
         'monthly_credits,household_monthly_credits,household_max_people,welcome_trial_days,welcome_credits,' +
           'cancel_hours,grace_days,bhd_per_month,booking_closes_minutes,book_ahead_days,max_weekly_sessions,' +
-          'weekly_limit_scope,require_hello_video,hello_hold_bookings,sms_kinds',
+          'weekly_limit_scope,require_hello_video,hello_hold_bookings,sms_kinds,solo_monthly_cents,solo_annual_cents,' +
+          'household_monthly_cents,household_annual_cents,extra_1_cents,extra_5_cents',
       )
       .eq('id', 1)
       .maybeSingle();
@@ -100,6 +150,7 @@ export default function AdminSettings() {
     setMsg({ text: res.ok ? 'Settings saved. They apply from now on.' : res.error, error: !res.ok });
     if (res.ok) {
       setEdits(null);
+      setPriceText({});
       reload();
     }
   };
@@ -164,6 +215,41 @@ export default function AdminSettings() {
 
         <section className="adm-card">
           <div className="adm-card-head">
+            <h2>Plans and prices</h2>
+          </div>
+          <div className="adm-card-body">
+            <p className="adm-sub" style={{ marginBottom: '0.75rem' }}>
+              In US dollars. A new price applies from the next charge: sign-ups, renewals and extra-session purchases.
+              What members already paid does not change. Sessions per month and people per Household are set above.
+            </p>
+            <div className="adm-form-grid">
+              {PRICES.map((n) => (
+                <label key={n.key} className="adm-field">
+                  <span>{n.label}</span>
+                  <input
+                    className="adm-input"
+                    type="number"
+                    inputMode="decimal"
+                    min={0}
+                    max={10000}
+                    step="0.01"
+                    required
+                    value={priceText[n.key] ?? String(form[n.key] / 100)}
+                    onChange={(e) => {
+                      const text = e.target.value;
+                      setPriceText({ ...priceText, [n.key]: text });
+                      if (text !== '' && Number.isFinite(Number(text))) set(n.key, Math.round(Number(text) * 100));
+                    }}
+                  />
+                  <small>{n.hint}</small>
+                </label>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="adm-card">
+          <div className="adm-card-head">
             <h2>Hello Video and reminders</h2>
           </div>
           <div className="adm-card-body adm-form">
@@ -194,7 +280,9 @@ export default function AdminSettings() {
                     onChange={(e) =>
                       set(
                         'sms_kinds',
-                        e.target.checked ? [...form.sms_kinds, k.key].sort() : form.sms_kinds.filter((x) => x !== k.key),
+                        e.target.checked
+                          ? [...form.sms_kinds, k.key].sort()
+                          : form.sms_kinds.filter((x) => x !== k.key),
                       )
                     }
                   />
@@ -209,7 +297,15 @@ export default function AdminSettings() {
           <button type="submit" className="adm-btn adm-btn-primary" disabled={busy || !dirty}>
             Save settings
           </button>
-          <button type="button" className="adm-btn" disabled={busy || !dirty} onClick={() => setEdits(null)}>
+          <button
+            type="button"
+            className="adm-btn"
+            disabled={busy || !dirty}
+            onClick={() => {
+              setEdits(null);
+              setPriceText({});
+            }}
+          >
             Undo changes
           </button>
         </div>

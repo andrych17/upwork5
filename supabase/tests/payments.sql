@@ -129,3 +129,28 @@ update app_config set test_payments = false;
 update profiles set paid_until = (now() at time zone 'America/Chicago')::date where id = :'JR';
 select t(renew_test_memberships() = 0, 'no test renewals once a processor is connected');
 update app_config set test_payments = true;
+
+-- Section 29: prices from Settings apply to the next charge
+select set_config('request.jwt.claim.sub', :'JA', false);
+set role authenticated;
+select t(admin_update_config('{"solo_annual_cents": 27500, "extra_5_cents": 1700}')->>'success' = 'true', 'admin changes prices');
+select t(admin_update_config('{"solo_monthly_cents": -1}')->>'error' = 'A setting is out of range.', 'negative price refused');
+select t(admin_update_config('{"extra_1_cents": 2000000}')->>'error' = 'A setting is out of range.', 'huge price refused');
+select t((get_plans()->'individual'->>'annual_cents')::int = 27500 and (get_plans()->'extras'->1->>'cents')::int = 1700
+         and (get_plans()->'household'->>'credits')::int = 16 and (get_plans()->'household'->>'people')::int = 4,
+  'get_plans shows the saved prices and plan sizes');
+reset role;
+set role anon;
+select t((get_plans()->'individual'->>'monthly_cents')::int = 2600, 'prices are readable before sign-in');
+reset role;
+-- JR is on Solo annual: the renewal charges the new price, the receipt already paid keeps the old one
+select coalesce(sum(amount_cents), 0) as paid_before from payments where profile_id = :'JR' \gset
+update profiles set paid_until = (now() at time zone 'America/Chicago')::date where id = :'JR';
+select renew_test_memberships();
+select t((select amount_cents = 27500 from payments where profile_id = :'JR' and description like '%renewal' order by created_at desc limit 1),
+  'renewal charges the new price');
+select t((select sum(amount_cents) = :paid_before + 27500 from payments where profile_id = :'JR'),
+  'earlier receipts keep what was paid, only the renewal is new');
+select t(extras_price_cents(5) = 1700 and extras_price_cents(3) is null, 'extras use the new price, other packs stay unavailable');
+update app_config set solo_annual_cents = 26000, extra_5_cents = 1500;
+select t(plan_price_cents('individual', 'annual') = 26000, 'prices restored');

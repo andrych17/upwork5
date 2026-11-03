@@ -4,6 +4,7 @@
 // Refund. In test mode nothing was charged, so a refund only marks the receipt and takes back unused extras;
 // once a processor is connected, the money itself is refunded in its dashboard.
 import { useCallback, useState } from 'react';
+import { DataTable, Pager, type Column } from '@/components/admin/data-table';
 import { useAdmin } from '@/components/admin/shell';
 import { adminRpc, fmtWhen, fullName, PAGE_SIZE, useLoad } from '@/lib/admin';
 import { money } from '@/lib/prices';
@@ -67,6 +68,61 @@ export default function AdminPayments() {
     if (res.ok) reload();
   };
 
+  const columns: Column<Payment>[] = [
+    {
+      header: 'Member',
+      cell: (p) => (
+        <>
+          <strong>{p.member ? fullName(p.member) : 'Member'}</strong>
+          <span className="adm-sub">{p.member?.email}</span>
+        </>
+      ),
+    },
+    {
+      header: 'Payment',
+      cell: (p) => (
+        <>
+          {p.description}
+          <span className="adm-sub">
+            {p.kind === 'plan' ? 'Membership' : 'Extra sessions'}
+            {p.provider === 'test' ? ' · Test' : ''}
+          </span>
+        </>
+      ),
+    },
+    { header: 'Date', width: '11rem', cell: (p) => fmtWhen(p.created_at) },
+    { header: 'Amount', align: 'right', width: '6rem', cell: (p) => money(p.amount_cents) },
+    {
+      header: 'Status',
+      width: '9rem',
+      cell: (p) =>
+        p.status === 'paid' ? (
+          <span className="adm-badge adm-badge-good">Paid</span>
+        ) : (
+          <>
+            <span className="adm-badge adm-badge-bad">Refunded</span>
+            {p.refund_reason && <span className="adm-sub">{p.refund_reason}</span>}
+          </>
+        ),
+    },
+    {
+      header: '',
+      align: 'right',
+      width: '7rem',
+      cell: (p) =>
+        p.status === 'paid' ? (
+          <button
+            type="button"
+            className="adm-btn adm-btn-sm adm-btn-danger"
+            disabled={busy}
+            onClick={() => void refund(p)}
+          >
+            Refund
+          </button>
+        ) : null,
+    },
+  ];
+
   return (
     <>
       <header className="adm-head">
@@ -93,50 +149,16 @@ export default function AdminPayments() {
       {result?.error && <p className="adm-msg adm-msg-error">Could not load payments. Refresh to try again.</p>}
       {msg && <p className={msg.error ? 'adm-msg adm-msg-error' : 'adm-msg'}>{msg.text}</p>}
       <section className="adm-card">
-        {!loading && rows.length === 0 ? (
-          <p className="adm-empty">No payments here yet.</p>
-        ) : (
-          <ul className="adm-list adm-card-body">
-            {rows.map((p) => (
-              <li key={p.id}>
-                <span>
-                  {p.member ? fullName(p.member) : 'Member'} · {p.description}
-                  <span className="adm-sub">
-                    {fmtWhen(p.created_at)} · {money(p.amount_cents)}
-                    {p.provider === 'test' ? ' · Test' : ''}
-                    {p.status === 'refunded' ? ` · Refunded${p.refund_reason ? `: ${p.refund_reason}` : ''}` : ''}
-                  </span>
-                </span>
-                {p.status === 'paid' ? (
-                  <button
-                    type="button"
-                    className="adm-btn adm-btn-sm adm-btn-danger"
-                    disabled={busy}
-                    onClick={() => void refund(p)}
-                  >
-                    Refund
-                  </button>
-                ) : (
-                  <span className="adm-badge adm-badge-bad">Refunded</span>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
+        <DataTable columns={columns} rows={rows} rowKey={(p) => p.id} loading={loading} empty="No payments here yet." />
+        <Pager
+          page={page}
+          pages={pages}
+          total={result?.count ?? 0}
+          noun={['payment', 'payments']}
+          loading={loading}
+          onPage={setPage}
+        />
       </section>
-      {pages > 1 && (
-        <div className="adm-tabs" role="group" aria-label="Pages">
-          <button type="button" disabled={page === 0} onClick={() => setPage((n) => n - 1)}>
-            Newer
-          </button>
-          <button type="button" aria-pressed>
-            {page + 1} of {pages}
-          </button>
-          <button type="button" disabled={page + 1 >= pages} onClick={() => setPage((n) => n + 1)}>
-            Older
-          </button>
-        </div>
-      )}
     </>
   );
 }

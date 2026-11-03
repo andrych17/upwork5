@@ -2,6 +2,7 @@
 
 // Bookings: who sits in each upcoming room, with cancel (credit back) for a single seat.
 import { useCallback, useState } from 'react';
+import { DataTable, type Column } from '@/components/admin/data-table';
 import { useAdmin } from '@/components/admin/shell';
 import { adminRpc, fmtWhen, fullName, useLoad } from '@/lib/admin';
 
@@ -57,11 +58,49 @@ export default function AdminBookings() {
     const reason = window.prompt(`Cancel ${who}'s seat? The credit goes back. Reason:`);
     if (!reason?.trim()) return;
     setBusy(true);
-    const res = await adminRpc(supabase, 'admin_cancel_booking', { p_booking: seat.id, p_refund: true, p_reason: reason });
+    const res = await adminRpc(supabase, 'admin_cancel_booking', {
+      p_booking: seat.id,
+      p_refund: true,
+      p_reason: reason,
+    });
     setBusy(false);
     setMsg({ text: res.ok ? `Cancelled ${who}'s seat and returned the credit.` : res.error, error: !res.ok });
     if (res.ok) reload();
   };
+
+  const columns: Column<Seat>[] = [
+    {
+      header: 'Member',
+      cell: (s) => (
+        <>
+          <strong>{s.member ? fullName(s.member) : 'Member'}</strong>
+          <span className="adm-sub">{s.member?.email}</span>
+        </>
+      ),
+    },
+    { header: 'Credit', width: '8rem', cell: (s) => (s.credit_type === 'addon' ? 'Extra' : 'Monthly') },
+    {
+      header: 'Notes',
+      width: '15rem',
+      cell: (s) =>
+        [s.camera_off && 'Bad Hair Day', s.held && 'Held for Hello Video'].filter(Boolean).join(' · ') || '—',
+    },
+    {
+      header: '',
+      align: 'right',
+      width: '7rem',
+      cell: (s) => (
+        <button
+          type="button"
+          className="adm-btn adm-btn-sm adm-btn-danger"
+          disabled={busy}
+          onClick={() => void cancel(s)}
+        >
+          Cancel
+        </button>
+      ),
+    },
+  ];
 
   return (
     <>
@@ -96,33 +135,13 @@ export default function AdminBookings() {
               </span>
             </div>
           </div>
-          {room.bookings.length === 0 ? (
-            <p className="adm-empty">No one booked yet.</p>
-          ) : (
-            <ul className="adm-list adm-card-body">
-              {room.bookings.map((seat) => (
-                <li key={seat.id}>
-                  <span>
-                    {seat.member ? fullName(seat.member) : 'Member'}
-                    <span className="adm-sub">
-                      {seat.member?.email}
-                      {seat.credit_type === 'addon' ? ' · extra credit' : ''}
-                      {seat.camera_off ? ' · Bad Hair Day' : ''}
-                      {seat.held ? ' · held for Hello Video' : ''}
-                    </span>
-                  </span>
-                  <button
-                    type="button"
-                    className="adm-btn adm-btn-sm adm-btn-danger"
-                    disabled={busy}
-                    onClick={() => void cancel(seat)}
-                  >
-                    Cancel
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
+          <DataTable
+            columns={columns}
+            rows={room.bookings}
+            rowKey={(s) => s.id}
+            loading={loading}
+            empty="No one booked yet."
+          />
         </section>
       ))}
     </>

@@ -11,7 +11,8 @@ import HelloVideoCard from '@/components/hello-video-card';
 import HouseholdCard from '@/components/household-card';
 import MenuToggle from '@/components/menu-toggle';
 import { useAccount } from '@/lib/account';
-import { EXTRAS, money, PLANS, type Interval, type Tier } from '@/lib/prices';
+import { money, usd, type Interval, type Tier } from '@/lib/prices';
+import { usePlans } from '@/lib/use-plans';
 import { getSupabase, type MembershipSummary, type PaymentRow } from '@/lib/supabase';
 
 type Summary = Pick<
@@ -244,6 +245,7 @@ interface OverviewProps {
 }
 
 function Overview({ summary: s, payments, live, reload }: OverviewProps) {
+  const { plans: PLANS, extras: EXTRAS } = usePlans();
   const plan = PLANS[s.tier];
   const price = s.billing_interval === 'annual' ? plan.annual : plan.monthly;
   const status = STATUS[s.payment_status];
@@ -355,7 +357,7 @@ function Overview({ summary: s, payments, live, reload }: OverviewProps) {
                     <span>{i === 'annual' ? 'Annual' : 'Monthly'}</span>
                     <strong>{PLANS[t].name}</strong>
                     <small>{PLANS[t].credits} sessions a month</small>
-                    <b>${PLANS[t][i]}</b>
+                    <b>{usd(PLANS[t][i])}</b>
                   </button>
                 )),
               )}
@@ -365,7 +367,7 @@ function Overview({ summary: s, payments, live, reload }: OverviewProps) {
                 <span>
                   {PLANS[newTier].name}, {newInterval}
                 </span>
-                <strong>{money(PLANS[newTier][newInterval] * 100)}</strong>
+                <strong>{money(Math.round(PLANS[newTier][newInterval] * 100))}</strong>
               </div>
               <button
                 type="button"
@@ -379,7 +381,7 @@ function Overview({ summary: s, payments, live, reload }: OverviewProps) {
                   )
                 }
               >
-                {busy === 'plan' ? 'Paying…' : `Pay ${money(PLANS[newTier][newInterval] * 100)}`}{' '}
+                {busy === 'plan' ? 'Paying…' : `Pay ${money(Math.round(PLANS[newTier][newInterval] * 100))}`}{' '}
                 <span aria-hidden="true">→</span>
               </button>
               <p>
@@ -495,7 +497,7 @@ function Overview({ summary: s, payments, live, reload }: OverviewProps) {
                   <span>{option.label}</span>
                   <strong>{option.amount}</strong>
                   <small>{option.amount === 1 ? 'extra session' : 'extra sessions'}</small>
-                  <b>${option.price}</b>
+                  <b>{usd(option.price)}</b>
                 </button>
               ))}
             </div>
@@ -504,7 +506,7 @@ function Overview({ summary: s, payments, live, reload }: OverviewProps) {
                 <span>
                   {selected.amount} extra {selected.amount === 1 ? 'session' : 'sessions'}
                 </span>
-                <strong>{money(selected.price * 100)}</strong>
+                <strong>{money(Math.round(selected.price * 100))}</strong>
               </div>
               <button
                 type="button"

@@ -10,7 +10,8 @@ import { useEffect, useRef, useState } from 'react';
 import GoogleButton from '@/components/google-button';
 import HelloRecorder from '@/components/hello-recorder';
 import { useAccount } from '@/lib/account';
-import { money, PLANS, planPrice, type Interval, type Tier } from '@/lib/prices';
+import { money, usd, type Interval, type Tier } from '@/lib/prices';
+import { usePlans } from '@/lib/use-plans';
 import { savePushSubscription, VAPID_PUBLIC_KEY } from '@/lib/push';
 import { getSupabase, setDemoUser, type MembershipSummary } from '@/lib/supabase';
 
@@ -48,6 +49,7 @@ function resumeStep(s: MembershipSummary | null): number {
 }
 
 export default function SignupPage() {
+  const { plans: PLANS } = usePlans();
   const router = useRouter();
   const supabase = getSupabase();
   const { ready, account } = useAccount();
@@ -265,7 +267,8 @@ export default function SignupPage() {
   const isMember = summary?.role === 'member';
   const paid = summary && summary.payment_status !== 'pending';
   const helloDone = helloSent || summary?.hello_status === 'pending' || summary?.hello_status === 'approved';
-  const price = planPrice(tier, plan);
+  const price = PLANS[tier][plan];
+  const saving = Math.round((PLANS[tier].monthly * 12 - PLANS[tier].annual) * 100) / 100;
 
   const primary: Record<number, { label: string; action: () => void; disabled?: boolean }> = {
     1: { label: 'Continue', action: finishBasics },
@@ -344,8 +347,9 @@ export default function SignupPage() {
                   </p>
                   <p className="step-intro">
                     Joining as a Household? Everyone signs up with their own email and password. The account holder
-                    picks Household ($34 a month or $349 a year) in step 3 and invites up to 3 people, who share 16
-                    sessions a month. Invited by someone? Sign up with the email they invited.
+                    picks Household ({usd(PLANS.household.monthly)} a month or {usd(PLANS.household.annual)} a year) in
+                    step 3 and invites up to 3 people, who share 16 sessions a month. Invited by someone? Sign up with
+                    the email they invited.
                   </p>
                   <GoogleButton next="/signup" label="Sign up with Google" onError={setErrorMsg} />
                   <div className="form-grid">
@@ -502,7 +506,7 @@ export default function SignupPage() {
                       >
                         <strong>{PLANS[key].name}</strong>
                         <small>
-                          ${PLANS[key].monthly}/mo · ${PLANS[key].annual}/yr
+                          {usd(PLANS[key].monthly)}/mo · {usd(PLANS[key].annual)}/yr
                         </small>
                         <small>
                           {PLANS[key].people} · {PLANS[key].credits} sessions/mo
@@ -517,7 +521,7 @@ export default function SignupPage() {
                       onClick={() => setPlan('monthly')}
                     >
                       <span>Monthly</span>
-                      <strong>${PLANS[tier].monthly}</strong>
+                      <strong>{usd(PLANS[tier].monthly)}</strong>
                       <small>per month · cancel anytime</small>
                     </button>
                     <button
@@ -526,8 +530,11 @@ export default function SignupPage() {
                       onClick={() => setPlan('annual')}
                     >
                       <span>Annual</span>
-                      <strong>${PLANS[tier].annual}</strong>
-                      <small>per year · save ${PLANS[tier].monthly * 12 - PLANS[tier].annual}</small>
+                      <strong>{usd(PLANS[tier].annual)}</strong>
+                      <small>
+                        per year
+                        {saving > 0 ? ` · save ${usd(saving)}` : ''}
+                      </small>
                     </button>
                   </div>
                   <div className="payment-mock">

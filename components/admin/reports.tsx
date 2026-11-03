@@ -3,6 +3,7 @@
 // Reports: private reports members sent from a live room (schema section 25). Only admins see them; the
 // reported person is never told. Resolve when handled (talk to them, turn the account off from Members).
 import { useCallback, useState } from 'react';
+import { DataTable, type Column } from '@/components/admin/data-table';
 import { useAdmin } from '@/components/admin/shell';
 import { adminRpc, fmtWhen, fullName, useLoad } from '@/lib/admin';
 
@@ -54,6 +55,60 @@ export default function AdminReports() {
     }
   };
 
+  const columns: Column<Report>[] = [
+    {
+      header: 'Reported',
+      cell: (r) => (
+        <>
+          <strong>{r.reported ? fullName(r.reported) : 'Someone'}</strong>
+          <span className="adm-sub">{r.reported?.email}</span>
+        </>
+      ),
+    },
+    {
+      header: 'What happened',
+      cell: (r) => (
+        <>
+          {r.reason}
+          {r.note && <span className="adm-sub">“{r.note}”</span>}
+        </>
+      ),
+    },
+    {
+      header: 'Session',
+      cell: (r) =>
+        r.session ? (
+          <>
+            {r.session.title}
+            <span className="adm-sub">{fmtWhen(r.session.starts_at)}</span>
+          </>
+        ) : (
+          'Session removed'
+        ),
+    },
+    {
+      header: 'Reported by',
+      cell: (r) => (
+        <>
+          {r.reporter ? fullName(r.reporter) : 'A member'}
+          <span className="adm-sub">{fmtWhen(r.created_at)}</span>
+        </>
+      ),
+    },
+    {
+      header: '',
+      align: 'right',
+      cell: (r) =>
+        r.status === 'open' ? (
+          <button type="button" className="adm-btn adm-btn-sm" disabled={busy} onClick={() => void resolve(r)}>
+            Resolve
+          </button>
+        ) : (
+          <span className="adm-badge adm-badge-good">Resolved</span>
+        ),
+    },
+  ];
+
   return (
     <>
       <header className="adm-head">
@@ -72,31 +127,13 @@ export default function AdminReports() {
       {result?.error && <p className="adm-msg adm-msg-error">Could not load reports. Refresh to try again.</p>}
       {msg && <p className={msg.error ? 'adm-msg adm-msg-error' : 'adm-msg'}>{msg.text}</p>}
       <section className="adm-card">
-        {!loading && rows.length === 0 ? (
-          <p className="adm-empty">{status === 'open' ? 'No open reports.' : 'Nothing resolved yet.'}</p>
-        ) : (
-          <ul className="adm-list adm-card-body">
-            {rows.map((r) => (
-              <li key={r.id}>
-                <span>
-                  {r.reported ? fullName(r.reported) : 'Someone'} · {r.reason}
-                  <span className="adm-sub">
-                    {r.session ? `${r.session.title}, ${fmtWhen(r.session.starts_at)}` : 'Session removed'} · reported
-                    by {r.reporter ? fullName(r.reporter) : 'a member'} {fmtWhen(r.created_at)}
-                    {r.note ? ` · “${r.note}”` : ''}
-                  </span>
-                </span>
-                {r.status === 'open' ? (
-                  <button type="button" className="adm-btn adm-btn-sm" disabled={busy} onClick={() => void resolve(r)}>
-                    Resolve
-                  </button>
-                ) : (
-                  <span className="adm-badge adm-badge-good">Resolved</span>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
+        <DataTable
+          columns={columns}
+          rows={rows}
+          rowKey={(r) => r.id}
+          loading={loading}
+          empty={status === 'open' ? 'No open reports.' : 'Nothing resolved yet.'}
+        />
       </section>
     </>
   );

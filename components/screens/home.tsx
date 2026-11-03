@@ -6,6 +6,8 @@ import { useState, useSyncExternalStore } from 'react';
 import { prepCards, type SessionContent } from '@/lib/session-data';
 import MenuToggle from '@/components/menu-toggle';
 import { useAccount } from '@/lib/account';
+import { usd } from '@/lib/prices';
+import { usePlans } from '@/lib/use-plans';
 
 const photos = [
   { src: '/images/guitar-duo.webp', alt: 'Two people sharing music with a guitar and tablet' },
@@ -127,9 +129,10 @@ function MembershipCard({ label, price, detail, accent, plan, step }: Membership
   );
 }
 
-const SOLO_STEP = 'Choose your plan, then book up to 13 sessions a month (up to four a week).';
-const HOUSEHOLD_STEP =
-  'Choose Household and invite up to 3 people by email. You share 16 sessions a month: 4 each week, shared between household members.';
+const soloStep = (credits: number) =>
+  `Choose your plan, then book up to ${credits} sessions a month (up to four a week).`;
+const householdStep = (invite: number, credits: number) =>
+  `Choose Household and invite up to ${invite} people by email. You share ${credits} sessions a month: 4 each week, shared between household members.`;
 
 // The hero header scrolls away with the photos; past this point a copy comes back pinned to the top.
 const FLOAT_AFTER = 240;
@@ -174,6 +177,13 @@ function SiteHeader({ signedIn, floating = false }: { signedIn: boolean; floatin
 
 export default function Home() {
   const { account } = useAccount();
+  const { plans } = usePlans();
+  const solo = plans.individual;
+  const family = plans.household;
+  const people = family.people.toLowerCase();
+  const headcount = Number(/\d+/.exec(family.people)?.[0] ?? 4);
+  const soloSaving = Math.round((solo.monthly * 12 - solo.annual) * 100) / 100;
+  const twoMonthsFree = Math.abs(soloSaving - 2 * solo.monthly) < 0.005;
   // The pinned copy sits outside <main>: main's page-in animation would make it scroll with the page.
   return (
     <>
@@ -329,43 +339,43 @@ export default function Home() {
               Start doing.
             </h2>
             <p>
-              Solo includes 13 sessions a month. Household covers up to 4 people, each with their own sign-in, sharing
-              16 sessions a month: 4 each week, shared between household members. Solo can book up to 4 a week, and
-              extra sessions are available whenever you want more.
+              Solo includes {solo.credits} sessions a month. Household covers {people}, each with their own sign-in,
+              sharing {family.credits} sessions a month: 4 each week, shared between household members. Solo can book up
+              to 4 a week, and extra sessions are available whenever you want more.
             </p>
           </div>
           <div className="membership-grid">
             <MembershipCard
               label="Solo · Monthly"
-              price="$26"
-              detail="per month · 13 sessions · cancel anytime"
+              price={usd(solo.monthly)}
+              detail={`per month · ${solo.credits} sessions · cancel anytime`}
               accent="monthly"
               plan="Solo monthly"
-              step={SOLO_STEP}
+              step={soloStep(solo.credits)}
             />
             <MembershipCard
               label="Solo · Annual"
-              price="$260"
-              detail="per year · 13 sessions a month · two months on us"
+              price={usd(solo.annual)}
+              detail={`per year · ${solo.credits} sessions a month${twoMonthsFree ? ' · two months on us' : soloSaving > 0 ? ` · save ${usd(soloSaving)}` : ''}`}
               accent="annual"
               plan="Solo annual"
-              step={SOLO_STEP}
+              step={soloStep(solo.credits)}
             />
             <MembershipCard
               label="Household · Monthly"
-              price="$34"
-              detail="per month · up to 4 people · 16 shared sessions"
+              price={usd(family.monthly)}
+              detail={`per month · ${people} · ${family.credits} shared sessions`}
               accent="household-monthly"
               plan="Household monthly"
-              step={HOUSEHOLD_STEP}
+              step={householdStep(headcount - 1, family.credits)}
             />
             <MembershipCard
               label="Household · Annual"
-              price="$349"
-              detail="per year · up to 4 people · 16 shared sessions a month"
+              price={usd(family.annual)}
+              detail={`per year · ${people} · ${family.credits} shared sessions a month`}
               accent="household-annual"
               plan="Household annual"
-              step={HOUSEHOLD_STEP}
+              step={householdStep(headcount - 1, family.credits)}
             />
           </div>
         </section>

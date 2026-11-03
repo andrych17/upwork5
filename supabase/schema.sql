@@ -58,6 +58,13 @@ alter table app_config add constraint app_config_weekly_limit_scope_check check 
 alter table app_config add column if not exists sms_kinds text[] not null default '{1h}';
 -- Pay buttons succeed without a card until the payment processor is connected (section 23).
 alter table app_config add column if not exists test_payments boolean not null default true;
+-- Plan and extra-session prices in cents (section 29). Settings changes them; the next charge uses the new price.
+alter table app_config add column if not exists solo_monthly_cents int not null default 2600 check (solo_monthly_cents between 0 and 1000000);
+alter table app_config add column if not exists solo_annual_cents int not null default 26000 check (solo_annual_cents between 0 and 1000000);
+alter table app_config add column if not exists household_monthly_cents int not null default 3400 check (household_monthly_cents between 0 and 1000000);
+alter table app_config add column if not exists household_annual_cents int not null default 34900 check (household_annual_cents between 0 and 1000000);
+alter table app_config add column if not exists extra_1_cents int not null default 400 check (extra_1_cents between 0 and 1000000);
+alter table app_config add column if not exists extra_5_cents int not null default 1500 check (extra_5_cents between 0 and 1000000);
 
 insert into app_config default values on conflict do nothing;
 
@@ -1974,7 +1981,8 @@ declare
   v_unknown text;
   v_int_keys text[] := array['monthly_credits', 'household_monthly_credits', 'household_max_people',
     'welcome_trial_days', 'welcome_credits', 'cancel_hours', 'grace_days', 'bhd_per_month',
-    'booking_closes_minutes', 'book_ahead_days'];
+    'booking_closes_minutes', 'book_ahead_days', 'solo_monthly_cents', 'solo_annual_cents',
+    'household_monthly_cents', 'household_annual_cents', 'extra_1_cents', 'extra_5_cents'];
 begin
   if not is_admin() then
     return jsonb_build_object('success', false, 'error', 'Only an admin can change settings.');
@@ -2010,6 +2018,12 @@ begin
   v_new.bhd_per_month := coalesce((p->>'bhd_per_month')::int, v_old.bhd_per_month);
   v_new.booking_closes_minutes := coalesce((p->>'booking_closes_minutes')::int, v_old.booking_closes_minutes);
   v_new.book_ahead_days := coalesce((p->>'book_ahead_days')::int, v_old.book_ahead_days);
+  v_new.solo_monthly_cents := coalesce((p->>'solo_monthly_cents')::int, v_old.solo_monthly_cents);
+  v_new.solo_annual_cents := coalesce((p->>'solo_annual_cents')::int, v_old.solo_annual_cents);
+  v_new.household_monthly_cents := coalesce((p->>'household_monthly_cents')::int, v_old.household_monthly_cents);
+  v_new.household_annual_cents := coalesce((p->>'household_annual_cents')::int, v_old.household_annual_cents);
+  v_new.extra_1_cents := coalesce((p->>'extra_1_cents')::int, v_old.extra_1_cents);
+  v_new.extra_5_cents := coalesce((p->>'extra_5_cents')::int, v_old.extra_5_cents);
   if p ? 'max_weekly_sessions' then
     v_new.max_weekly_sessions := (p->>'max_weekly_sessions')::int;
   end if;
@@ -2026,6 +2040,10 @@ begin
      or v_new.welcome_credits not between 0 and 50 or v_new.cancel_hours not between 0 and 168
      or v_new.grace_days not between 0 and 30 or v_new.bhd_per_month not between 0 and 20
      or v_new.booking_closes_minutes not between 0 and 240 or v_new.book_ahead_days not between 1 and 180
+     or least(v_new.solo_monthly_cents, v_new.solo_annual_cents, v_new.household_monthly_cents,
+              v_new.household_annual_cents, v_new.extra_1_cents, v_new.extra_5_cents) < 0
+     or greatest(v_new.solo_monthly_cents, v_new.solo_annual_cents, v_new.household_monthly_cents,
+                 v_new.household_annual_cents, v_new.extra_1_cents, v_new.extra_5_cents) > 1000000
      or (v_new.max_weekly_sessions is not null and v_new.max_weekly_sessions not between 1 and 21)
      or v_new.weekly_limit_scope not in ('person', 'household')
      or not (v_new.sms_kinds <@ array['1h', '24h']) then
@@ -2038,6 +2056,9 @@ begin
     welcome_credits = v_new.welcome_credits, cancel_hours = v_new.cancel_hours, grace_days = v_new.grace_days,
     bhd_per_month = v_new.bhd_per_month, booking_closes_minutes = v_new.booking_closes_minutes,
     book_ahead_days = v_new.book_ahead_days, max_weekly_sessions = v_new.max_weekly_sessions,
+    solo_monthly_cents = v_new.solo_monthly_cents, solo_annual_cents = v_new.solo_annual_cents,
+    household_monthly_cents = v_new.household_monthly_cents, household_annual_cents = v_new.household_annual_cents,
+    extra_1_cents = v_new.extra_1_cents, extra_5_cents = v_new.extra_5_cents,
     weekly_limit_scope = v_new.weekly_limit_scope, require_hello_video = v_new.require_hello_video,
     hello_hold_bookings = v_new.hello_hold_bookings, sms_kinds = v_new.sms_kinds,
     test_payments = v_new.test_payments
@@ -2218,15 +2239,16 @@ grant select on payments to authenticated;
 create or replace function plan_price_cents(p_tier text, p_interval text)
 returns int
 language sql
-immutable
+stable
 set search_path = public
 as $$
   select case
-    when p_tier = 'individual' and p_interval = 'monthly' then 2600
-    when p_tier = 'individual' and p_interval = 'annual' then 26000
-    when p_tier = 'household' and p_interval = 'monthly' then 3400
-    when p_tier = 'household' and p_interval = 'annual' then 34900
-  end;
+    when p_tier = 'individual' and p_interval = 'monthly' then c.solo_monthly_cents
+    when p_tier = 'individual' and p_interval = 'annual' then c.solo_annual_cents
+    when p_tier = 'household' and p_interval = 'monthly' then c.household_monthly_cents
+    when p_tier = 'household' and p_interval = 'annual' then c.household_annual_cents
+  end
+  from app_config c where c.id = 1;
 $$;
 
 -- One billing period.
@@ -2243,10 +2265,11 @@ $$;
 create or replace function extras_price_cents(p_count int)
 returns int
 language sql
-immutable
+stable
 set search_path = public
 as $$
-  select case p_count when 1 then 400 when 5 then 1500 end;
+  select case p_count when 1 then c.extra_1_cents when 5 then c.extra_5_cents end
+  from app_config c where c.id = 1;
 $$;
 
 -- Start, restart or pay a due membership. A new or ended membership starts today: today becomes the
@@ -3354,3 +3377,30 @@ revoke execute on function admin_usage() from public, anon;
 grant execute on function admin_usage() to authenticated;
 revoke execute on function admin_save_usage_limits(int, int) from public, anon;
 grant execute on function admin_save_usage_limits(int, int) to authenticated;
+
+-- 29. Plan prices in Settings (Andry, 3 Nov). plan_price_cents() and extras_price_cents() (section 23) read the
+-- app_config columns, so the next checkout, renewal or extra-session purchase uses the new price. What a member
+-- already paid, and the period it covers, does not change. get_plans() is what the pages show: prices, sessions
+-- per month and people per Household, readable before sign-in because it holds nothing private.
+create or replace function get_plans()
+returns jsonb
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select jsonb_build_object(
+    'individual', jsonb_build_object(
+      'monthly_cents', c.solo_monthly_cents, 'annual_cents', c.solo_annual_cents, 'credits', c.monthly_credits),
+    'household', jsonb_build_object(
+      'monthly_cents', c.household_monthly_cents, 'annual_cents', c.household_annual_cents,
+      'credits', c.household_monthly_credits, 'people', c.household_max_people),
+    'extras', jsonb_build_array(
+      jsonb_build_object('amount', 1, 'cents', c.extra_1_cents),
+      jsonb_build_object('amount', 5, 'cents', c.extra_5_cents))
+  )
+  from app_config c where c.id = 1;
+$$;
+
+revoke execute on function get_plans() from public;
+grant execute on function get_plans() to anon, authenticated;
