@@ -3288,3 +3288,69 @@ begin
   end if;
 end
 $do$;
+
+-- 28. Usage (Andry, 3 Nov): what live rooms and reminder emails used this month, next to the plan limits of the
+-- outside services (Daily video minutes, Resend emails). The numbers are estimates from this database. Daily and
+-- Resend bill what they measured themselves, and Resend also sends the sign-up code emails, which are not counted here.
+alter table app_config add column if not exists daily_minutes_limit int not null default 10000
+  check (daily_minutes_limit between 0 and 10000000);
+alter table app_config add column if not exists resend_emails_limit int not null default 3000
+  check (resend_emails_limit between 0 and 10000000);
+
+create or replace function admin_usage()
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  v_from timestamptz := date_trunc('month', now() at time zone 'UTC') at time zone 'UTC';
+  v_cfg app_config%rowtype;
+  v_minutes int;
+  v_emails int;
+begin
+  if not is_admin() then
+    return jsonb_build_object('success', false, 'error', 'Only an admin can see usage.');
+  end if;
+  select * into v_cfg from app_config where id = 1;
+  -- Each member counts from the moment they first joined until the session ends (or now, while it still runs).
+  -- Admins who join without a seat have no booking, so they are not counted.
+  select coalesce(ceil(sum(greatest(0, extract(epoch from
+           least(s.starts_at + make_interval(mins => s.minutes), now()) - b.joined_at) / 60))), 0)::int
+  into v_minutes
+  from bookings b join sessions s on s.id = b.session_id
+  where b.joined_at >= v_from;
+  select count(*)::int into v_emails from reminder_log where email_sent and claimed_at >= v_from;
+  return jsonb_build_object('success', true, 'month_start', v_from,
+    'daily_minutes', v_minutes, 'daily_limit', v_cfg.daily_minutes_limit,
+    'resend_emails', v_emails, 'resend_limit', v_cfg.resend_emails_limit);
+end;
+$$;
+
+create or replace function admin_save_usage_limits(p_daily int, p_resend int)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not is_admin() then
+    return jsonb_build_object('success', false, 'error', 'Only an admin can change limits.');
+  end if;
+  if p_daily is null or p_resend is null or p_daily not between 0 and 10000000
+     or p_resend not between 0 and 10000000 then
+    return jsonb_build_object('success', false, 'error', 'Enter whole numbers from 0 up.');
+  end if;
+  update app_config set daily_minutes_limit = p_daily, resend_emails_limit = p_resend where id = 1;
+  insert into admin_log (admin_id, action, details)
+  values (auth.uid(), 'usage_limits_updated',
+          jsonb_build_object('daily_minutes_limit', p_daily, 'resend_emails_limit', p_resend));
+  return jsonb_build_object('success', true);
+end;
+$$;
+
+revoke execute on function admin_usage() from public, anon;
+grant execute on function admin_usage() to authenticated;
+revoke execute on function admin_save_usage_limits(int, int) from public, anon;
+grant execute on function admin_save_usage_limits(int, int) to authenticated;

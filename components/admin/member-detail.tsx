@@ -1,8 +1,9 @@
 'use client';
 
-// One member beside the list: plan and status, credits, admin access, turn off/on, and bookings.
+// One member beside the list: plan and status, credits, bookings, payment and credit history, admin access, turn off/on.
 import { useCallback, useState } from 'react';
 import GiveCredits from '@/components/admin/give-credits';
+import MemberHistory from '@/components/admin/member-history';
 import { useAdmin } from '@/components/admin/shell';
 import {
   PROFILE_COLUMNS,
@@ -65,7 +66,11 @@ export default function MemberDetail({ id, onClose, onChanged, onOpen }: Props) 
     const [kids, owner, books] = await Promise.all([
       supabase.from('profiles').select('id,first_name,last_name,email').eq('household_owner_id', id),
       prof.household_owner_id
-        ? supabase.from('profiles').select('id,first_name,last_name,email').eq('id', prof.household_owner_id).maybeSingle()
+        ? supabase
+            .from('profiles')
+            .select('id,first_name,last_name,email')
+            .eq('id', prof.household_owner_id)
+            .maybeSingle()
         : Promise.resolve({ data: null }),
       supabase
         .from('bookings')
@@ -113,7 +118,9 @@ export default function MemberDetail({ id, onClose, onChanged, onOpen }: Props) 
   const isMe = p.id === me.id;
   const isHouseholdPerson = Boolean(p.household_owner_id);
   const planChanged = plan.tier !== p.tier || plan.interval !== p.billing_interval || plan.status !== p.payment_status;
-  const upcoming = bookings.filter((b) => b.status === 'confirmed' && b.session && new Date(b.session.starts_at) > new Date());
+  const upcoming = bookings.filter(
+    (b) => b.status === 'confirmed' && b.session && new Date(b.session.starts_at) > new Date(),
+  );
 
   return (
     <aside className="adm-card adm-panel" ref={revealPanel} aria-label={`Member ${fullName(p)}`}>
@@ -170,7 +177,12 @@ export default function MemberDetail({ id, onClose, onChanged, onOpen }: Props) 
               e.preventDefault();
               void run(
                 'admin_update_member',
-                { p_profile: p.id, p_tier: plan.tier, p_billing_interval: plan.interval, p_payment_status: plan.status },
+                {
+                  p_profile: p.id,
+                  p_tier: plan.tier,
+                  p_billing_interval: plan.interval,
+                  p_payment_status: plan.status,
+                },
                 'Plan saved.',
               );
             }}
@@ -214,8 +226,8 @@ export default function MemberDetail({ id, onClose, onChanged, onOpen }: Props) 
               </label>
             </div>
             <small className="adm-sub">
-              Past due works like a failed renewal (monthly credits wait for payment). Active again gives this
-              month’s credits right away. Charges and refunds still happen in the payment processor.
+              Past due works like a failed renewal (monthly credits wait for payment). Active again gives this month’s
+              credits right away. Charges and refunds still happen in the payment processor.
             </small>
             <div>
               <button type="submit" className="adm-btn adm-btn-primary" disabled={busy || !planChanged}>
@@ -313,6 +325,12 @@ export default function MemberDetail({ id, onClose, onChanged, onOpen }: Props) 
         )}
       </div>
 
+      <MemberHistory
+        id={p.id}
+        holderId={p.household_owner_id}
+        stamp={`${p.monthly_credits}-${p.addon_credits}-${p.payment_status}`}
+      />
+
       <div className="adm-section">
         <h3>Access</h3>
         {isMe ? (
@@ -357,7 +375,10 @@ export default function MemberDetail({ id, onClose, onChanged, onOpen }: Props) 
                 className="adm-form"
                 onSubmit={(e) => {
                   e.preventDefault();
-                  if (!window.confirm(`Turn off ${fullName(p)}? They are signed out and future bookings are cancelled.`)) return;
+                  if (
+                    !window.confirm(`Turn off ${fullName(p)}? They are signed out and future bookings are cancelled.`)
+                  )
+                    return;
                   void run(
                     'admin_set_disabled',
                     { p_profile: p.id, p_disabled: true, p_reason: offReason },

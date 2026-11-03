@@ -140,3 +140,38 @@ insert into auth.users (id, email, raw_user_meta_data) values
 select t((select first_name = 'Ana' and last_name = 'Diaz' from profiles where email = 'g1@example.com'), 'google given/family name');
 select t((select first_name = 'Lee' and last_name = 'Ann Park' from profiles where email = 'g2@example.com'), 'google full name split');
 select t((select first_name = 'Member' and last_name = '' from profiles where email = 'g3@example.com'), 'no name falls back to Member');
+
+-- Usage (section 28): minutes joined this month and reminder emails, admin only
+\set SU '00000000-0000-0000-0000-00000000ad02'
+-- Earlier checks may already have logged sent emails; only the difference is ours.
+select count(*) as base_emails from reminder_log where email_sent \gset
+insert into sessions (id, title, slug, starts_at, minutes, capacity)
+values (:'SU', 'Usage Test Room', 'usage-test-room', now() - interval '30 minutes', 60, 12);
+insert into bookings (session_id, user_id, charged_to, status, joined_at) values
+  (:'SU', :'U1', :'U1', 'confirmed', now() - interval '20 minutes'),
+  (:'SU', :'U2', :'U2', 'confirmed', now() - interval '25 minutes');
+insert into reminder_log (booking_id, kind, email_sent)
+select id, '1h', true from bookings where session_id = :'SU';
+insert into reminder_log (booking_id, kind, email_sent)
+select id, '24h', false from bookings where session_id = :'SU' and user_id = :'U1';
+
+select set_config('request.jwt.claim.sub', :'U2', false);
+set role authenticated;
+select t(admin_usage()->>'success' = 'false', 'member cannot read usage');
+select t(admin_save_usage_limits(1, 1)->>'success' = 'false', 'member cannot change usage limits');
+reset role;
+
+select set_config('request.jwt.claim.sub', :'A2', false);
+set role authenticated;
+-- 20 + 25 minutes, up to a minute more from the clock moving between statements. Skipped in the first half hour of
+-- a month, when the test bookings would fall into last month.
+select t((admin_usage()->>'daily_minutes')::int between 45 and 46
+         or now() < (admin_usage()->>'month_start')::timestamptz + interval '30 minutes', 'usage counts joined minutes');
+select t((admin_usage()->>'resend_emails')::int = :base_emails + 2, 'usage counts only reminders that sent an email');
+select t((admin_usage()->>'daily_limit')::int = 10000 and (admin_usage()->>'resend_limit')::int = 3000, 'default limits');
+select t(admin_save_usage_limits(-1, 5)->>'success' = 'false', 'negative limit refused');
+select t(admin_save_usage_limits(null, 5)->>'success' = 'false', 'empty limit refused');
+select t((admin_save_usage_limits(20000, 50000)->>'success')::boolean, 'admin saves limits');
+select t((admin_usage()->>'daily_limit')::int = 20000 and (admin_usage()->>'resend_limit')::int = 50000, 'saved limits show up');
+reset role;
+select t((select count(*) from admin_log where action = 'usage_limits_updated') = 1, 'limit change is logged');

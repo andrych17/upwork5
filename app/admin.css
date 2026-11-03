@@ -247,6 +247,57 @@ a.adm-stat:hover {
   border-color: var(--adm-accent);
 }
 
+/* ---------- usage meters ---------- */
+.adm-usage-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.adm-usage-grid > .adm-card + .adm-card {
+  margin-top: 0;
+}
+
+.adm-usage-figure {
+  margin: 0 0 0.75rem;
+  color: var(--adm-muted);
+}
+
+.adm-usage-figure strong {
+  color: var(--adm-ink);
+  font-family: var(--font-display, sans-serif);
+  font-size: 1.875rem;
+  letter-spacing: -0.03em;
+}
+
+.adm-meter {
+  height: 0.625rem;
+  margin-bottom: 0.75rem;
+  overflow: hidden;
+  background: var(--adm-soft);
+  border-radius: 999px;
+}
+
+.adm-meter span {
+  display: block;
+  height: 100%;
+  background: var(--adm-muted);
+  border-radius: inherit;
+}
+
+.adm-meter-good span {
+  background: var(--adm-good);
+}
+
+.adm-meter-warn span {
+  background: #d99a00;
+}
+
+.adm-meter-bad span {
+  background: var(--adm-bad);
+}
+
 /* ---------- tables ---------- */
 .adm-table-wrap {
   overflow-x: auto;
