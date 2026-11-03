@@ -9,6 +9,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import GoogleButton from '@/components/google-button';
 import HelloRecorder from '@/components/hello-recorder';
+import PasswordInput from '@/components/password-input';
 import { useAccount } from '@/lib/account';
 import { money, usd, type Interval, type Tier } from '@/lib/prices';
 import { usePlans } from '@/lib/use-plans';
@@ -385,8 +386,7 @@ export default function SignupPage() {
                     </label>
                     <label className="full-field">
                       <span>Create a password</span>
-                      <input
-                        type="password"
+                      <PasswordInput
                         autoComplete="new-password"
                         placeholder="At least 8 characters"
                         value={password}

@@ -6,6 +6,7 @@ import { nextFromQuery } from '@/lib/account';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import GoogleButton from '@/components/google-button';
+import PasswordInput from '@/components/password-input';
 import { getSupabase, setDemoUser } from '@/lib/supabase';
 
 export default function SigninPage() {
@@ -87,7 +88,7 @@ export default function SigninPage() {
       const supabase = getSupabase();
       if (supabase) {
         const { error } = await supabase.auth.resetPasswordForEmail(email, {
-          redirectTo: `${window.location.origin}/signin`,
+          redirectTo: `${window.location.origin}/password`,
         });
         if (error) {
           setErrorMsg(error.message);
@@ -188,8 +189,8 @@ export default function SigninPage() {
                   </label>
                   <label className="full-field">
                     <span>Password</span>
-                    <input
-                      type="password"
+                    <PasswordInput
+                      autoComplete="current-password"
                       required
                       placeholder="Your account password"
                       value={password}

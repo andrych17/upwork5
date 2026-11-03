@@ -19,6 +19,7 @@ const LINKS: { href: Route; label: string }[] = [
   { href: '/membership', label: 'Membership & credits' },
   { href: '/reminders', label: 'Reminders' },
   { href: '/hello-video', label: 'Hello Video' },
+  { href: '/password', label: 'Change password' },
 ];
 
 interface AccountMenuProps {

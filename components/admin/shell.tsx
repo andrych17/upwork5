@@ -7,6 +7,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
+import PasswordInput from '@/components/password-input';
 import { fullName } from '@/lib/admin';
 import { getSupabase } from '@/lib/supabase';
 
@@ -193,6 +194,9 @@ export default function AdminShell({ children }: { children: ReactNode }) {
                 <span>{me.email}</span>
               </div>
               <div className="adm-me-actions">
+                <Link className="adm-btn adm-btn-sm" href="/admin/password">
+                  Password
+                </Link>
                 <Link className="adm-btn adm-btn-sm" href="/calendar">
                   Member site
                 </Link>
@@ -306,9 +310,8 @@ function SignInGate({
               </label>
               <label className="adm-field">
                 <span>Password</span>
-                <input
+                <PasswordInput
                   className="adm-input"
-                  type="password"
                   autoComplete="current-password"
                   required
                   value={password}
