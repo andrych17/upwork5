@@ -48,4 +48,12 @@ assert.equal(clockLeft({ ...q(true), phase: 'spin' }, 0), null, 'no hourglass ou
 const snap = (rev: number) => ({ rev, card: null, state: q(true) });
 assert.ok(newer(null, snap(0)) && newer(snap(1), snap(2)) && !newer(snap(2), snap(2)) && !newer(snap(3), snap(2)));
 
+// prettier-plugin-tailwindcss trims the space in `trivia-turn${me ? ' me' : ''}`, gluing the two class names together
+// (it happened once and unstyled the turn banner). Whole-string ternaries survive formatting.
+const room = readFileSync(new URL('../components/games/trivia-room.tsx', import.meta.url), 'utf8');
+assert.ok(!/className=\{`[^`]*[\w-]\$\{[^}]*\?\s*'\w/.test(room), 'no class name glued to a conditional one');
+assert.ok(
+  room.includes("'trivia-turn me'") && room.includes("'trivia-player now'") && room.includes("'trivia-pip on'"),
+);
+
 console.log('trivia: ok');

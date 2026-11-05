@@ -264,7 +264,7 @@ function PlayerRow({
   const tags = [p.id === me && 'you', p.id === s.timekeeper && 'Timer', p.away && 'away'].filter(Boolean);
   if (stats) tags.push(`${p.right} of ${p.asked} right`);
   return (
-    <li className={`trivia-player${turn ? 'now' : ''}`}>
+    <li className={turn ? 'trivia-player now' : 'trivia-player'}>
       <span className="trivia-dot" style={{ background: PLAYER_COLOURS[p.color] }}>
         {k + 1}
       </span>
@@ -277,7 +277,7 @@ function PlayerRow({
         {cats.map((c, i) => (
           <span
             key={c.id}
-            className={`trivia-pip${p.badges[i] ? 'on' : ''}`}
+            className={p.badges[i] ? 'trivia-pip on' : 'trivia-pip'}
             style={p.badges[i] ? { background: c.color } : undefined}
             title={`${c.name}${p.badges[i] ? ' badge earned' : ' badge not yet'}`}
           />
@@ -591,7 +591,7 @@ export default function TriviaRoom({ sessionId, me }: { sessionId: string; me: s
           </div>
 
           <div className="trivia-side">
-            <div className={`trivia-turn${myTurn ? 'me' : ''}`}>
+            <div className={myTurn ? 'trivia-turn me' : 'trivia-turn'}>
               {myTurn ? 'Your turn' : `${current?.name ?? ''}’s turn`}
               {stepLeft !== null && <span> · {stepLeft} s</span>}
             </div>
