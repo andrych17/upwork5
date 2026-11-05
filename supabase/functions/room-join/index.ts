@@ -3,12 +3,18 @@
 // works for that person, that room, and until the session ends.
 // POST { session_id } -> { url, token, title, slug, starts_at, ends_at, locks_at, name, camera_off, is_admin, people }
 // Needs DAILY_API_KEY (Daily dashboard -> Developers). Without it the function answers 503 NOT_CONFIGURED.
+// DAILY_MONTHLY_MINUTES (optional): participant minutes this calendar month (UTC) after which nobody new gets in,
+// so a test account stays inside Daily's free minutes. Set it a little under the allowance: minutes of calls still
+// running are only counted once they end.
 import { admin, body, caller, cors, env, fail, json } from '../_shared/http.ts';
 
 const DAILY = 'https://api.daily.co/v1';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // The room and tokens stay valid a little after the hour so nobody is cut off mid-sentence.
 const GRACE_SECONDS = 5 * 60;
+const USAGE_TTL_MS = 5 * 60_000;
+const PAGE = 100;
+const MAX_PAGES = 50;
 
 type Join = {
   success: boolean;
@@ -30,6 +36,42 @@ async function daily(key: string, path: string, init: RequestInit = {}): Promise
     ...init,
     headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', ...(init.headers ?? {}) },
   });
+}
+
+let usage: { at: number; month: number; minutes: number } | null = null;
+
+/** Participant minutes used since the start of this month, from Daily's meeting list (checked every 5 minutes). */
+async function minutesThisMonth(key: string): Promise<number> {
+  const now = new Date();
+  const month = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1) / 1000;
+  if (usage && usage.month === month && Date.now() - usage.at < USAGE_TTL_MS) return usage.minutes;
+  let seconds = 0;
+  let after = '';
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const res = await daily(
+      key,
+      `/meetings?timeframe_start=${month}&limit=${PAGE}${after && `&starting_after=${after}`}`,
+    );
+    if (!res.ok) throw new Error(`daily meetings ${res.status}`);
+    const { data } = (await res.json()) as { data: { id: string; participants?: { duration?: number }[] }[] };
+    for (const m of data) for (const p of m.participants ?? []) seconds += p.duration ?? 0;
+    if (data.length < PAGE) break;
+    after = data[data.length - 1].id;
+  }
+  usage = { at: Date.now(), month, minutes: Math.ceil(seconds / 60) };
+  return usage.minutes;
+}
+
+/** True when the monthly cap is set and reached. If Daily can't be asked, people still get in (logged). */
+async function overCap(key: string): Promise<boolean> {
+  const cap = Number(env('DAILY_MONTHLY_MINUTES') ?? '');
+  if (!(cap > 0)) return false;
+  try {
+    return (await minutesThisMonth(key)) >= cap;
+  } catch (e) {
+    console.error('room-join usage', e);
+    return false;
+  }
 }
 
 /** The session's room: reused if it exists, otherwise created private, capped and expiring with the session. */
@@ -101,6 +143,14 @@ Deno.serve(async (req) => {
     if (error) throw new Error(`room_join: ${error.message}`);
     const j = data as Join;
     if (!j.success) return fail(req, 403, 'NOT_ALLOWED', j.error ?? 'You can’t join this room.');
+
+    if (await overCap(key))
+      return fail(
+        req,
+        503,
+        'VIDEO_LIMIT',
+        'Video rooms have used this month’s minutes. Please let the MeetDoConnect team know.',
+      );
 
     const exp = Math.floor(new Date(j.ends_at).getTime() / 1000) + GRACE_SECONDS;
     const room = `mdc-${sessionId}`;

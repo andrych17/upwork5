@@ -371,4 +371,28 @@ Deno.test('room-join creates the Daily room once and gives a token only to peopl
   const refused = await call(handler, { session_id: session });
   assert(refused.status === 403 && (await refused.json()).error.message.includes('seat'), 'database says no');
   assert(!calls.some((c) => c.url.host === 'api.daily.co'), 'no Daily call when refused');
+
+  // Monthly cap: Daily's meeting list is summed per participant; at the cap nobody new gets a token.
+  Deno.env.set('DAILY_MONTHLY_MINUTES', '100');
+  const capped = await load('../room-join/index.ts?cap');
+  allowed = true;
+  let used = 90 * 60;
+  const base = answer;
+  answer = (c) => {
+    if (c.url.host === 'api.daily.co' && c.url.pathname === '/v1/meetings') {
+      const start = Number(c.url.searchParams.get('timeframe_start'));
+      assert(start > 0 && new Date(start * 1000).getUTCDate() === 1, 'counts from the 1st of the month');
+      return json({ data: [{ id: 'm1', participants: [{ duration: used / 2 }, { duration: used / 2 }] }] });
+    }
+    return base(c);
+  };
+  assert((await call(capped, { session_id: session })).status === 200, 'under the cap: joins');
+  used = 100 * 60;
+  assert((await call(capped, { session_id: session })).status === 200, 'usage is cached for a few minutes');
+  const fresh = await load('../room-join/index.ts?cap2');
+  calls = [];
+  const full = await call(fresh, { session_id: session });
+  assert(full.status === 503 && (await full.json()).error.code === 'VIDEO_LIMIT', 'at the cap: no new tokens');
+  assert(!calls.some((c) => c.url.pathname === '/v1/meeting-tokens'), 'no token at the cap');
+  Deno.env.delete('DAILY_MONTHLY_MINUTES');
 });

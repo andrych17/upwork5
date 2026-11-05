@@ -4,14 +4,18 @@
 // window and the Hello Video, then returns a private Daily room and a token for this person. Video runs on
 // Daily's call object (daily-js) inside the board's own layout: tiles, the activity guide, Safety (mute
 // someone just for you, report privately to the admins) and Leave, which goes on to Buddy picks.
+// Trivia, Trivier, Triviest sessions also get Kelly's board game next to a smaller strip of videos.
 import type { DailyCall, DailyParticipant } from '@daily-co/daily-js';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import TriviaRoom, { leaveTrivia } from '@/components/games/trivia-room';
+import { useAccount } from '@/lib/account';
 import { callEdge } from '@/lib/edge';
 import { loadRoomPrefs } from '@/lib/media';
 import { catalogFor, fetchRoom, type Room } from '@/lib/rooms';
 import { getSupabase } from '@/lib/supabase';
+import { TRIVIA_SLUG } from '@/lib/trivia';
 import { useQueryParam } from '@/lib/use-query';
 
 interface Person {
@@ -106,6 +110,7 @@ function Media({ track, kind, muted }: { track: MediaStreamTrack | null; kind: '
 export default function LiveRoomPage() {
   const router = useRouter();
   const slug = useQueryParam('s');
+  const { account } = useAccount();
   const [phase, setPhase] = useState<Phase>('loading');
   const [error, setError] = useState('');
   const [room, setRoom] = useState<Room | null>(null);
@@ -163,9 +168,20 @@ export default function LiveRoomPage() {
       ] as const)
         c.on(ev, refresh);
       c.on('active-speaker-change', (e) => setSpeaker(e?.activeSpeaker?.peerId ?? ''));
-      c.on('left-meeting', () => alive && router.push(`/after-session?s=${encodeURIComponent(slug)}`));
+      // Daily ends the meeting after a fatal error and then sends left-meeting: stay on the message instead of
+      // going on to Buddy picks as if the person had left.
+      let failed = false;
+      c.on('left-meeting', () => alive && !failed && router.push(`/after-session?s=${encodeURIComponent(slug)}`));
       c.on('error', (e) => {
-        setError(e?.errorMsg?.includes('exp') ? 'This session has ended.' : 'The video connection dropped.');
+        failed = true;
+        const why = `${e?.errorMsg ?? ''} ${e?.error?.type ?? ''}`;
+        setError(
+          why.includes('payment-method')
+            ? 'Video isn’t switched on for this site yet: the Daily account needs a card on file (Daily → Billing). Please let the MeetDoConnect team know.'
+            : why.includes('exp')
+              ? 'This session has ended.'
+              : 'The video connection dropped.',
+        );
         setPhase('error');
       });
       try {
@@ -179,7 +195,7 @@ export default function LiveRoomPage() {
         refresh();
         setPhase('in');
       } catch {
-        if (!alive) return;
+        if (!alive || failed) return;
         setError('The camera or microphone didn’t start, or the connection failed. Check them and try again.');
         setPhase('error');
       }
@@ -204,7 +220,9 @@ export default function LiveRoomPage() {
   const starts = info ? new Date(info.starts_at).getTime() : 0;
   const locked = info ? now > new Date(info.locks_at).getTime() : false;
   const wrapUp = ends > 0 && now > 0 && ends > now && ends - now <= WRAP_UP_MINUTES * 60_000;
-  const plan = steps(room ? catalogFor(room)?.run : undefined, room?.minutes ?? 60);
+  const catalog = room ? catalogFor(room) : undefined;
+  const plan = steps(catalog?.run, room?.minutes ?? 60);
+  const trivia = catalog?.slug === TRIVIA_SLUG && phase !== 'loading' && room && account ? room.id : null;
   const elapsedMin = now && starts ? (now - starts) / 60_000 : 0;
   const currentIdx = plan.findIndex((s) => elapsedMin >= s.start && elapsedMin < s.start + s.minutes);
   const current = plan[currentIdx];
@@ -218,6 +236,7 @@ export default function LiveRoomPage() {
     setReportError('');
   };
   const leave = async () => {
+    if (trivia) leaveTrivia(trivia);
     const c = call.current;
     if (c) await c.leave();
     else router.push(slug ? `/after-session?s=${encodeURIComponent(slug)}` : '/sessions');
@@ -264,6 +283,45 @@ export default function LiveRoomPage() {
     );
   }
 
+  const videos = (
+    <section className="video-grid" aria-label="Room participants">
+      {phase !== 'in' && (
+        <article className="video-tile">
+          <div className="tile-fallback">
+            <span>…</span>
+          </div>
+          <div className="tile-bottom">
+            <strong>Joining the room</strong>
+          </div>
+        </article>
+      )}
+      {[...(me ? [me] : []), ...others].map((t) => {
+        const muted = mutedPeople.includes(t.userId);
+        const photo = person(t.userId)?.avatar_url;
+        return (
+          <article className={`video-tile ${t.key === speaker && !t.local ? 'speaking' : ''}`} key={t.key}>
+            {t.video && t.videoOn ? (
+              <Media track={t.video} kind="video" />
+            ) : photo ? (
+              <img src={photo} alt="" />
+            ) : (
+              <div className="tile-fallback">
+                <span>{t.name.charAt(0).toUpperCase()}</span>
+              </div>
+            )}
+            {!t.local && <Media track={t.audio} kind="audio" muted={muted} />}
+            <div className="tile-bottom">
+              <strong>{t.local ? `You · ${info?.name ?? ''}` : t.name}</strong>
+              <span>
+                {muted ? 'Muted by you' : !t.audioOn ? 'Mic off' : t.key === speaker ? 'Speaking' : 'Listening'}
+              </span>
+            </div>
+          </article>
+        );
+      })}
+    </section>
+  );
+
   return (
     <main className="live-room-page">
       <header className="live-topbar">
@@ -282,42 +340,14 @@ export default function LiveRoomPage() {
       </header>
 
       <div className="live-layout">
-        <section className="video-grid" aria-label="Room participants">
-          {phase !== 'in' && (
-            <article className="video-tile">
-              <div className="tile-fallback">
-                <span>…</span>
-              </div>
-              <div className="tile-bottom">
-                <strong>Joining the room</strong>
-              </div>
-            </article>
-          )}
-          {[...(me ? [me] : []), ...others].map((t) => {
-            const muted = mutedPeople.includes(t.userId);
-            const photo = person(t.userId)?.avatar_url;
-            return (
-              <article className={`video-tile ${t.key === speaker && !t.local ? 'speaking' : ''}`} key={t.key}>
-                {t.video && t.videoOn ? (
-                  <Media track={t.video} kind="video" />
-                ) : photo ? (
-                  <img src={photo} alt="" />
-                ) : (
-                  <div className="tile-fallback">
-                    <span>{t.name.charAt(0).toUpperCase()}</span>
-                  </div>
-                )}
-                {!t.local && <Media track={t.audio} kind="audio" muted={muted} />}
-                <div className="tile-bottom">
-                  <strong>{t.local ? `You · ${info?.name ?? ''}` : t.name}</strong>
-                  <span>
-                    {muted ? 'Muted by you' : !t.audioOn ? 'Mic off' : t.key === speaker ? 'Speaking' : 'Listening'}
-                  </span>
-                </div>
-              </article>
-            );
-          })}
-        </section>
+        {trivia ? (
+          <div className="trivia-main">
+            {videos}
+            <TriviaRoom sessionId={trivia} me={account?.id ?? ''} />
+          </div>
+        ) : (
+          videos
+        )}
 
         <aside className="room-guide">
           <div className="current-prompt">

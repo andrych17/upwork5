@@ -9,6 +9,8 @@
 @import './tweaks.css';
 /* Word Rush and Slow Chess made playable: vs the computer, solo, or with a buddy by link. */
 @import './games.css';
+/* Trivia, Trivier, Triviest board game inside the live room. */
+@import './trivia.css';
 /* Reminders page and the Calendar reminders bar. */
 @import './reminders.css';
 /* Hello Video recorder and its Membership card. */

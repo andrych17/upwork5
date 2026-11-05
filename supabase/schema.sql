@@ -3484,3 +3484,253 @@ $$;
 
 revoke execute on function admin_list_bookings(text, text, text, timestamptz, timestamptz, boolean, int, int) from public, anon;
 grant execute on function admin_list_bookings(text, text, text, timestamptz, timestamptz, boolean, int, int) to authenticated;
+
+-- ========================================================================
+-- 31. Trivia, Trivier, Triviest (Kelly's board game from the 25 Oct zip, wired in 5 Nov). One game per Trivia
+-- session, played in the live room next to the video. Every move runs in the trivia-act Edge Function with Kelly's
+-- engine (functions/_shared/trivia.js), so the page never sees an answer and nobody can move for someone else.
+-- Members read only their own session's public game state. Questions with answers, the hidden choice order and the
+-- random seed are for the server only (no member policy on purpose).
+-- ========================================================================
+create table if not exists trivia_categories (
+  id text primary key,
+  name text not null,
+  color text not null default '#888888' check (color ~ '^#[0-9A-Fa-f]{6}$'),
+  sort int not null default 0
+);
+
+create table if not exists trivia_questions (
+  id text primary key,
+  cat text not null references trivia_categories(id) on update cascade,
+  q text not null,
+  a text not null,
+  wrong text[] not null check (array_length(wrong, 1) between 2 and 5),
+  note text,
+  source text,
+  active boolean not null default true,
+  added_at timestamptz not null default now()
+);
+create unique index if not exists uq_trivia_questions_text on trivia_questions (lower(q));
+
+-- state = the engine's game JSON without q.order and rng (they would reveal answers); card = the open question as
+-- every player sees it (text and choices in display order, no answer). rev guards against two moves at once.
+create table if not exists trivia_rooms (
+  session_id uuid primary key references sessions(id) on delete cascade,
+  state jsonb not null,
+  card jsonb,
+  rev int not null default 0,
+  updated_at timestamptz not null default now()
+);
+
+-- { "order": [...] or null, "rng": int }: kept apart so it is never readable or sent over live updates.
+create table if not exists trivia_room_secrets (
+  session_id uuid primary key references trivia_rooms(session_id) on delete cascade,
+  secret jsonb not null default '{}'::jsonb
+);
+
+alter table trivia_categories enable row level security;
+alter table trivia_questions enable row level security;
+alter table trivia_rooms enable row level security;
+alter table trivia_room_secrets enable row level security;
+
+revoke all on trivia_categories, trivia_questions, trivia_rooms, trivia_room_secrets from anon, authenticated;
+grant select on trivia_rooms to authenticated;
+-- Admins manage the question set (a Questions page can come later); members get no policy on either table.
+grant select, insert, update, delete on trivia_categories, trivia_questions to authenticated;
+
+drop policy if exists trivia_categories_admin on trivia_categories;
+create policy trivia_categories_admin on trivia_categories for all to authenticated
+  using (is_admin()) with check (is_admin());
+drop policy if exists trivia_questions_admin on trivia_questions;
+create policy trivia_questions_admin on trivia_questions for all to authenticated
+  using (is_admin()) with check (is_admin());
+-- A room is visible to the people with a seat in that session (and admins), the same people the video room lets in.
+drop policy if exists trivia_rooms_read on trivia_rooms;
+create policy trivia_rooms_read on trivia_rooms for select to authenticated
+  using (is_admin() or exists (
+    select 1 from bookings b
+    where b.session_id = trivia_rooms.session_id and b.user_id = auth.uid()
+      and b.status in ('confirmed', 'attended') and not b.held));
+
+-- Who may play a session's game: whoever room_join lets into the video room (seat, approved Hello Video, account
+-- active), from 5 minutes before the start until the end. Admins can always play. Returns the player's first name.
+create or replace function trivia_seat(p_user uuid, p_session uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_cfg app_config%rowtype;
+  v_me profiles%rowtype;
+  v_s sessions%rowtype;
+begin
+  select * into v_cfg from app_config where id = 1;
+  select * into v_me from profiles where id = p_user;
+  if not found or v_me.disabled_at is not null then
+    return jsonb_build_object('success', false, 'error', 'This account can’t play. Please contact us.');
+  end if;
+  select * into v_s from sessions where id = p_session;
+  if not found or (not v_s.published and not v_me.is_admin) then
+    return jsonb_build_object('success', false, 'error', 'This session was not found.');
+  end if;
+  if coalesce(v_s.slug, '') not like 'trivia-trivier-triviest%' then
+    return jsonb_build_object('success', false, 'error', 'This session has no trivia game.');
+  end if;
+  if now() < v_s.starts_at - interval '5 minutes' then
+    return jsonb_build_object('success', false, 'error', 'The game opens with the room, 5 minutes before the start.');
+  elsif now() >= v_s.starts_at + make_interval(mins => v_s.minutes) then
+    return jsonb_build_object('success', false, 'error', 'This session has ended.');
+  end if;
+  if not v_me.is_admin then
+    if not exists (select 1 from bookings where session_id = p_session and user_id = p_user
+                   and status in ('confirmed', 'attended') and not held) then
+      return jsonb_build_object('success', false, 'error', 'You don’t have a seat in this session.');
+    end if;
+    if v_cfg.require_hello_video and v_me.hello_status <> 'approved' then
+      return jsonb_build_object('success', false, 'error', 'Rooms open for you once your Hello Video is approved.');
+    end if;
+  end if;
+  return jsonb_build_object('success', true, 'name', coalesce(nullif(trim(v_me.first_name), ''), 'Member'));
+end;
+$$;
+
+-- Saves one move in one step: the public state and card, then the hidden part. p_rev = -1 creates the room;
+-- otherwise p_rev must still be the row's rev, or nothing is saved and false comes back (the function retries).
+create or replace function trivia_save(p_session uuid, p_rev int, p_state jsonb, p_card jsonb, p_secret jsonb)
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if p_rev < 0 then
+    insert into trivia_rooms (session_id, state, card, rev) values (p_session, p_state, p_card, 0)
+    on conflict (session_id) do nothing;
+  else
+    update trivia_rooms set state = p_state, card = p_card, rev = rev + 1, updated_at = now()
+    where session_id = p_session and rev = p_rev;
+  end if;
+  if not found then
+    return false;
+  end if;
+  insert into trivia_room_secrets (session_id, secret) values (p_session, coalesce(p_secret, '{}'::jsonb))
+  on conflict (session_id) do update set secret = excluded.secret;
+  return true;
+end;
+$$;
+
+revoke execute on function trivia_seat(uuid, uuid) from public, anon, authenticated;
+revoke execute on function trivia_save(uuid, int, jsonb, jsonb, jsonb) from public, anon, authenticated;
+grant execute on function trivia_seat(uuid, uuid) to service_role;
+grant execute on function trivia_save(uuid, int, jsonb, jsonb, jsonb) to service_role;
+
+do $$
+begin
+  if exists (select 1 from pg_publication where pubname = 'supabase_realtime')
+     and not exists (select 1 from pg_publication_tables
+                     where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'trivia_rooms') then
+    alter publication supabase_realtime add table trivia_rooms;
+  end if;
+end $$;
+
+-- Kelly's 89 starter questions (6 categories). Re-running keeps any edits made since (on conflict do nothing).
+insert into trivia_categories (id, name, color, sort) values
+  ('geo', 'Geography', '#2E86AB', 1),
+  ('hist', 'History', '#C1666B', 2),
+  ('sci', 'Science & Nature', '#3A9D5D', 3),
+  ('arts', 'Arts & Books', '#8E5BA8', 4),
+  ('play', 'Sports & Games', '#E08E2B', 5),
+  ('food', 'Food & Everyday Life', '#D2B13C', 6)
+on conflict do nothing;
+insert into trivia_questions (id, cat, q, a, wrong, note, source) values
+  ('geo-01', 'geo', 'What is the capital of Australia?', 'Canberra', array['Sydney', 'Melbourne', 'Perth'], 'Sydney is bigger, but Canberra was built to be the capital.', 'Starter question written for this project; check before relying on it'),
+  ('geo-02', 'geo', 'Which is the longest river in Africa?', 'The Nile', array['The Congo', 'The Niger', 'The Zambezi'], null, 'Starter question written for this project; check before relying on it'),
+  ('geo-03', 'geo', 'Which country has the most natural lakes?', 'Canada', array['Russia', 'The United States', 'Finland'], null, 'Starter question written for this project; check before relying on it'),
+  ('geo-04', 'geo', 'Mount Kilimanjaro is in which country?', 'Tanzania', array['Kenya', 'Uganda', 'Ethiopia'], null, 'Starter question written for this project; check before relying on it'),
+  ('geo-05', 'geo', 'Which is the smallest country in the world by area?', 'Vatican City', array['Monaco', 'San Marino', 'Liechtenstein'], null, 'Starter question written for this project; check before relying on it'),
+  ('geo-06', 'geo', 'Which is the largest ocean?', 'The Pacific', array['The Atlantic', 'The Indian', 'The Arctic'], null, 'Starter question written for this project; check before relying on it'),
+  ('geo-07', 'geo', 'What is the capital of Canada?', 'Ottawa', array['Toronto', 'Montreal', 'Vancouver'], null, 'Starter question written for this project; check before relying on it'),
+  ('geo-08', 'geo', 'On which continent is the Sahara Desert?', 'Africa', array['Asia', 'Australia', 'South America'], null, 'Starter question written for this project; check before relying on it'),
+  ('geo-09', 'geo', 'Which US state is the largest by area?', 'Alaska', array['Texas', 'California', 'Montana'], null, 'Starter question written for this project; check before relying on it'),
+  ('geo-10', 'geo', 'Which river flows through Paris?', 'The Seine', array['The Thames', 'The Rhine', 'The Danube'], null, 'Starter question written for this project; check before relying on it'),
+  ('hist-01', 'hist', 'In which year did the Berlin Wall fall?', '1989', array['1979', '1985', '1991'], null, 'Starter question written for this project; check before relying on it'),
+  ('hist-02', 'hist', 'Who was the first President of the United States?', 'George Washington', array['John Adams', 'Thomas Jefferson', 'Benjamin Franklin'], 'Franklin was never President.', 'Starter question written for this project; check before relying on it'),
+  ('hist-03', 'hist', 'In which country were the Great Pyramids of Giza built?', 'Egypt', array['Mexico', 'Sudan', 'Iraq'], null, 'Starter question written for this project; check before relying on it'),
+  ('hist-04', 'hist', 'In which year did the Titanic sink?', '1912', array['1905', '1918', '1923'], null, 'Starter question written for this project; check before relying on it'),
+  ('hist-05', 'hist', 'Who was the first person to walk on the Moon?', 'Neil Armstrong', array['Buzz Aldrin', 'Yuri Gagarin', 'John Glenn'], 'Buzz Aldrin followed him onto the surface.', 'Starter question written for this project; check before relying on it'),
+  ('hist-06', 'hist', 'Which empire built the Colosseum in Rome?', 'The Roman Empire', array['The Greek Empire', 'The Ottoman Empire', 'The Persian Empire'], null, 'Starter question written for this project; check before relying on it'),
+  ('hist-07', 'hist', 'In which year was the US Declaration of Independence adopted?', '1776', array['1783', '1789', '1765'], null, 'Starter question written for this project; check before relying on it'),
+  ('hist-08', 'hist', 'Which English king sealed the Magna Carta in 1215?', 'King John', array['Henry VIII', 'Richard I', 'Edward I'], null, 'Starter question written for this project; check before relying on it'),
+  ('hist-09', 'hist', 'Which ship carried the Pilgrims to Plymouth in 1620?', 'The Mayflower', array['The Santa Maria', 'The Endeavour', 'The Beagle'], null, 'Starter question written for this project; check before relying on it'),
+  ('hist-10', 'hist', 'In which year did World War II end?', '1945', array['1939', '1942', '1950'], null, 'Starter question written for this project; check before relying on it'),
+  ('sci-01', 'sci', 'What is the chemical symbol for gold?', 'Au', array['Ag', 'Gd', 'Go'], 'From the Latin word aurum.', 'Starter question written for this project; check before relying on it'),
+  ('sci-02', 'sci', 'Which planet is closest to the Sun?', 'Mercury', array['Venus', 'Mars', 'Earth'], null, 'Starter question written for this project; check before relying on it'),
+  ('sci-03', 'sci', 'How many bones does an adult human body have?', '206', array['180', '212', '250'], null, 'Starter question written for this project; check before relying on it'),
+  ('sci-04', 'sci', 'Which gas do plants take in for photosynthesis?', 'Carbon dioxide', array['Oxygen', 'Nitrogen', 'Hydrogen'], null, 'Starter question written for this project; check before relying on it'),
+  ('sci-05', 'sci', 'What is the largest mammal on Earth?', 'The blue whale', array['The African elephant', 'The giraffe', 'The polar bear'], null, 'Starter question written for this project; check before relying on it'),
+  ('sci-06', 'sci', 'At what temperature in Celsius does water boil at sea level?', '100', array['90', '110', '212'], '212 is the Fahrenheit figure.', 'Starter question written for this project; check before relying on it'),
+  ('sci-07', 'sci', 'What is the hardest natural substance?', 'Diamond', array['Quartz', 'Steel', 'Granite'], null, 'Starter question written for this project; check before relying on it'),
+  ('sci-08', 'sci', 'Which planet is known as the Red Planet?', 'Mars', array['Jupiter', 'Mercury', 'Saturn'], null, 'Starter question written for this project; check before relying on it'),
+  ('sci-09', 'sci', 'In which part of a plant cell does photosynthesis happen?', 'The chloroplast', array['The nucleus', 'The mitochondrion', 'The ribosome'], null, 'Starter question written for this project; check before relying on it'),
+  ('sci-10', 'sci', 'How many legs does an insect have?', 'Six', array['Four', 'Eight', 'Ten'], 'Spiders have eight and are not insects.', 'Starter question written for this project; check before relying on it'),
+  ('arts-01', 'arts', 'Who painted the Mona Lisa?', 'Leonardo da Vinci', array['Michelangelo', 'Raphael', 'Vincent van Gogh'], null, 'Starter question written for this project; check before relying on it'),
+  ('arts-02', 'arts', 'Who wrote the novel Pride and Prejudice?', 'Jane Austen', array['Charlotte Bronte', 'Emily Bronte', 'George Eliot'], null, 'Starter question written for this project; check before relying on it'),
+  ('arts-03', 'arts', 'Who wrote the play Romeo and Juliet?', 'William Shakespeare', array['Christopher Marlowe', 'Charles Dickens', 'Oscar Wilde'], null, 'Starter question written for this project; check before relying on it'),
+  ('arts-04', 'arts', 'Who painted The Starry Night?', 'Vincent van Gogh', array['Claude Monet', 'Pablo Picasso', 'Paul Cezanne'], null, 'Starter question written for this project; check before relying on it'),
+  ('arts-05', 'arts', 'How many strings does a standard violin have?', 'Four', array['Five', 'Six', 'Three'], null, 'Starter question written for this project; check before relying on it'),
+  ('arts-06', 'arts', 'Who wrote The Hobbit?', 'J. R. R. Tolkien', array['C. S. Lewis', 'Roald Dahl', 'J. K. Rowling'], null, 'Starter question written for this project; check before relying on it'),
+  ('arts-07', 'arts', 'In which city is the Louvre museum?', 'Paris', array['London', 'Rome', 'Madrid'], null, 'Starter question written for this project; check before relying on it'),
+  ('arts-08', 'arts', 'Which composer wrote the Fifth Symphony that begins da-da-da-DUM?', 'Ludwig van Beethoven', array['Wolfgang Mozart', 'Johann Bach', 'Franz Schubert'], null, 'Starter question written for this project; check before relying on it'),
+  ('arts-09', 'arts', 'How many keys does a standard piano have?', '88', array['76', '92', '100'], null, 'Starter question written for this project; check before relying on it'),
+  ('arts-10', 'arts', 'Who wrote the novel Moby-Dick?', 'Herman Melville', array['Mark Twain', 'Nathaniel Hawthorne', 'Jack London'], null, 'Starter question written for this project; check before relying on it'),
+  ('play-01', 'play', 'How many players from one team are on the field in soccer?', '11', array['9', '10', '12'], null, 'Starter question written for this project; check before relying on it'),
+  ('play-02', 'play', 'How often are the Summer Olympic Games held?', 'Every 4 years', array['Every 2 years', 'Every 3 years', 'Every 5 years'], null, 'Starter question written for this project; check before relying on it'),
+  ('play-03', 'play', 'In chess, which piece can only move diagonally?', 'The bishop', array['The rook', 'The knight', 'The queen'], null, 'Starter question written for this project; check before relying on it'),
+  ('play-04', 'play', 'Which sport is played at Wimbledon?', 'Tennis', array['Cricket', 'Golf', 'Badminton'], null, 'Starter question written for this project; check before relying on it'),
+  ('play-05', 'play', 'How many points is a touchdown worth in American football, before the extra point?', '6', array['3', '7', '5'], null, 'Starter question written for this project; check before relying on it'),
+  ('play-06', 'play', 'How many cards are in a standard deck, without jokers?', '52', array['48', '54', '56'], null, 'Starter question written for this project; check before relying on it'),
+  ('play-07', 'play', 'How many holes are played in a full round of golf?', '18', array['9', '12', '24'], null, 'Starter question written for this project; check before relying on it'),
+  ('play-08', 'play', 'Which country hosted the 2016 Summer Olympics?', 'Brazil', array['China', 'Greece', 'Australia'], 'In Rio de Janeiro.', 'Starter question written for this project; check before relying on it'),
+  ('play-09', 'play', 'Which sport uses a shuttlecock?', 'Badminton', array['Squash', 'Table tennis', 'Lacrosse'], null, 'Starter question written for this project; check before relying on it'),
+  ('play-10', 'play', 'How many squares are on a chessboard?', '64', array['49', '81', '72'], null, 'Starter question written for this project; check before relying on it'),
+  ('food-01', 'food', 'What is the main ingredient of guacamole?', 'Avocado', array['Cucumber', 'Pea', 'Lime'], 'Lime is in it, but avocado is the base.', 'Starter question written for this project; check before relying on it'),
+  ('food-02', 'food', 'Which country did sushi come from?', 'Japan', array['China', 'Korea', 'Thailand'], null, 'Starter question written for this project; check before relying on it'),
+  ('food-03', 'food', 'The pasta called farfalle is named after which shape?', 'Butterflies', array['Little ears', 'Quills', 'Shells'], 'Often called bow-tie pasta.', 'Starter question written for this project; check before relying on it'),
+  ('food-04', 'food', 'Which spice is the most expensive by weight?', 'Saffron', array['Vanilla', 'Cinnamon', 'Paprika'], 'Vanilla is a close second.', 'Starter question written for this project; check before relying on it'),
+  ('food-05', 'food', 'Which ingredient makes bread dough rise?', 'Yeast', array['Salt', 'Sugar', 'Flour'], null, 'Starter question written for this project; check before relying on it'),
+  ('food-06', 'food', 'What is tofu made from?', 'Soybeans', array['Rice', 'Chickpeas', 'Wheat'], null, 'Starter question written for this project; check before relying on it'),
+  ('food-07', 'food', 'How many minutes are in one day?', '1,440', array['1,200', '1,000', '2,400'], null, 'Starter question written for this project; check before relying on it'),
+  ('food-08', 'food', 'Which vitamin does your body make when skin is in sunlight?', 'Vitamin D', array['Vitamin C', 'Vitamin A', 'Vitamin B12'], null, 'Starter question written for this project; check before relying on it'),
+  ('food-09', 'food', 'Gouda cheese is named after a town in which country?', 'The Netherlands', array['Switzerland', 'France', 'Denmark'], null, 'Starter question written for this project; check before relying on it'),
+  ('food-10', 'food', 'Which nut is the main ingredient of marzipan?', 'Almond', array['Walnut', 'Peanut', 'Cashew'], null, 'Starter question written for this project; check before relying on it'),
+  ('hist-11', 'hist', 'What was the first state of the United States?', 'Delaware', array['Virginia', 'Massachusetts', 'New York'], 'Delaware was the first state to ratify the Constitution, in 1787.', 'Question idea supplied by the site owner; category and wrong answers added by Claude. Check before relying on it.'),
+  ('play-11', 'play', 'In basketball, how many players from each team are on the court at the same time?', 'Five', array['Four', 'Six', 'Seven'], null, 'Question idea supplied by the site owner; category and wrong answers added by Claude. Check before relying on it.'),
+  ('play-12', 'play', 'How many dots are there in total on a pair of standard dice?', '42', array['21', '36', '48'], 'Each die has 21 dots.', 'Question idea supplied by the site owner; category and wrong answers added by Claude. Check before relying on it.'),
+  ('food-11', 'food', 'Which company did Steve Jobs help start?', 'Apple', array['Microsoft', 'Amazon', 'Google'], 'He co-founded Apple in 1976.', 'Question idea supplied by the site owner; category and wrong answers added by Claude. Check before relying on it.'),
+  ('geo-11', 'geo', 'Which is the largest country in the world by area?', 'Russia', array['Canada', 'China', 'The United States'], null, 'Question idea supplied by the site owner; category and wrong answers added by Claude. Check before relying on it.'),
+  ('sci-11', 'sci', 'What is the largest organ of the human body?', 'The skin', array['The liver', 'The heart', 'The lungs'], null, 'Question idea supplied by the site owner; category and wrong answers added by Claude. Check before relying on it.'),
+  ('hist-12', 'hist', 'In what year was Joe Biden elected president?', '2020', array['2016', '2018', '2022'], null, 'Question idea supplied by the site owner; category and wrong answers added by Claude. Check before relying on it.'),
+  ('geo-12', 'geo', 'In which city can you find the Eiffel Tower?', 'Paris', array['Rome', 'London', 'Brussels'], null, 'Question idea supplied by the site owner; category and wrong answers added by Claude. Check before relying on it.'),
+  ('geo-13', 'geo', 'Which of these is one of the five Great Lakes?', 'Lake Huron', array['Lake Tahoe', 'Lake Victoria', 'Lake Baikal'], 'The five are Superior, Michigan, Huron, Erie and Ontario.', 'Question idea supplied by the site owner; category and wrong answers added by Claude. Check before relying on it.'),
+  ('food-12', 'food', 'Which fast-food chain is known for its golden arches?', 'McDonald''s', array['Burger King', 'Wendy''s', 'Taco Bell'], null, 'Question idea supplied by the site owner; category and wrong answers added by Claude. Check before relying on it.'),
+  ('food-13', 'food', 'For how many nights is Hanukkah celebrated?', 'Eight', array['Seven', 'Ten', 'Twelve'], null, 'Question idea supplied by the site owner; category and wrong answers added by Claude. Check before relying on it.'),
+  ('sci-12', 'sci', 'In which galaxy is our solar system?', 'The Milky Way', array['Andromeda', 'Triangulum', 'Whirlpool'], null, 'Question idea supplied by the site owner; category and wrong answers added by Claude. Check before relying on it.'),
+  ('hist-13', 'hist', 'Where did the ancient Olympic Games begin?', 'Greece', array['Italy', 'Egypt', 'Turkey'], null, 'Question idea supplied by the site owner; category and wrong answers added by Claude. Check before relying on it.'),
+  ('hist-14', 'hist', 'How many wives did King Henry VIII have?', 'Six', array['Four', 'Five', 'Eight'], null, 'Question idea supplied by the site owner; category and wrong answers added by Claude. Check before relying on it.'),
+  ('geo-14', 'geo', 'In which country is the world''s tallest building?', 'The United Arab Emirates', array['Saudi Arabia', 'China', 'The United States'], 'The Burj Khalifa, in Dubai.', 'Question idea supplied by the site owner; category and wrong answers added by Claude. Check before relying on it.'),
+  ('sci-13', 'sci', 'How many stars are in our solar system?', 'One', array['Two', 'Eight', 'Nine'], 'Just one: the Sun.', 'Question idea supplied by the site owner; category and wrong answers added by Claude. Check before relying on it.'),
+  ('sci-14', 'sci', 'What is a group of crows called?', 'A murder', array['A parliament', 'A pride', 'A gaggle'], null, 'Question idea supplied by the site owner; category and wrong answers added by Claude. Check before relying on it.'),
+  ('geo-15', 'geo', 'Which country has the largest population?', 'India', array['China', 'The United States', 'Indonesia'], null, 'Question idea supplied by the site owner; category and wrong answers added by Claude. Check before relying on it.'),
+  ('geo-16', 'geo', 'About how many miles is the Earth''s circumference at the equator?', '24,901', array['12,450', '18,500', '31,400'], null, 'Question idea supplied by the site owner; category and wrong answers added by Claude. Check before relying on it.'),
+  ('sci-15', 'sci', 'How many bones does a shark have?', 'None', array['50', '100', '206'], 'Its skeleton is made of cartilage.', 'Question idea supplied by the site owner; category and wrong answers added by Claude. Check before relying on it.'),
+  ('sci-16', 'sci', 'A group of which jungle animal is called an ambush?', 'Tiger', array['Lion', 'Gorilla', 'Elephant'], null, 'Question idea supplied by the site owner; category and wrong answers added by Claude. Check before relying on it.'),
+  ('arts-11', 'arts', 'Which potion grants good luck in Harry Potter and the Half-Blood Prince?', 'Felix Felicis', array['Polyjuice Potion', 'Veritaserum', 'Amortentia'], null, 'Question idea supplied by the site owner; category and wrong answers added by Claude. Check before relying on it.'),
+  ('food-14', 'food', 'How many minutes are in one week?', '10,080', array['7,200', '8,640', '14,400'], null, 'Question idea supplied by the site owner; category and wrong answers added by Claude. Check before relying on it.'),
+  ('sci-17', 'sci', 'Which direction of travel usually makes jet lag worse?', 'Traveling east', array['Traveling west', 'North to south', 'They are exactly the same'], null, 'Question idea supplied by the site owner; category and wrong answers added by Claude. Check before relying on it.'),
+  ('hist-15', 'hist', 'Which country was the first to give women the right to vote in national elections?', 'New Zealand', array['The United States', 'Finland', 'Australia'], 'In 1893.', 'Question idea supplied by the site owner; category and wrong answers added by Claude. Check before relying on it.'),
+  ('sci-18', 'sci', 'What is cynophobia?', 'A fear of dogs', array['A fear of cats', 'A fear of heights', 'A fear of water'], null, 'Question idea supplied by the site owner; category and wrong answers added by Claude. Check before relying on it.'),
+  ('food-15', 'food', 'Which animal appears on the Porsche logo?', 'A horse', array['A bull', 'A lion', 'An eagle'], null, 'Question idea supplied by the site owner; category and wrong answers added by Claude. Check before relying on it.'),
+  ('hist-16', 'hist', 'Who was the first woman to fly solo across the Atlantic Ocean?', 'Amelia Earhart', array['Bessie Coleman', 'Jacqueline Cochran', 'Harriet Quimby'], 'In 1932.', 'Question idea supplied by the site owner; category and wrong answers added by Claude. Check before relying on it.'),
+  ('food-16', 'food', 'Which is closest to the average height of an adult man in the United States?', '5 feet 9 inches', array['5 feet 5 inches', '6 feet 0 inches', '6 feet 3 inches'], null, 'Question idea supplied by the site owner; category and wrong answers added by Claude. Check before relying on it.')
+on conflict do nothing;
