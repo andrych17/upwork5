@@ -3,16 +3,20 @@
 // works for that person, that room, and until the session ends.
 // POST { session_id } -> { url, token, title, slug, starts_at, ends_at, locks_at, name, camera_off, is_admin, people }
 // Needs DAILY_API_KEY (Daily dashboard -> Developers). Without it the function answers 503 NOT_CONFIGURED.
-// DAILY_MONTHLY_MINUTES (optional): participant minutes this calendar month (UTC) after which nobody new gets in,
-// so a test account stays inside Daily's free minutes. Set it a little under the allowance: minutes of calls still
-// running are only counted once they end.
-import { admin, body, caller, cors, env, fail, json } from '../_shared/http.ts';
+// DAILY_MONTHLY_MINUTES: participant minutes over the last 31 days after which nobody new gets a video token, so the
+// Daily account stays inside its free minutes (10,000 a month). Unset means DEFAULT_MINUTES_LIMIT; "0" turns it off.
+// Admin > Settings > Connections can set it too. If Daily's usage can't be read, nobody new gets in either.
+import { admin, body, caller, cors, env, fail, json, loadKeys } from '../_shared/http.ts';
 
 const DAILY = 'https://api.daily.co/v1';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // The room and tokens stay valid a little after the hour so nobody is cut off mid-sentence.
 const GRACE_SECONDS = 5 * 60;
+const DEFAULT_MINUTES_LIMIT = 8000;
+const WINDOW_DAYS = 31;
 const USAGE_TTL_MS = 5 * 60_000;
+// When Daily can't be asked, a reading this recent still counts; anything older and the room stays shut.
+const USAGE_STALE_MS = 60 * 60_000;
 const PAGE = 100;
 const MAX_PAGES = 50;
 
@@ -38,39 +42,53 @@ async function daily(key: string, path: string, init: RequestInit = {}): Promise
   });
 }
 
-let usage: { at: number; month: number; minutes: number } | null = null;
+let usage: { at: number; minutes: number } | null = null;
 
-/** Participant minutes used since the start of this month, from Daily's meeting list (checked every 5 minutes). */
-async function minutesThisMonth(key: string): Promise<number> {
-  const now = new Date();
-  const month = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1) / 1000;
-  if (usage && usage.month === month && Date.now() - usage.at < USAGE_TTL_MS) return usage.minutes;
+type Meeting = { id: string; ongoing?: boolean; participants?: { join_time?: number; duration?: number | null }[] };
+
+/**
+ * Participant minutes over the last 31 days, from Daily's meeting list (read again every 5 minutes). A rolling
+ * window covers whatever day Daily's billing month starts on. People still in a call count from when they joined.
+ */
+async function minutesUsed(key: string): Promise<number> {
+  if (usage && Date.now() - usage.at < USAGE_TTL_MS) return usage.minutes;
+  const now = Math.floor(Date.now() / 1000);
+  const since = now - WINDOW_DAYS * 86_400;
   let seconds = 0;
   let after = '';
-  for (let page = 0; page < MAX_PAGES; page++) {
+  for (let page = 0; ; page++) {
+    // Stopping early would undercount, so too many pages is treated like Daily not answering.
+    if (page === MAX_PAGES) throw new Error('daily meetings: too many pages');
     const res = await daily(
       key,
-      `/meetings?timeframe_start=${month}&limit=${PAGE}${after && `&starting_after=${after}`}`,
+      `/meetings?timeframe_start=${since}&limit=${PAGE}${after && `&starting_after=${after}`}`,
     );
     if (!res.ok) throw new Error(`daily meetings ${res.status}`);
-    const { data } = (await res.json()) as { data: { id: string; participants?: { duration?: number }[] }[] };
-    for (const m of data) for (const p of m.participants ?? []) seconds += p.duration ?? 0;
+    const { data } = (await res.json()) as { data: Meeting[] };
+    for (const m of data)
+      for (const p of m.participants ?? []) {
+        const live = m.ongoing && p.join_time ? now - p.join_time : 0;
+        seconds += Math.max(p.duration ?? 0, live, 0);
+      }
     if (data.length < PAGE) break;
     after = data[data.length - 1].id;
   }
-  usage = { at: Date.now(), month, minutes: Math.ceil(seconds / 60) };
+  usage = { at: Date.now(), minutes: Math.ceil(seconds / 60) };
   return usage.minutes;
 }
 
-/** True when the monthly cap is set and reached. If Daily can't be asked, people still get in (logged). */
-async function overCap(key: string): Promise<boolean> {
-  const cap = Number(env('DAILY_MONTHLY_MINUTES') ?? '');
-  if (!(cap > 0)) return false;
+/** Whether the minutes limit lets one more person in. */
+async function videoLimit(key: string): Promise<'ok' | 'full' | 'unknown'> {
+  const set = env('DAILY_MONTHLY_MINUTES');
+  const limit = set === undefined ? DEFAULT_MINUTES_LIMIT : Number(set);
+  if (!Number.isFinite(limit)) return 'unknown';
+  if (limit <= 0) return 'ok';
   try {
-    return (await minutesThisMonth(key)) >= cap;
+    return (await minutesUsed(key)) >= limit ? 'full' : 'ok';
   } catch (e) {
     console.error('room-join usage', e);
-    return false;
+    if (usage && Date.now() - usage.at < USAGE_STALE_MS) return usage.minutes >= limit ? 'full' : 'ok';
+    return 'unknown';
   }
 }
 
@@ -128,6 +146,7 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors(req) });
   if (req.method !== 'POST') return fail(req, 405, 'METHOD_NOT_ALLOWED', 'Use POST.');
 
+  await loadKeys();
   const key = env('DAILY_API_KEY');
   if (!key) return fail(req, 503, 'NOT_CONFIGURED', 'Live video rooms are not switched on yet.');
 
@@ -144,12 +163,20 @@ Deno.serve(async (req) => {
     const j = data as Join;
     if (!j.success) return fail(req, 403, 'NOT_ALLOWED', j.error ?? 'You can’t join this room.');
 
-    if (await overCap(key))
+    const limit = await videoLimit(key);
+    if (limit === 'full')
       return fail(
         req,
         503,
         'VIDEO_LIMIT',
-        'Video rooms have used this month’s minutes. Please let the MeetDoConnect team know.',
+        'Video rooms have used their minutes for now. Please let the MeetDoConnect team know.',
+      );
+    if (limit === 'unknown')
+      return fail(
+        req,
+        503,
+        'VIDEO_LIMIT_UNKNOWN',
+        'Video can’t check its minutes right now. Please try again in a minute.',
       );
 
     const exp = Math.floor(new Date(j.ends_at).getTime() / 1000) + GRACE_SECONDS;

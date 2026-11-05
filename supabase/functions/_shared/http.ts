@@ -28,8 +28,33 @@ export function fail(req: Request, status: number, code: string, message: string
   return json(req, { error: { code, message } }, status);
 }
 
+// Connections set in Admin > Settings (schema section 32) are kept encrypted in Vault. loadKeys() refreshes them at the
+// start of a request (at most once a minute); env() then prefers a stored value over the function secret of the same
+// name. Only names in service_key_list() are ever stored, so SUPABASE_*, CRON_SECRET and SITE_* stay function secrets.
+const KEYS_TTL_MS = 60_000;
+let stored = { at: 0, values: new Map<string, string>() };
+
+export async function loadKeys(): Promise<void> {
+  if (Date.now() - stored.at < KEYS_TTL_MS) return;
+  let values = stored.values;
+  try {
+    const { data, error } = await admin().rpc('service_keys');
+    if (error) throw error;
+    values = new Map((data as { name: string; value: string }[]).map((row) => [row.name, row.value]));
+  } catch (e) {
+    // Keep the last values read (none on a cold start), so the function secrets still apply.
+    console.error('service keys', e);
+  }
+  stored = { at: Date.now(), values };
+}
+
+/** Tests only: read the stored connections again on the next request. */
+export function forgetKeys(): void {
+  stored = { at: 0, values: new Map() };
+}
+
 export function env(name: string): string | undefined {
-  const value = Deno.env.get(name)?.trim();
+  const value = (stored.values.get(name) ?? Deno.env.get(name))?.trim();
   return value ? value : undefined;
 }
 

@@ -22,4 +22,5 @@ psql < tests/rooms.sql
 psql < tests/buddies.sql
 psql < tests/games.sql
 psql < tests/trivia.sql
+psql < tests/keys.sql
 echo "schema checks: ok"

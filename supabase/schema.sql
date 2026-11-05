@@ -3734,3 +3734,108 @@ insert into trivia_questions (id, cat, q, a, wrong, note, source) values
   ('hist-16', 'hist', 'Who was the first woman to fly solo across the Atlantic Ocean?', 'Amelia Earhart', array['Bessie Coleman', 'Jacqueline Cochran', 'Harriet Quimby'], 'In 1932.', 'Question idea supplied by the site owner; category and wrong answers added by Claude. Check before relying on it.'),
   ('food-16', 'food', 'Which is closest to the average height of an adult man in the United States?', '5 feet 9 inches', array['5 feet 5 inches', '6 feet 0 inches', '6 feet 3 inches'], null, 'Question idea supplied by the site owner; category and wrong answers added by Claude. Check before relying on it.')
 on conflict do nothing;
+
+-- 32. Connections (Andry, 5 Nov): API keys for Daily, Resend, Twilio and R2, kept encrypted in Supabase Vault and set
+-- from Admin > Settings. The browser can only write a value or see its last 4 characters (plain settings like the
+-- sender address are shown in full). Edge Functions read the values through service_keys(), which only the service
+-- role can call; a name with nothing stored here falls back to the function secret of the same name.
+create or replace function service_key_list()
+returns table (name text, secret boolean)
+language sql
+immutable
+as $$
+  values
+    ('DAILY_API_KEY', true), ('DAILY_MONTHLY_MINUTES', false),
+    ('RESEND_API_KEY', true), ('RESEND_FROM', false), ('REPLY_TO', false),
+    ('TWILIO_ACCOUNT_SID', false), ('TWILIO_AUTH_TOKEN', true), ('TWILIO_MESSAGING_SERVICE_SID', false),
+    ('TWILIO_FROM', false),
+    ('R2_ACCOUNT_ID', false), ('R2_ACCESS_KEY_ID', true), ('R2_SECRET_ACCESS_KEY', true), ('R2_BUCKET', false)
+$$;
+
+create or replace function admin_service_keys()
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+begin
+  if not is_admin() then
+    return jsonb_build_object('success', false, 'error', 'Only an admin can see connections.');
+  end if;
+  return jsonb_build_object('success', true, 'keys', coalesce((
+    select jsonb_agg(jsonb_build_object(
+      'name', l.name,
+      'secret', l.secret,
+      'set', d.id is not null,
+      'shown', case when d.id is null then null
+                    when not l.secret then d.decrypted_secret
+                    when length(d.decrypted_secret) >= 12 then right(d.decrypted_secret, 4)
+               end,
+      'updated_at', d.updated_at) order by l.ord)
+    from service_key_list() with ordinality as l(name, secret, ord)
+    left join vault.decrypted_secrets d on d.name = 'mdc:' || l.name), '[]'::jsonb));
+end;
+$$;
+
+-- An empty value removes the stored one (the function secret applies again). The log keeps the name, never the value.
+create or replace function admin_set_service_key(p_name text, p_value text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_secret boolean;
+  v_id uuid;
+  v text := btrim(coalesce(p_value, ''));
+begin
+  if not is_admin() then
+    return jsonb_build_object('success', false, 'error', 'Only an admin can change connections.');
+  end if;
+  select l.secret into v_secret from service_key_list() l where l.name = p_name;
+  if not found then
+    return jsonb_build_object('success', false, 'error', 'Unknown connection setting.');
+  end if;
+  if length(v) > 500 or v ~ '[[:cntrl:]]' or (v_secret and v ~ '\s') then
+    return jsonb_build_object('success', false, 'error', 'That value doesn’t look right. Paste it again without spaces.');
+  end if;
+  if p_name = 'DAILY_MONTHLY_MINUTES' and v <> '' and v !~ '^[0-9]{1,7}$' then
+    return jsonb_build_object('success', false, 'error', 'Enter whole minutes, like 8000.');
+  end if;
+
+  perform pg_advisory_xact_lock(hashtext('mdc:' || p_name));
+  select s.id into v_id from vault.secrets s where s.name = 'mdc:' || p_name;
+  if v = '' then
+    delete from vault.secrets where id = v_id;
+  elsif v_id is null then
+    perform vault.create_secret(v, 'mdc:' || p_name, 'MeetDoConnect, set in Admin > Settings');
+  else
+    perform vault.update_secret(v_id, v);
+  end if;
+
+  insert into admin_log (admin_id, action, details)
+  values (auth.uid(), case when v = '' then 'connection_cleared' else 'connection_set' end,
+          jsonb_build_object('name', p_name));
+  return jsonb_build_object('success', true);
+end;
+$$;
+
+create or replace function service_keys()
+returns table (name text, value text)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select l.name, d.decrypted_secret
+  from service_key_list() l
+  join vault.decrypted_secrets d on d.name = 'mdc:' || l.name;
+$$;
+
+revoke execute on function service_keys() from public, anon, authenticated;
+grant execute on function service_keys() to service_role;
+revoke execute on function admin_service_keys() from public, anon;
+revoke execute on function admin_set_service_key(text, text) from public, anon;
+grant execute on function admin_service_keys() to authenticated;
+grant execute on function admin_set_service_key(text, text) to authenticated;

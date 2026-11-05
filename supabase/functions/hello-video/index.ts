@@ -7,7 +7,7 @@
 //   approve false = record again (held bookings stay); approve false + release true = declined, held bookings are released
 // The browser sends the Supabase session token; supabase.functions.invoke does that.
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2';
-import { admin, body, caller, cors, fail, json } from '../_shared/http.ts';
+import { admin, body, caller, cors, fail, json, loadKeys } from '../_shared/http.ts';
 import { r2, type R2 } from '../_shared/r2.ts';
 
 const MAX_BYTES = 104_857_600; // 100 MB, same as the database check
@@ -126,6 +126,7 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors(req) });
   if (req.method !== 'POST') return fail(req, 405, 'METHOD_NOT_ALLOWED', 'Use POST.');
 
+  await loadKeys();
   const store = r2();
   if (!store) return fail(req, 503, 'NOT_CONFIGURED', 'Hello Video uploads are not set up yet.');
 

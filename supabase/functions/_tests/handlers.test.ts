@@ -3,9 +3,10 @@
 import { createECDH, randomBytes } from 'node:crypto';
 // @ts-types="npm:@types/web-push@3.6.4"
 import webpush from 'npm:web-push@3.6.7';
+import { forgetKeys } from '../_shared/http.ts';
 
 type Handler = (req: Request) => Response | Promise<Response>;
-type Call = { method: string; url: URL; body: string };
+type Call = { method: string; url: URL; body: string; auth: string | null };
 
 function assert(ok: unknown, label: string): asserts ok {
   if (!ok) throw new Error(label);
@@ -13,9 +14,17 @@ function assert(ok: unknown, label: string): asserts ok {
 
 let calls: Call[] = [];
 let answer: (call: Call) => Response = () => new Response('unexpected', { status: 599 });
+// What Admin > Settings has stored in Vault (schema section 32); read by loadKeys() through the service_keys RPC.
+let storedKeys: { name: string; value: string }[] = [];
 globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   const req = new Request(input, init);
-  const call = { method: req.method, url: new URL(req.url), body: await req.text() };
+  const call = {
+    method: req.method,
+    url: new URL(req.url),
+    body: await req.text(),
+    auth: req.headers.get('Authorization'),
+  };
+  if (call.url.pathname === '/rest/v1/rpc/service_keys') return Response.json(storedKeys);
   calls.push(call);
   return answer(call);
 };
@@ -307,6 +316,7 @@ Deno.test('room-join creates the Daily room once and gives a token only to peopl
   assert((await call(off, { session_id: session })).status === 503, 'no key: not configured');
 
   Deno.env.set('DAILY_API_KEY', 'daily-key');
+  Deno.env.set('DAILY_MONTHLY_MINUTES', '0'); // the minutes limit has its own checks below
   const handler = await load('../room-join/index.ts?on');
   const endsAt = new Date(Date.now() + 50 * 60_000).toISOString();
   let allowed = true;
@@ -372,27 +382,86 @@ Deno.test('room-join creates the Daily room once and gives a token only to peopl
   assert(refused.status === 403 && (await refused.json()).error.message.includes('seat'), 'database says no');
   assert(!calls.some((c) => c.url.host === 'api.daily.co'), 'no Daily call when refused');
 
-  // Monthly cap: Daily's meeting list is summed per participant; at the cap nobody new gets a token.
+  // Minutes limit: Daily's meeting list over the last 31 days; people still in a call count from when they joined.
   Deno.env.set('DAILY_MONTHLY_MINUTES', '100');
   const capped = await load('../room-join/index.ts?cap');
   allowed = true;
   let used = 90 * 60;
+  let dailyUp = true;
   const base = answer;
   answer = (c) => {
     if (c.url.host === 'api.daily.co' && c.url.pathname === '/v1/meetings') {
-      const start = Number(c.url.searchParams.get('timeframe_start'));
-      assert(start > 0 && new Date(start * 1000).getUTCDate() === 1, 'counts from the 1st of the month');
-      return json({ data: [{ id: 'm1', participants: [{ duration: used / 2 }, { duration: used / 2 }] }] });
+      if (!dailyUp) return json({ error: 'server-error' }, 500);
+      const days = (Date.now() / 1000 - Number(c.url.searchParams.get('timeframe_start'))) / 86_400;
+      assert(days > 30.9 && days < 31.1, 'counts the last 31 days, whatever day billing starts');
+      const now = Math.floor(Date.now() / 1000);
+      return json({
+        data: [
+          { id: 'm1', ongoing: false, participants: [{ duration: used / 2 }, { duration: used / 2 - 600 }] },
+          { id: 'm2', ongoing: true, participants: [{ join_time: now - 600, duration: null }] },
+        ],
+      });
     }
     return base(c);
   };
-  assert((await call(capped, { session_id: session })).status === 200, 'under the cap: joins');
+  assert((await call(capped, { session_id: session })).status === 200, 'under the limit: joins');
   used = 100 * 60;
-  assert((await call(capped, { session_id: session })).status === 200, 'usage is cached for a few minutes');
-  const fresh = await load('../room-join/index.ts?cap2');
+  assert((await call(capped, { session_id: session })).status === 200, 'usage is read again only every few minutes');
   calls = [];
-  const full = await call(fresh, { session_id: session });
-  assert(full.status === 503 && (await full.json()).error.code === 'VIDEO_LIMIT', 'at the cap: no new tokens');
-  assert(!calls.some((c) => c.url.pathname === '/v1/meeting-tokens'), 'no token at the cap');
+  const full = await call(await load('../room-join/index.ts?cap2'), { session_id: session });
+  assert(full.status === 503 && (await full.json()).error.code === 'VIDEO_LIMIT', 'at the limit (with the live call)');
+  assert(!calls.some((c) => c.url.pathname === '/v1/meeting-tokens'), 'no token at the limit');
+
+  dailyUp = false;
+  const blind = await call(await load('../room-join/index.ts?cap3'), { session_id: session });
+  assert(
+    blind.status === 503 && (await blind.json()).error.code === 'VIDEO_LIMIT_UNKNOWN',
+    'usage unknown: nobody new gets in',
+  );
+  dailyUp = true;
+  used = 1000 * 60;
+  Deno.env.delete('DAILY_MONTHLY_MINUTES');
+  calls = [];
+  assert((await call(await load('../room-join/index.ts?cap4'), { session_id: session })).status === 200, 'default');
+  assert(
+    calls.some((c) => c.url.pathname === '/v1/meetings'),
+    'the default limit is checked when nothing is set',
+  );
+  used = 9000 * 60;
+  assert(
+    (await call(await load('../room-join/index.ts?cap5'), { session_id: session })).status === 503,
+    'and stops at 8000 minutes',
+  );
+  Deno.env.set('DAILY_MONTHLY_MINUTES', '0');
+  dailyUp = false;
+  assert((await call(await load('../room-join/index.ts?cap6'), { session_id: session })).status === 200, '0 = off');
+
+  // A key saved in Admin > Settings wins over the function secret; clearing it there brings the secret back.
+  answer = base;
+  storedKeys = [{ name: 'DAILY_API_KEY', value: 'key-from-settings' }];
+  forgetKeys();
+  calls = [];
+  assert((await call(handler, { session_id: session })).status === 200, 'joins with the stored key');
+  const daily = calls.filter((c) => c.url.host === 'api.daily.co');
+  assert(daily.length > 0 && daily.every((c) => c.auth === 'Bearer key-from-settings'), 'Daily called with it');
+  storedKeys = [];
+  forgetKeys();
+  calls = [];
+  await call(handler, { session_id: session });
+  assert(
+    calls.filter((c) => c.url.host === 'api.daily.co').every((c) => c.auth === 'Bearer daily-key'),
+    'back to the function secret',
+  );
+
+  // The limit can be set in Settings as well (stored keys win over the function secret).
+  answer = (c) => (c.url.pathname === '/v1/meetings' ? json({ data: [] }) : base(c));
+  storedKeys = [{ name: 'DAILY_MONTHLY_MINUTES', value: '0' }];
+  Deno.env.set('DAILY_MONTHLY_MINUTES', '100');
+  forgetKeys();
+  calls = [];
+  await call(await load('../room-join/index.ts?cap7'), { session_id: session });
+  assert(!calls.some((c) => c.url.pathname === '/v1/meetings'), 'the Settings value is the one used');
+  storedKeys = [];
+  forgetKeys();
   Deno.env.delete('DAILY_MONTHLY_MINUTES');
 });

@@ -2,6 +2,7 @@
 
 // Settings: the app_config row. Only changed keys go to admin_update_config, which validates each one.
 import { useCallback, useState } from 'react';
+import AdminConnections from '@/components/admin/connections';
 import { useAdmin } from '@/components/admin/shell';
 import { adminRpc, useLoad } from '@/lib/admin';
 
@@ -310,6 +311,7 @@ export default function AdminSettings() {
           </button>
         </div>
       </form>
+      <AdminConnections />
     </>
   );
 }

@@ -10,7 +10,7 @@ import { timingSafeEqual } from 'node:crypto';
 // @ts-types="npm:@types/web-push@3.6.4"
 import webpush from 'npm:web-push@3.6.7';
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2';
-import { admin, env } from '../_shared/http.ts';
+import { admin, env, loadKeys } from '../_shared/http.ts';
 import { noticeText, type NoticeItem } from '../_shared/notice-text.ts';
 import { reminderText, type ReminderItem, type ReminderText } from '../_shared/reminder-text.ts';
 
@@ -206,7 +206,14 @@ async function sendNotices(db: SupabaseClient, site: string): Promise<{ notices:
         body: JSON.stringify(
           withEmail.map((item) => {
             const text = noticeText(item, site);
-            return { from, to: [item.email], subject: text.subject, html: text.html, text: text.text, ...(replyTo ? { reply_to: replyTo } : {}) };
+            return {
+              from,
+              to: [item.email],
+              subject: text.subject,
+              html: text.html,
+              text: text.text,
+              ...(replyTo ? { reply_to: replyTo } : {}),
+            };
           }),
         ),
         signal: AbortSignal.timeout(20_000),
@@ -224,7 +231,10 @@ async function sendNotices(db: SupabaseClient, site: string): Promise<{ notices:
   }));
   const { error: recordError } = await db.rpc('record_notice_results', { p_results: rows });
   if (recordError) console.error('record_notice_results', recordError.message);
-  return { notices: rows.filter((row) => row.email_sent).length, notices_failed: rows.filter((row) => !row.email_sent).length };
+  return {
+    notices: rows.filter((row) => row.email_sent).length,
+    notices_failed: rows.filter((row) => !row.email_sent).length,
+  };
 }
 
 async function sendReminders(db: SupabaseClient, site: string) {
@@ -285,6 +295,7 @@ Deno.serve(async (req) => {
 
   try {
     const db = admin();
+    await loadKeys();
     const site = env('SITE_URL') ?? 'https://meetdoconnect.com';
     const reminders = await sendReminders(db, site);
     const notices = await sendNotices(db, site);
