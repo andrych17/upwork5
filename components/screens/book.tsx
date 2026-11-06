@@ -23,6 +23,7 @@ import {
   type Room,
 } from '@/lib/rooms';
 import { getSupabase, type MembershipSummary } from '@/lib/supabase';
+import { TRIVIA_RULES, TRIVIA_SCORING, TRIVIA_SLUG } from '@/lib/trivia';
 import { useNow } from '@/lib/use-now';
 import InviteBanner from '@/components/invite-banner';
 import MenuToggle from '@/components/menu-toggle';
@@ -319,6 +320,21 @@ export default function BookPage({ slug }: { slug: string }) {
               </div>
             </div>
           </div>
+
+          {card?.slug === TRIVIA_SLUG && (
+            <div className="run-panel trivia-book-rules">
+              <p className="section-label">Basic rules of the game</p>
+              <ol className="full-run-copy">
+                {TRIVIA_RULES.map((rule) => (
+                  <li key={rule}>{rule}</li>
+                ))}
+              </ol>
+              <p>{TRIVIA_SCORING}</p>
+              <p>
+                Each color on the board is a question category. The key to the colors sits under the board in the game.
+              </p>
+            </div>
+          )}
         </div>
 
         <aside className="booking-checkout">

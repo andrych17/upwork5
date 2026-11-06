@@ -145,14 +145,15 @@ export const timeOf = (iso: string) => time.format(new Date(iso)).toLowerCase();
 export const addMinutes = (iso: string, minutes: number) =>
   new Date(new Date(iso).getTime() + minutes * 60_000).toISOString();
 
-/** The live room opens this long before the start (Kelly 2 Nov: 5) and locks to new arrivals this long after it. */
+/** The live room opens this long before the start (Kelly 2 Nov: 5) and locks to new arrivals this long after it
+ *  (Kelly 6 Nov: 5, was 10). */
 export const ROOM_OPENS_MINUTES = 5;
-export const ROOM_LOCKS_MINUTES = 10;
+export const ROOM_LOCKS_MINUTES = 5;
 
-/** When the room locks to new arrivals: 10 minutes in, or later while booking stays open (same rule as room_join). */
+/** When the room locks to new arrivals: 5 minutes in, or later while booking stays open (same rule as room_join). */
 export function locksAt(room: Pick<Room, 'starts_at' | 'closes_at'>): string {
-  const tenIn = addMinutes(room.starts_at, ROOM_LOCKS_MINUTES);
-  return new Date(room.closes_at).getTime() > new Date(tenIn).getTime() ? room.closes_at : tenIn;
+  const lockIn = addMinutes(room.starts_at, ROOM_LOCKS_MINUTES);
+  return new Date(room.closes_at).getTime() > new Date(lockIn).getTime() ? room.closes_at : lockIn;
 }
 
 // ---------- loading ----------

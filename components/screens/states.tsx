@@ -56,7 +56,7 @@ const bookingMessages = [
   ['Card change closed', 'Bad Hair Day cards can be added or removed until three hours before the start.'],
   ['Overlap', 'This overlaps another session you booked.'],
   ['Full', 'This session is full.'],
-  ['Booking closed', 'Booking closed 10 minutes after the start.'],
+  ['Booking closed', 'Booking closed 5 minutes after the start.'],
   ['Too far ahead', 'You can book up to 14 days ahead.'],
   [
     'Payment paused',
@@ -225,8 +225,8 @@ export default function P1StatesPage() {
           </article>
           <article>
             <span>Locked</span>
-            <strong>The room locked at 7:10 pm</strong>
-            <p>Late entry closes ten minutes after the start to protect the group.</p>
+            <strong>The room locked at 7:05 pm</strong>
+            <p>Late entry closes five minutes after the start to protect the group.</p>
             <button disabled type="button">
               Room locked
             </button>

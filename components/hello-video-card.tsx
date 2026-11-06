@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { getSupabase, type MembershipSummary } from '@/lib/supabase';
 
-type View = Pick<MembershipSummary, 'hello_status' | 'hello_required' | 'hello_hold'>;
+type View = Pick<MembershipSummary, 'hello_status' | 'hello_required' | 'hello_hold' | 'contact_email'>;
 
 const TEXT: Record<Exclude<View['hello_status'], 'approved'>, { title: string; action: string }> = {
   none: { title: 'Say hi to the team.', action: 'Record your Hello Video' },
@@ -16,7 +16,9 @@ const TEXT: Record<Exclude<View['hello_status'], 'approved'>, { title: string; a
 
 export default function HelloVideoCard() {
   const live = Boolean(getSupabase());
-  const [view, setView] = useState<View | null>(() => (live ? null : { hello_status: 'none', hello_required: false, hello_hold: false }));
+  const [view, setView] = useState<View | null>(() =>
+    live ? null : { hello_status: 'none', hello_required: false, hello_hold: false, contact_email: null },
+  );
 
   useEffect(() => {
     const supabase = getSupabase();
@@ -32,6 +34,7 @@ export default function HelloVideoCard() {
           hello_status: summary.hello_status,
           hello_required: summary.hello_required,
           hello_hold: summary.hello_hold,
+          contact_email: summary.contact_email ?? null,
         });
     })();
     return () => {
@@ -49,8 +52,8 @@ export default function HelloVideoCard() {
         <h2>{text.title}</h2>
       </div>
       <p className="household-intro">
-        30 to 60 seconds, recorded right in your browser: your first name and why you joined. Only the
-        MeetDoConnect team watches it, and it’s deleted as soon as it’s reviewed.
+        30 to 60 seconds, recorded right in your browser: your first name and why you joined. Only the MeetDoConnect
+        team watches it, and it’s deleted as soon as it’s reviewed.
         {view.hello_required &&
           view.hello_status !== 'pending' &&
           (view.hello_hold
@@ -58,9 +61,15 @@ export default function HelloVideoCard() {
             : ' You can book sessions once it’s approved.')}
         {view.hello_status === 'pending' && ' You’ll see the result here.'}
       </p>
-      <Link className="enter-room" href="/hello-video">
-        {text.action} <span aria-hidden="true">→</span>
-      </Link>
+      {view.hello_status === 'declined' && view.contact_email ? (
+        <a className="enter-room" href={`mailto:${view.contact_email}?subject=${encodeURIComponent('My Hello Video')}`}>
+          {text.action} <span aria-hidden="true">→</span>
+        </a>
+      ) : (
+        <Link className="enter-room" href="/hello-video">
+          {text.action} <span aria-hidden="true">→</span>
+        </Link>
+      )}
     </section>
   );
 }

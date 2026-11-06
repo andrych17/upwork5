@@ -22,6 +22,8 @@ interface Config {
   require_hello_video: boolean;
   hello_hold_bookings: boolean;
   sms_kinds: string[];
+  /** where Contact us sends members; null = no link */
+  contact_email: string | null;
   solo_monthly_cents: number;
   solo_annual_cents: number;
   household_monthly_cents: number;
@@ -64,7 +66,7 @@ const NUMBERS: { key: NumberKey; label: string; hint: string; min: number; max: 
   {
     key: 'booking_closes_minutes',
     label: 'Booking closes (minutes before the start)',
-    hint: 'Negative = after the start: late arrivals can book and enter until then. -60 keeps a 60-minute session open to the end.',
+    hint: 'Negative = after the start: late arrivals can book and enter until then. -5 = 5 minutes after the start, -60 keeps a 60-minute session open to the end.',
     min: -240,
     max: 240,
   },
@@ -108,7 +110,7 @@ export default function AdminSettings() {
       .select(
         'monthly_credits,household_monthly_credits,household_max_people,welcome_trial_days,welcome_credits,' +
           'cancel_hours,grace_days,bhd_per_month,booking_closes_minutes,book_ahead_days,max_weekly_sessions,' +
-          'weekly_limit_scope,require_hello_video,hello_hold_bookings,sms_kinds,solo_monthly_cents,solo_annual_cents,' +
+          'weekly_limit_scope,require_hello_video,hello_hold_bookings,sms_kinds,contact_email,solo_monthly_cents,solo_annual_cents,' +
           'household_monthly_cents,household_annual_cents,extra_1_cents,extra_5_cents',
       )
       .eq('id', 1)
@@ -270,6 +272,21 @@ export default function AdminSettings() {
                 onChange={(e) => set('hello_hold_bookings', e.target.checked)}
               />
               Let people book while their video waits (seats are held and released if not approved an hour before)
+            </label>
+            <label className="adm-field">
+              <span>Contact email</span>
+              <input
+                className="adm-input"
+                type="email"
+                maxLength={120}
+                placeholder="you@example.com"
+                value={form.contact_email ?? ''}
+                onChange={(e) => set('contact_email', e.target.value === '' ? null : e.target.value)}
+              />
+              <small>
+                Members see it on Contact us buttons, for example after a Hello Video is declined. Leave empty for no
+                link.
+              </small>
             </label>
             <fieldset className="adm-field">
               <span>Also send by SMS (for members who opted in, about a cent each)</span>

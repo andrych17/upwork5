@@ -1,6 +1,6 @@
 'use client';
 
-// Trivia, Trivier, Triviest inside the live room: Kelly's board game (trivia.html in her 25 Oct zip) for the
+// Trivia, Trivier, Triviest inside the live room: Kelly's board game (trivia.html in her 6 Nov zip) for the
 // people in the session, each on their own device. Every move goes to the trivia-act Edge Function, which runs her
 // engine and saves the game; everyone gets the new state through Realtime, with a short refresh as a fallback.
 // The page never has the answers: the card lists the choices in display order and `last` shows what was right.
@@ -9,13 +9,18 @@ import { callEdge } from '@/lib/edge';
 import { getSupabase } from '@/lib/supabase';
 import {
   ACTION_SECONDS,
+  BADGE_BONUS,
   MAX_PLAYERS,
   PLAYER_COLOURS,
+  POINTS_PER_RIGHT,
   SPACES_PER_COLOUR,
+  TRIVIA_RULES,
   board,
   clockLeft,
+  inkOn,
   newer,
   roomCategories,
+  scoreboard,
   wheelAfter,
   type TriviaCategory,
   type TriviaMove,
@@ -130,16 +135,7 @@ function Board({
             <g key={sp.i}>
               <circle cx={p.x} cy={p.y} r="23" fill={color} stroke="#fff" strokeWidth="4" />
               <circle cx={p.x} cy={p.y} r="23" fill="none" stroke={color} strokeWidth="2" />
-              <text
-                x={p.x}
-                y={p.y + 6}
-                textAnchor="middle"
-                fontSize="17"
-                fontWeight="700"
-                fill="#fff"
-                stroke="rgba(0,0,0,0.35)"
-                strokeWidth="0.6"
-              >
+              <text x={p.x} y={p.y + 6} textAnchor="middle" fontSize="17" fontWeight="700" fill={inkOn(color)}>
                 {cat?.name.charAt(0) ?? ''}
               </text>
             </g>
@@ -251,18 +247,15 @@ function PlayerRow({
   s,
   cats,
   me,
-  stats,
 }: {
   p: TriviaPlayer;
   k: number;
   s: TriviaState;
   cats: TriviaCategory[];
   me: string;
-  stats?: boolean;
 }) {
   const turn = s.phase !== 'lobby' && s.phase !== 'over' && k === s.turn;
   const tags = [p.id === me && 'you', p.id === s.timekeeper && 'Timer', p.away && 'away'].filter(Boolean);
-  if (stats) tags.push(`${p.right} of ${p.asked} right`);
   return (
     <li className={turn ? 'trivia-player now' : 'trivia-player'}>
       <span className="trivia-dot" style={{ background: PLAYER_COLOURS[p.color] }}>
@@ -270,6 +263,11 @@ function PlayerRow({
       </span>
       <div>
         <strong>{p.name}</strong>
+        {s.phase !== 'lobby' && (
+          <span className="trivia-score" title="Score: points">
+            {p.points ?? 0}
+          </span>
+        )}
         {turn && <span className="trivia-turn-tag"> ◀ turn</span>}
         {tags.length > 0 && <small>{tags.join(' · ')}</small>}
       </div>
@@ -286,6 +284,86 @@ function PlayerRow({
     </li>
   );
 }
+
+/** Kelly's Basic Rules: open in the lobby, folded away during the game. */
+function Rules({ open }: { open?: boolean }) {
+  return (
+    <details className="trivia-rules" open={open}>
+      <summary>Basic rules of the game</summary>
+      <ol>
+        {TRIVIA_RULES.map((rule) => (
+          <li key={rule}>{rule}</li>
+        ))}
+      </ol>
+    </details>
+  );
+}
+
+function Legend({ cats }: { cats: TriviaCategory[] }) {
+  return (
+    <div className="trivia-legend">
+      <strong>Key to the colors</strong>
+      <div>
+        {cats.map((c) => (
+          <span key={c.id}>
+            <span className="trivia-swatch" style={{ background: c.color }} />
+            {c.name}
+          </span>
+        ))}
+      </div>
+      <p className="trivia-hint">
+        Small colored space = a question in that category. Big lettered circle = badge space (answer right to earn that
+        badge). ↻ = spin again. Numbered circles are the players. In the Players list, the small circles on the right
+        show badges: empty until you earn that color, then filled.
+      </p>
+    </div>
+  );
+}
+
+function ScoreTable({ s, me, final }: { s: TriviaState; me: string; final?: boolean }) {
+  const turnId = !final ? s.players[s.turn]?.id : undefined;
+  return (
+    <table className="trivia-scores">
+      <thead>
+        <tr>
+          <th className="n">#</th>
+          <th>Player</th>
+          <th className="n">Score</th>
+          <th className="n">Answered</th>
+          <th className="n">Badges</th>
+        </tr>
+      </thead>
+      <tbody>
+        {scoreboard(s).map((r) => {
+          const win = final && s.winner === r.id;
+          const cls = [r.id === me ? 'me' : '', win ? 'win' : ''].filter(Boolean).join(' ');
+          return (
+            <tr key={r.id} className={cls || undefined}>
+              <td className="n">{r.rank}</td>
+              <td>
+                <span className="trivia-dot small" style={{ background: PLAYER_COLOURS[r.color] }}>
+                  {r.seat}
+                </span>
+                {r.name}
+                {r.id === me ? ' (you)' : ''}
+                {win ? ' ★ winner' : ''}
+                {r.id === turnId ? ' ◀ turn' : ''}
+                {r.away ? ' (away)' : ''}
+              </td>
+              <td className="n big">{r.score}</td>
+              <td className="n">{r.asked}</td>
+              <td className="n">
+                {r.badges} of {r.badgesTotal}
+              </td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+}
+
+const SCORE_HINT = `${POINTS_PER_RIGHT} point for every right answer, plus ${BADGE_BONUS} bonus points for each badge earned. Ties are ranked by badges.`;
 
 export default function TriviaRoom({ sessionId, me }: { sessionId: string; me: string }) {
   const [view, setView] = useState<View | null>(null);
@@ -432,10 +510,10 @@ export default function TriviaRoom({ sessionId, me }: { sessionId: string; me: s
   const clock = clockLeft(s, serverNow);
   const stepLeft = playing && s.phase !== 'question' ? Math.max(0, Math.ceil((s.deadline - serverNow) / 1000)) : null;
   const nameOf = (id: string | null) => s.players.find((p) => p.id === id)?.name ?? '';
-  const rows = (stats?: boolean) => (
+  const rows = () => (
     <ul className="trivia-players">
       {s.players.map((p, k) => (
-        <PlayerRow key={p.id} p={p} k={k} s={s} cats={roomCats} me={me} stats={stats} />
+        <PlayerRow key={p.id} p={p} k={k} s={s} cats={roomCats} me={me} />
       ))}
     </ul>
   );
@@ -551,6 +629,7 @@ export default function TriviaRoom({ sessionId, me }: { sessionId: string; me: s
               )}
             </div>
           </div>
+          <Rules open />
           <div className="trivia-actions">
             <button
               className="trivia-btn primary big"
@@ -576,6 +655,7 @@ export default function TriviaRoom({ sessionId, me }: { sessionId: string; me: s
                 myTurn={myTurn && !busy}
                 onMove={(to) => void act({ type: 'move', to })}
               />
+              <Legend cats={roomCats} />
             </div>
             <div className="trivia-panel">
               <h3>What’s happening</h3>
@@ -587,6 +667,7 @@ export default function TriviaRoom({ sessionId, me }: { sessionId: string; me: s
                     <li key={`${s.log.length - i}-${line}`}>{line}</li>
                   ))}
               </ol>
+              <Rules />
             </div>
           </div>
 
@@ -656,7 +737,7 @@ export default function TriviaRoom({ sessionId, me }: { sessionId: string; me: s
                 ))}
               {s.phase === 'question' && card && (
                 <div className="trivia-card">
-                  <div className="trivia-band" style={{ background: card.color }}>
+                  <div className="trivia-band" style={{ background: card.color, color: inkOn(card.color) }}>
                     {card.final ? 'Final question · ' : ''}
                     {card.catName}
                   </div>
@@ -738,13 +819,21 @@ export default function TriviaRoom({ sessionId, me }: { sessionId: string; me: s
               <h3>Players</h3>
               {rows()}
             </div>
+            <div className="trivia-panel">
+              <h3>Scoreboard</h3>
+              <ScoreTable s={s} me={me} />
+              <p className="trivia-hint">{SCORE_HINT} Updates after every question.</p>
+            </div>
           </div>
         </div>
       )}
 
       {s.phase === 'over' && (
         <div className="trivia-panel">
-          {rows(true)}
+          <ScoreTable s={s} me={me} final />
+          <p className="trivia-hint">
+            {SCORE_HINT} The winner is whoever answers the final question right, so they may not have the highest score.
+          </p>
           <div className="trivia-actions">
             <button
               className="trivia-btn primary"

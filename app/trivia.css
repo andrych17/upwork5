@@ -257,7 +257,6 @@
 
 .trivia-band {
   color: #fff;
-  text-shadow: 0 1px 2px #00000059;
   padding: 8px 14px;
   font-family: 'Bricolage Grotesque', sans-serif;
   font-weight: 700;
@@ -472,4 +471,106 @@
   .trivia-pulse {
     animation: none;
   }
+}
+
+/* Kelly 6 Nov: points, scoreboard, colour key and rules */
+.trivia-score {
+  background: var(--navy);
+  color: #fff;
+  border-radius: 999px;
+  margin-left: 6px;
+  padding: 0 7px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.trivia-scores {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.85rem;
+}
+
+.trivia-scores th,
+.trivia-scores td {
+  border-bottom: 1px solid var(--t-line);
+  text-align: left;
+  padding: 5px 6px;
+}
+
+.trivia-scores th {
+  color: var(--t-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.trivia-scores .n {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.trivia-scores .big {
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.trivia-scores tr.me td {
+  background: var(--t-bg);
+}
+
+.trivia-scores tr.win td {
+  background: var(--t-ok-bg);
+  font-weight: 700;
+}
+
+.trivia-dot.small {
+  width: 18px;
+  height: 18px;
+  margin-right: 6px;
+  font-size: 0.65rem;
+}
+
+.trivia-legend {
+  gap: 6px;
+  margin-top: 10px;
+  font-size: 0.82rem;
+  display: grid;
+}
+
+.trivia-legend > div {
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  display: flex;
+}
+
+.trivia-legend > div > span {
+  align-items: center;
+  gap: 6px;
+  display: inline-flex;
+}
+
+.trivia-swatch {
+  border-radius: 50%;
+  flex: none;
+  width: 12px;
+  height: 12px;
+}
+
+.trivia-rules {
+  margin-top: 10px;
+  font-size: 0.85rem;
+}
+
+.trivia-rules summary {
+  cursor: pointer;
+  color: var(--navy);
+  font-weight: 700;
+}
+
+.trivia-rules ol {
+  gap: 4px;
+  margin: 8px 0 0;
+  padding-left: 1.3rem;
+  display: grid;
 }

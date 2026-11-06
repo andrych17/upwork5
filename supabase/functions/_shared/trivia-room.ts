@@ -1,4 +1,4 @@
-// Glue between Kelly's trivia engine (trivia.js, unchanged from her 25 Oct zip) and the trivia-act Edge Function:
+// Glue between Kelly's trivia engine (trivia.js, unchanged from her 6 Nov zip: scoring added) and the trivia-act Edge Function:
 // which moves the page may send, and which parts of the game state stay on the server.
 import './trivia.js';
 

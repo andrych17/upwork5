@@ -17,6 +17,7 @@ interface Account {
   required: boolean;
   hold: boolean;
   reason: string | null;
+  contact: string | null;
 }
 
 const NOTE: Record<HelloStatus, { title: string; text: (a: Account) => string }> = {
@@ -38,7 +39,8 @@ const NOTE: Record<HelloStatus, { title: string; text: (a: Account) => string }>
   },
   declined: {
     title: 'We couldn’t approve this video',
-    text: () => 'Your held bookings were released and the credits are back. Please contact us.',
+    text: (a) =>
+      `Your held bookings were released and the credits are back. Please contact us${a.contact ? ` at ${a.contact}` : ''}.`,
   },
   approved: { title: 'You’re approved', text: () => 'Thanks for saying hi. Your video was deleted after the review.' },
   rejected: {
@@ -50,9 +52,10 @@ const NOTE: Record<HelloStatus, { title: string; text: (a: Account) => string }>
 
 async function loadAccount(): Promise<Account> {
   const supabase = getSupabase();
-  if (!supabase) return { signedIn: true, status: 'none', required: false, hold: false, reason: null };
+  if (!supabase) return { signedIn: true, status: 'none', required: false, hold: false, reason: null, contact: null };
   const { data: auth } = await supabase.auth.getSession();
-  if (!auth.session) return { signedIn: false, status: 'none', required: false, hold: false, reason: null };
+  if (!auth.session)
+    return { signedIn: false, status: 'none', required: false, hold: false, reason: null, contact: null };
   const [{ data: summary }, { data: last }] = await Promise.all([
     supabase.rpc('get_my_membership'),
     supabase
@@ -70,6 +73,7 @@ async function loadAccount(): Promise<Account> {
     required: Boolean(m?.hello_required),
     hold: Boolean(m?.hello_hold),
     reason: status === 'rejected' && last?.status === 'rejected' ? (last.reject_reason as string | null) : null,
+    contact: m?.contact_email ?? null,
   };
 }
 
@@ -164,6 +168,19 @@ export default function HelloVideoPage() {
               <Link className="enter-room" href="/signin">
                 Sign in <span aria-hidden="true">→</span>
               </Link>
+            </>
+          )}
+
+          {status === 'declined' && account?.contact && (
+            <>
+              <h2>Questions?</h2>
+              <p className="reminders-tip">Write to us and we’ll get back to you.</p>
+              <a
+                className="enter-room"
+                href={`mailto:${account.contact}?subject=${encodeURIComponent('My Hello Video')}`}
+              >
+                Contact us <span aria-hidden="true">→</span>
+              </a>
             </>
           )}
 

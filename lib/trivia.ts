@@ -10,6 +10,23 @@ export const ANSWER_SECONDS = 60;
 export const ACTION_SECONDS = 30;
 export const MAX_PAUSE_SECONDS = 60;
 export const MAX_PLAYERS = 12;
+export const SPINNER_MAX = 6;
+export const POINTS_PER_RIGHT = 1;
+export const BADGE_BONUS = 2;
+export const AWAY_AFTER_MISSES = 2;
+
+// Kelly's Basic Rules (trivia-rules.txt, 6 Nov zip), shown on the booking page and in the game.
+export const TRIVIA_RULES: string[] = [
+  `Up to ${MAX_PLAYERS} players per room. Anyone in the room can press Start.`,
+  `On your turn, spin the spinner (1 to ${SPINNER_MAX}) and move that many spaces, either way round the ring.`,
+  `Answer a question in the color of the space you land on. You have ${ANSWER_SECONDS} seconds, shown by the hourglass.`,
+  `Right answer: ${POINTS_PER_RIGHT} point, and you keep your turn. Wrong answer or out of time: no points and the turn passes.`,
+  `Answer right on a big lettered badge space to earn that color’s badge, plus ${BADGE_BONUS} bonus points. Landing on the ↻ space gives you another spin.`,
+  'Once you hold every badge, answer the final question. Right wins the game. Wrong, and you try again next turn.',
+  `The Timer is a volunteer who can stop and start the sand, but not on their own question, and stopped time is limited to ${MAX_PAUSE_SECONDS} seconds per question.`,
+  `Miss your turn ${AWAY_AFTER_MISSES} times in a row and you are marked away and skipped until you act again.`,
+];
+export const TRIVIA_SCORING = `Scoring: ${POINTS_PER_RIGHT} point per right answer + ${BADGE_BONUS} bonus points per badge earned. Ties are ranked by badges. The scoreboard updates after every question. The winner is whoever answers the final question right.`;
 
 // Token colours, same order as the engine's 12 player colours.
 export const PLAYER_COLOURS = [
@@ -42,6 +59,8 @@ export interface TriviaPlayer {
   misses: number;
   away: boolean;
   right: number;
+  /** Kelly 6 Nov: 1 per right answer + 2 per badge. Missing in games saved before the scoring update. */
+  points?: number;
   asked: number;
 }
 
@@ -141,6 +160,53 @@ export function clockLeft(
   const left = c.running ? Math.max(0, state.deadline - now) : c.left;
   const pauseLeft = Math.max(0, MAX_PAUSE_SECONDS * 1000 - c.pausedUsed - (c.running ? 0 : now - c.pausedAt));
   return { left, total: c.total, running: c.running, pauseLeft };
+}
+
+export interface ScoreRow {
+  id: string;
+  name: string;
+  color: number;
+  seat: number;
+  score: number;
+  right: number;
+  asked: number;
+  badges: number;
+  badgesTotal: number;
+  away: boolean;
+  rank: number;
+}
+
+/** The engine's scoreboard(): by score, then badges, then accuracy; level on score and badges = same rank (1, 1, 3). */
+export function scoreboard(state: Pick<TriviaState, 'players'>): ScoreRow[] {
+  const total = state.players[0]?.badges.length ?? 0;
+  const accuracy = (r: { right: number; asked: number }) => (r.asked ? r.right / r.asked : 0);
+  const rows: ScoreRow[] = state.players.map((p, i) => ({
+    id: p.id,
+    name: p.name,
+    color: p.color,
+    seat: i + 1,
+    score: p.points ?? 0,
+    right: p.right,
+    asked: p.asked,
+    badges: p.badges.filter(Boolean).length,
+    badgesTotal: total,
+    away: Boolean(p.away),
+    rank: 0,
+  }));
+  rows.sort((a, b) => b.score - a.score || b.badges - a.badges || accuracy(b) - accuracy(a) || a.seat - b.seat);
+  rows.forEach((r, i) => {
+    const prev = rows[i - 1];
+    r.rank = prev && prev.score === r.score && prev.badges === r.badges ? prev.rank : i + 1;
+  });
+  return rows;
+}
+
+/** Dark or white text on a category color, as Kelly's ink(): yellow and other light colors get dark text. */
+export function inkOn(hex: string): string {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex);
+  if (!m) return '#fff';
+  const n = parseInt(m[1], 16);
+  return 0.299 * (n >> 16) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255) > 150 ? '#111' : '#fff';
 }
 
 /** A newer save replaces what the page shows; an older one (a slow refresh) never brings the game back. */

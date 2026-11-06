@@ -35,8 +35,8 @@ create table if not exists app_config (
   grace_days int not null default 3,
   bhd_per_month int not null default 3,
   -- minutes before the start; negative = after it, and new arrivals may enter the room until then too
-  -- (Kelly 6 Nov: late arrivals book and enter until 10 after; -60 keeps a 60-minute session open to the end)
-  booking_closes_minutes int not null default -10,
+  -- (Kelly 6 Nov: late arrivals book and enter until 5 after, was 10; -60 keeps a 60-minute session open to the end)
+  booking_closes_minutes int not null default -5,
   book_ahead_days int not null default 14
 );
 
@@ -67,6 +67,12 @@ alter table app_config add column if not exists household_monthly_cents int not 
 alter table app_config add column if not exists household_annual_cents int not null default 34900 check (household_annual_cents between 0 and 1000000);
 alter table app_config add column if not exists extra_1_cents int not null default 400 check (extra_1_cents between 0 and 1000000);
 alter table app_config add column if not exists extra_5_cents int not null default 1500 check (extra_5_cents between 0 and 1000000);
+alter table app_config alter column booking_closes_minutes set default -5;
+-- Where "Contact us" sends members (Kelly 6 Nov: declined Hello Video). Set in Admin > Settings; null = no link.
+alter table app_config add column if not exists contact_email text;
+alter table app_config drop constraint if exists app_config_contact_email_check;
+alter table app_config add constraint app_config_contact_email_check
+  check (contact_email is null or (char_length(contact_email) <= 120 and contact_email ~ '^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$'));
 
 insert into app_config default values on conflict do nothing;
 
@@ -121,6 +127,22 @@ alter table profiles add column if not exists cancel_at_period_end boolean not n
 alter table profiles drop constraint if exists profiles_payment_status_check;
 alter table profiles add constraint profiles_payment_status_check
   check (payment_status in ('pending', 'active', 'past_due', 'paused', 'canceled'));
+
+-- Screen name (Kelly 6 Nov): what other members see in rooms, Trivia and Buddy Rooms. Optional at sign-up;
+-- without one they see the first name. Admins and emails keep the real name.
+alter table profiles add column if not exists screen_name text;
+alter table profiles drop constraint if exists profiles_screen_name_check;
+alter table profiles add constraint profiles_screen_name_check
+  check (screen_name is null or (screen_name = btrim(screen_name) and char_length(screen_name) between 2 and 24
+                                 and screen_name !~ '[[:cntrl:]]'));
+
+create or replace function public_name(p profiles)
+returns text
+language sql
+immutable
+as $$
+  select coalesce(nullif(btrim(p.screen_name), ''), nullif(btrim(p.first_name), ''), 'Member');
+$$;
 
 create index if not exists idx_profiles_household_owner on profiles (household_owner_id);
 create index if not exists idx_profiles_email on profiles (lower(email));
@@ -255,8 +277,14 @@ declare
   v_full text;
   v_first text;
   v_last text;
+  v_screen text;
 begin
   -- Email sign-up sends first_name/last_name. Google sends given_name/family_name or only full_name.
+  -- screen_name is optional; anything the check below would refuse is dropped instead of failing sign-up.
+  v_screen := regexp_replace(btrim(coalesce(v_meta->>'screen_name', '')), '\s+', ' ', 'g');
+  if char_length(v_screen) not between 2 and 24 or v_screen ~ '[[:cntrl:]]' then
+    v_screen := null;
+  end if;
   v_full := trim(coalesce(v_meta->>'full_name', v_meta->>'name', ''));
   v_first := coalesce(nullif(trim(v_meta->>'first_name'), ''), nullif(trim(v_meta->>'given_name'), ''),
                       nullif(split_part(v_full, ' ', 1), ''), 'Member');
@@ -269,13 +297,14 @@ begin
   if found then
     select * into v_owner from profiles where id = v_invite.owner_id;
     insert into public.profiles (
-      id, email, first_name, last_name, tier, billing_interval, billing_date,
+      id, email, first_name, last_name, screen_name, tier, billing_interval, billing_date,
       monthly_credits, addon_credits, credits_cycle_start, household_owner_id, payment_status
     ) values (
       new.id,
       lower(new.email),
       left(v_first, 80),
       left(v_last, 80),
+      v_screen,
       'household',
       v_owner.billing_interval,
       v_owner.billing_date,
@@ -294,13 +323,14 @@ begin
   v_interval := case when new.raw_user_meta_data->>'billing_interval' = 'annual' then 'annual' else 'monthly' end;
 
   insert into public.profiles (
-    id, email, first_name, last_name, tier, billing_interval, billing_date,
+    id, email, first_name, last_name, screen_name, tier, billing_interval, billing_date,
     monthly_credits, addon_credits, credits_cycle_start, payment_status
   ) values (
     new.id,
     lower(new.email),
     left(v_first, 80),
     left(v_last, 80),
+    v_screen,
     v_tier,
     v_interval,
     extract(day from v_today)::int,
@@ -828,6 +858,7 @@ begin
     'hello_status', v_me.hello_status,
     'hello_required', v_cfg.require_hello_video,
     'hello_hold', v_cfg.hello_hold_bookings,
+    'contact_email', v_cfg.contact_email,
     'test_payments', v_cfg.test_payments,
     'terms_accepted', v_me.terms_accepted_at is not null,
     'interests', to_jsonb(v_me.interests),
@@ -1045,7 +1076,8 @@ begin
     return jsonb_build_object('success', false, 'error', 'Your Hello Video is already approved.');
   end if;
   if v_me.hello_status = 'declined' then
-    return jsonb_build_object('success', false, 'error', 'Your Hello Video was not approved. Please contact us.');
+    return jsonb_build_object('success', false, 'error', 'Your Hello Video was not approved. Please contact us'
+      || coalesce(' at ' || (select contact_email from app_config where id = 1), '') || '.');
   end if;
   if p_mime is null or p_mime not in ('video/webm', 'video/mp4') then
     return jsonb_build_object('success', false, 'error', 'This browser recorded an unsupported video type.');
@@ -1317,6 +1349,41 @@ begin
 end;
 $$;
 
+-- Kelly 6 Nov: after a Decline (blurry video, faces not visible) the admin can let the person record again.
+-- They go back to "Please record again" with the admin's note, get the same email as Not approved, and
+-- leave the refund list. Bookings released by the decline stay released; they book again once approved.
+create or replace function hello_video_reopen(p_user uuid, p_note text default null)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_note text := nullif(left(btrim(coalesce(p_note, '')), 300), '');
+begin
+  if not is_admin() then
+    return jsonb_build_object('success', false, 'error', 'Only an admin can do this.');
+  end if;
+  update profiles
+  set hello_status = 'rejected', hello_reviewed_at = now(), hello_refunded_at = null, updated_at = now()
+  where id = p_user and hello_status = 'declined';
+  if not found then
+    return jsonb_build_object('success', false, 'error', 'This person was not declined.');
+  end if;
+  -- The Hello Video page shows the newest video's note, so the new note replaces the decline note.
+  if v_note is not null then
+    update hello_videos set reject_reason = v_note
+    where id = (select id from hello_videos where user_id = p_user order by created_at desc limit 1);
+  end if;
+  insert into member_notices (user_id, kind, note) values (p_user, 'hello_redo', v_note);
+  insert into admin_log (admin_id, profile_id, action, details)
+  values (auth.uid(), p_user, 'hello_reopened', jsonb_build_object('note', v_note));
+  return jsonb_build_object('success', true);
+end;
+$$;
+
+revoke execute on function hello_video_reopen(uuid, text) from public, anon;
+grant execute on function hello_video_reopen(uuid, text) to authenticated;
 revoke execute on function hello_declined_list() from public, anon;
 grant execute on function hello_declined_list() to authenticated;
 revoke execute on function hello_mark_refunded(uuid, boolean) from public, anon;
@@ -1996,7 +2063,7 @@ begin
   end if;
   select k into v_unknown from jsonb_object_keys(p) k
   where k <> all (v_int_keys || array['max_weekly_sessions', 'weekly_limit_scope', 'require_hello_video',
-                                      'hello_hold_bookings', 'sms_kinds', 'test_payments'])
+                                      'hello_hold_bookings', 'sms_kinds', 'test_payments', 'contact_email'])
   limit 1;
   if v_unknown is not null then
     return jsonb_build_object('success', false, 'error', format('Unknown setting: %s', v_unknown));
@@ -2006,8 +2073,14 @@ begin
      or (p ? 'require_hello_video' and jsonb_typeof(p->'require_hello_video') <> 'boolean')
      or (p ? 'hello_hold_bookings' and jsonb_typeof(p->'hello_hold_bookings') <> 'boolean')
      or (p ? 'test_payments' and jsonb_typeof(p->'test_payments') <> 'boolean')
-     or (p ? 'sms_kinds' and jsonb_typeof(p->'sms_kinds') <> 'array') then
+     or (p ? 'sms_kinds' and jsonb_typeof(p->'sms_kinds') <> 'array')
+     or (p ? 'contact_email' and jsonb_typeof(p->'contact_email') not in ('string', 'null')) then
     return jsonb_build_object('success', false, 'error', 'A setting has the wrong type.');
+  end if;
+  if p ? 'contact_email' and nullif(btrim(p->>'contact_email'), '') is not null
+     and (char_length(btrim(p->>'contact_email')) > 120
+          or btrim(p->>'contact_email') !~ '^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$') then
+    return jsonb_build_object('success', false, 'error', 'Check the contact email address.');
   end if;
 
   select * into v_old from app_config where id = 1 for update;
@@ -2038,6 +2111,9 @@ begin
   if p ? 'sms_kinds' then
     v_new.sms_kinds := array(select distinct jsonb_array_elements_text(p->'sms_kinds') order by 1);
   end if;
+  if p ? 'contact_email' then
+    v_new.contact_email := nullif(btrim(p->>'contact_email'), '');
+  end if;
 
   if v_new.monthly_credits not between 0 and 100 or v_new.household_monthly_credits not between 0 and 100
      or v_new.household_max_people not between 1 and 10 or v_new.welcome_trial_days not between 0 and 60
@@ -2065,7 +2141,7 @@ begin
     extra_1_cents = v_new.extra_1_cents, extra_5_cents = v_new.extra_5_cents,
     weekly_limit_scope = v_new.weekly_limit_scope, require_hello_video = v_new.require_hello_video,
     hello_hold_bookings = v_new.hello_hold_bookings, sms_kinds = v_new.sms_kinds,
-    test_payments = v_new.test_payments
+    test_payments = v_new.test_payments, contact_email = v_new.contact_email
   where id = 1;
 
   insert into admin_log (admin_id, action, details)
@@ -2630,7 +2706,7 @@ end
 $do$;
 
 -- 25. Live rooms (Milestone 4). The room-join Edge Function asks room_join() who may enter, then gets a Daily
--- room and a meeting token. Rooms open 5 minutes before the start (Kelly 2 Nov, was 10) and lock to new arrivals 10 minutes after
+-- room and a meeting token. Rooms open 5 minutes before the start (Kelly 2 Nov, was 10) and lock to new arrivals 5 minutes after
 -- (Kelly 28 Oct); someone who already joined can come back until the end. Kelly 31 Oct: nobody enters a room
 -- before an admin approved their Hello Video (app_config.require_hello_video). Reports go to admins only.
 alter table bookings add column if not exists joined_at timestamptz;
@@ -2687,8 +2763,9 @@ begin
     return jsonb_build_object('success', false, 'error', 'This session was not found.');
   end if;
   v_opens := v_s.starts_at - interval '5 minutes';
-  -- New arrivals: 10 minutes after the start, or later while booking stays open (booking_closes_minutes < -10).
-  v_locks := v_s.starts_at + make_interval(mins => greatest(10, -v_cfg.booking_closes_minutes));
+  -- New arrivals: 5 minutes after the start (Kelly 6 Nov, was 10), or later while booking stays open
+  -- (booking_closes_minutes < -5).
+  v_locks := v_s.starts_at + make_interval(mins => greatest(5, -v_cfg.booking_closes_minutes));
   v_ends := v_s.starts_at + make_interval(mins => v_s.minutes);
   if now() < v_opens then
     return jsonb_build_object('success', false, 'error', 'The room opens 5 minutes before the start.');
@@ -2709,7 +2786,7 @@ begin
     end if;
     if now() > v_locks and v_b.joined_at is null then
       return jsonb_build_object('success', false, 'error',
-        format('The room closed to new arrivals %s minutes after the start.', greatest(10, -v_cfg.booking_closes_minutes)));
+        format('The room closed to new arrivals %s minutes after the start.', greatest(5, -v_cfg.booking_closes_minutes)));
     end if;
     update bookings set joined_at = coalesce(joined_at, now()) where id = v_b.id;
   end if;
@@ -2722,12 +2799,12 @@ begin
     'ends_at', v_ends,
     'locks_at', v_locks,
     'capacity', v_s.capacity,
-    'name', coalesce(nullif(trim(v_me.first_name), ''), 'Member'),
+    'name', public_name(v_me),
     'camera_off', coalesce(v_b.camera_off, false),
     'is_admin', v_me.is_admin,
     'people', (
       select coalesce(jsonb_agg(jsonb_build_object(
-        'id', p.id, 'name', coalesce(nullif(trim(p.first_name), ''), 'Member'), 'avatar_url', p.avatar_url
+        'id', p.id, 'name', public_name(p), 'avatar_url', p.avatar_url
       )), '[]'::jsonb)
       from bookings b join profiles p on p.id = b.user_id
       where b.session_id = p_session and b.status in ('confirmed', 'attended') and not b.held
@@ -2911,12 +2988,12 @@ begin
     'people', coalesce((
       select jsonb_agg(jsonb_build_object(
         'id', p.id,
-        'first_name', coalesce(nullif(p.first_name, ''), 'Member'),
+        'first_name', public_name(p),
         'avatar_url', p.avatar_url,
         'picked', exists (select 1 from buddy_picks k
                           where k.session_id = p_session and k.picker_id = v_me and k.picked_id = p.id),
         'matched', buddies_matched(v_me, p.id)
-      ) order by p.first_name, p.id)
+      ) order by public_name(p), p.id)
       from profiles p
       where p.id <> v_me and p.disabled_at is null and sat_in(p_session, p.id)
     ), '[]'::jsonb)
@@ -2961,8 +3038,8 @@ begin
   insert into buddy_picks (session_id, picker_id, picked_id) select p_session, v_me, i from unnest(v_ids) i;
 
   return jsonb_build_object('success', true, 'matched', coalesce((
-    select jsonb_agg(jsonb_build_object('id', p.id, 'first_name', coalesce(nullif(p.first_name, ''), 'Member'),
-                                        'avatar_url', p.avatar_url) order by p.first_name)
+    select jsonb_agg(jsonb_build_object('id', p.id, 'first_name', public_name(p),
+                                        'avatar_url', p.avatar_url) order by public_name(p))
     from profiles p where p.id = any (v_ids) and buddies_matched(v_me, p.id)
   ), '[]'::jsonb));
 end;
@@ -2981,7 +3058,7 @@ as $$
     'last_body', b.last_body, 'last_kind', b.last_kind, 'last_at', b.last_at, 'last_from_me', b.last_from_me
   ) order by b.last_at desc nulls last, b.first_name), '[]'::jsonb)
   from (
-    select p.id, coalesce(nullif(p.first_name, ''), 'Member') as first_name, p.avatar_url,
+    select p.id, public_name(p) as first_name, p.avatar_url,
            m.body as last_body, m.kind as last_kind, m.created_at as last_at, m.sender_id = auth.uid() as last_from_me
     from profiles p
     left join lateral (
@@ -3598,7 +3675,7 @@ begin
       return jsonb_build_object('success', false, 'error', 'Rooms open for you once your Hello Video is approved.');
     end if;
   end if;
-  return jsonb_build_object('success', true, 'name', coalesce(nullif(trim(v_me.first_name), ''), 'Member'));
+  return jsonb_build_object('success', true, 'name', public_name(v_me));
 end;
 $$;
 
@@ -3641,15 +3718,22 @@ begin
   end if;
 end $$;
 
--- Kelly's 89 starter questions (6 categories). Re-running keeps any edits made since (on conflict do nothing).
+-- Kelly's question bank: 88 starter questions (25 Oct) plus 119 from her 6 Nov zip, 6 categories. Re-running keeps
+-- any edits made since (on conflict do nothing). Her 6 Nov bank dropped the Louvre question (arts-07), so it is no
+-- longer seeded; databases seeded before that turn it off once in jobs/meetdo-connect/kelly-fixes-2026-11-06.sql.
 insert into trivia_categories (id, name, color, sort) values
-  ('geo', 'Geography', '#2E86AB', 1),
-  ('hist', 'History', '#C1666B', 2),
-  ('sci', 'Science & Nature', '#3A9D5D', 3),
-  ('arts', 'Arts & Books', '#8E5BA8', 4),
-  ('play', 'Sports & Games', '#E08E2B', 5),
-  ('food', 'Food & Everyday Life', '#D2B13C', 6)
+  ('geo', 'Geography', '#0057E7', 1),
+  ('hist', 'History', '#E4002B', 2),
+  ('sci', 'Science & Nature', '#00A651', 3),
+  ('arts', 'Arts & Books', '#7B2CBF', 4),
+  ('play', 'Sports & Games', '#FF7A00', 5),
+  ('food', 'Food & Everyday Life', '#FFD500', 6)
 on conflict do nothing;
+-- Kelly 6 Nov: brighter colours. Only rows still on the 25 Oct colour change, so a colour set in Admin stays.
+update trivia_categories c set color = v.new
+  from (values ('geo', '#2E86AB', '#0057E7'), ('hist', '#C1666B', '#E4002B'), ('sci', '#3A9D5D', '#00A651'),
+               ('arts', '#8E5BA8', '#7B2CBF'), ('play', '#E08E2B', '#FF7A00'), ('food', '#D2B13C', '#FFD500')) v(id, old, new)
+ where c.id = v.id and upper(c.color) = v.old;
 insert into trivia_questions (id, cat, q, a, wrong, note, source) values
   ('geo-01', 'geo', 'What is the capital of Australia?', 'Canberra', array['Sydney', 'Melbourne', 'Perth'], 'Sydney is bigger, but Canberra was built to be the capital.', 'Starter question written for this project; check before relying on it'),
   ('geo-02', 'geo', 'Which is the longest river in Africa?', 'The Nile', array['The Congo', 'The Niger', 'The Zambezi'], null, 'Starter question written for this project; check before relying on it'),
@@ -3687,7 +3771,6 @@ insert into trivia_questions (id, cat, q, a, wrong, note, source) values
   ('arts-04', 'arts', 'Who painted The Starry Night?', 'Vincent van Gogh', array['Claude Monet', 'Pablo Picasso', 'Paul Cezanne'], null, 'Starter question written for this project; check before relying on it'),
   ('arts-05', 'arts', 'How many strings does a standard violin have?', 'Four', array['Five', 'Six', 'Three'], null, 'Starter question written for this project; check before relying on it'),
   ('arts-06', 'arts', 'Who wrote The Hobbit?', 'J. R. R. Tolkien', array['C. S. Lewis', 'Roald Dahl', 'J. K. Rowling'], null, 'Starter question written for this project; check before relying on it'),
-  ('arts-07', 'arts', 'In which city is the Louvre museum?', 'Paris', array['London', 'Rome', 'Madrid'], null, 'Starter question written for this project; check before relying on it'),
   ('arts-08', 'arts', 'Which composer wrote the Fifth Symphony that begins da-da-da-DUM?', 'Ludwig van Beethoven', array['Wolfgang Mozart', 'Johann Bach', 'Franz Schubert'], null, 'Starter question written for this project; check before relying on it'),
   ('arts-09', 'arts', 'How many keys does a standard piano have?', '88', array['76', '92', '100'], null, 'Starter question written for this project; check before relying on it'),
   ('arts-10', 'arts', 'Who wrote the novel Moby-Dick?', 'Herman Melville', array['Mark Twain', 'Nathaniel Hawthorne', 'Jack London'], null, 'Starter question written for this project; check before relying on it'),
@@ -3740,6 +3823,128 @@ insert into trivia_questions (id, cat, q, a, wrong, note, source) values
   ('food-15', 'food', 'Which animal appears on the Porsche logo?', 'A horse', array['A bull', 'A lion', 'An eagle'], null, 'Question idea supplied by the site owner; category and wrong answers added by Claude. Check before relying on it.'),
   ('hist-16', 'hist', 'Who was the first woman to fly solo across the Atlantic Ocean?', 'Amelia Earhart', array['Bessie Coleman', 'Jacqueline Cochran', 'Harriet Quimby'], 'In 1932.', 'Question idea supplied by the site owner; category and wrong answers added by Claude. Check before relying on it.'),
   ('food-16', 'food', 'Which is closest to the average height of an adult man in the United States?', '5 feet 9 inches', array['5 feet 5 inches', '6 feet 0 inches', '6 feet 3 inches'], null, 'Question idea supplied by the site owner; category and wrong answers added by Claude. Check before relying on it.')
+on conflict do nothing;
+-- Kelly's 6 Nov additions.
+insert into trivia_questions (id, cat, q, a, wrong, note, source) values
+  ('geo-17', 'geo', 'Which desert covers much of northern Africa?', 'The Sahara', array['The Gobi', 'The Kalahari', 'The Mojave'], null, 'Written by Claude for this project; check before relying on it'),
+  ('geo-18', 'geo', 'Which is the largest ocean on Earth?', 'The Pacific Ocean', array['The Atlantic Ocean', 'The Indian Ocean', 'The Arctic Ocean'], null, 'Written by Claude for this project; check before relying on it'),
+  ('geo-19', 'geo', 'What is the capital of Brazil?', 'Brasília', array['Rio de Janeiro', 'São Paulo', 'Salvador'], 'Brasília was built in the 1950s to be the capital.', 'Written by Claude for this project; check before relying on it'),
+  ('geo-20', 'geo', 'Which desert covers parts of Mongolia and northern China?', 'The Gobi Desert', array['The Sahara', 'The Atacama', 'The Thar'], null, 'Written by Claude for this project; check before relying on it'),
+  ('hist-17', 'hist', 'Which ancient people built the mountain city of Machu Picchu?', 'The Inca', array['The Aztec', 'The Maya', 'The Olmec'], null, 'Written by Claude for this project; check before relying on it'),
+  ('hist-18', 'hist', 'Which ship sank in 1912 after hitting an iceberg on its first voyage?', 'The Titanic', array['The Lusitania', 'The Britannic', 'The Mayflower'], null, 'Written by Claude for this project; check before relying on it'),
+  ('hist-19', 'hist', 'Who was Britain''s Prime Minister for most of World War II?', 'Winston Churchill', array['Neville Chamberlain', 'Clement Attlee', 'Margaret Thatcher'], 'He took office in 1940.', 'Written by Claude for this project; check before relying on it'),
+  ('hist-20', 'hist', 'Who was the main author of the U.S. Declaration of Independence?', 'Thomas Jefferson', array['Benjamin Franklin', 'George Washington', 'John Adams'], null, 'Written by Claude for this project; check before relying on it'),
+  ('hist-21', 'hist', 'Which U.S. President issued the Emancipation Proclamation?', 'Abraham Lincoln', array['Ulysses S. Grant', 'Thomas Jefferson', 'Andrew Jackson'], 'In 1863.', 'Written by Claude for this project; check before relying on it'),
+  ('hist-22', 'hist', 'Which Roman-built wall crosses northern England?', 'Hadrian''s Wall', array['The Antonine Wall', 'Offa''s Dyke', 'The Great Wall'], null, 'Written by Claude for this project; check before relying on it'),
+  ('hist-23', 'hist', 'In which year did Columbus first sail across the Atlantic for Spain?', '1492', array['1066', '1607', '1776'], null, 'Written by Claude for this project; check before relying on it'),
+  ('hist-24', 'hist', 'In which country was the Magna Carta signed in 1215?', 'England', array['France', 'Scotland', 'Spain'], null, 'Written by Claude for this project; check before relying on it'),
+  ('sci-19', 'sci', 'Which planet is best known for its bright rings?', 'Saturn', array['Jupiter', 'Mars', 'Neptune'], 'Jupiter, Uranus and Neptune have rings too, but Saturn''s are the brightest.', 'Written by Claude for this project; check before relying on it'),
+  ('sci-20', 'sci', 'How many legs does a spider have?', 'Eight', array['Six', 'Ten', 'Twelve'], null, 'Written by Claude for this project; check before relying on it'),
+  ('sci-21', 'sci', 'At sea level, at what temperature does water boil in Fahrenheit?', '212 degrees', array['100 degrees', '180 degrees', '250 degrees'], 'That is 100 degrees Celsius.', 'Written by Claude for this project; check before relying on it'),
+  ('arts-12', 'arts', 'Which Shakespeare play features Rosencrantz and Guildenstern?', 'Hamlet', array['Macbeth', 'Othello', 'King Lear'], null, 'Written by Claude for this project; check before relying on it'),
+  ('arts-13', 'arts', 'Who wrote the Harry Potter books?', 'J. K. Rowling', array['Roald Dahl', 'C. S. Lewis', 'Philip Pullman'], null, 'Written by Claude for this project; check before relying on it'),
+  ('arts-14', 'arts', 'Who wrote the novel 1984?', 'George Orwell', array['Aldous Huxley', 'Ray Bradbury', 'H. G. Wells'], null, 'Written by Claude for this project; check before relying on it'),
+  ('arts-15', 'arts', 'Which Dr. Seuss book features Sam-I-Am?', 'Green Eggs and Ham', array['The Cat in the Hat', 'Horton Hears a Who!', 'Oh, the Places You''ll Go!'], null, 'Written by Claude for this project; check before relying on it'),
+  ('arts-16', 'arts', 'Who wrote the novel To Kill a Mockingbird?', 'Harper Lee', array['Truman Capote', 'Toni Morrison', 'Maya Angelou'], null, 'Written by Claude for this project; check before relying on it'),
+  ('play-13', 'play', 'How many players does one soccer team have on the field?', 'Eleven', array['Nine', 'Ten', 'Twelve'], 'Including the goalkeeper.', 'Written by Claude for this project; check before relying on it'),
+  ('play-14', 'play', 'How many rings are on the Olympic flag?', 'Five', array['Four', 'Six', 'Seven'], null, 'Written by Claude for this project; check before relying on it'),
+  ('play-15', 'play', 'At which tournament do players dress in white and play on grass in London?', 'Wimbledon', array['The U.S. Open', 'The French Open', 'The Australian Open'], null, 'Written by Claude for this project; check before relying on it'),
+  ('play-16', 'play', 'In Monopoly, how much money do you collect when you pass Go?', '$200', array['$100', '$150', '$500'], null, 'Written by Claude for this project; check before relying on it'),
+  ('play-17', 'play', 'In Scrabble, how many letter tiles does each player hold?', 'Seven', array['Five', 'Six', 'Nine'], null, 'Written by Claude for this project; check before relying on it'),
+  ('food-17', 'food', 'How many days are in a leap year?', '366', array['364', '365', '367'], null, 'Written by Claude for this project; check before relying on it'),
+  ('food-18', 'food', 'Which dried fruit is made from grapes?', 'Raisins', array['Prunes', 'Dates', 'Figs'], null, 'Written by Claude for this project; check before relying on it'),
+  ('food-19', 'food', 'Which nut is the main ingredient in marzipan?', 'Almonds', array['Peanuts', 'Cashews', 'Walnuts'], null, 'Written by Claude for this project; check before relying on it'),
+  ('food-20', 'food', 'Which fruit, with a strong smell, is called the king of fruits in Southeast Asia?', 'Durian', array['Mango', 'Jackfruit', 'Papaya'], null, 'Written by Claude for this project; check before relying on it'),
+  ('food-21', 'food', 'How many teaspoons are in one tablespoon?', 'Three', array['Two', 'Four', 'Six'], 'In the U.S. measuring system.', 'Written by Claude for this project; check before relying on it'),
+  ('geo-21', 'geo', 'Which African country has Addis Ababa as its capital?', 'Ethiopia', array['Kenya', 'Nigeria', 'Tanzania'], null, 'Written by Claude for this project; check before relying on it'),
+  ('geo-22', 'geo', 'Which sea lies between Italy and the Balkan Peninsula?', 'The Adriatic Sea', array['The Baltic Sea', 'The Black Sea', 'The Aegean Sea'], null, 'Written by Claude for this project; check before relying on it'),
+  ('geo-23', 'geo', 'Which two countries share the world''s longest land border?', 'Canada and the United States', array['Russia and China', 'Argentina and Chile', 'India and Pakistan'], null, 'Written by Claude for this project; check before relying on it'),
+  ('geo-24', 'geo', 'What is the capital of Turkey?', 'Ankara', array['Istanbul', 'Izmir', 'Antalya'], 'Istanbul is the largest city, but Ankara is the capital.', 'Written by Claude for this project; check before relying on it'),
+  ('geo-25', 'geo', 'Which strait separates Spain from Morocco?', 'The Strait of Gibraltar', array['The Bosphorus', 'The Strait of Hormuz', 'The English Channel'], null, 'Written by Claude for this project; check before relying on it'),
+  ('geo-26', 'geo', 'Which mountain range separates Europe from Asia in Russia?', 'The Ural Mountains', array['The Alps', 'The Carpathians', 'The Pyrenees'], null, 'Written by Claude for this project; check before relying on it'),
+  ('geo-27', 'geo', 'Which South American country is named after the equator?', 'Ecuador', array['Colombia', 'Peru', 'Bolivia'], null, 'Written by Claude for this project; check before relying on it'),
+  ('geo-28', 'geo', 'What is the capital of New Zealand?', 'Wellington', array['Auckland', 'Christchurch', 'Queenstown'], null, 'Written by Claude for this project; check before relying on it'),
+  ('geo-29', 'geo', 'Which Hawaiian island is the largest?', 'Hawaii, the Big Island', array['Maui', 'Oahu', 'Kauai'], null, 'Written by Claude for this project; check before relying on it'),
+  ('hist-25', 'hist', 'Which ancient wonder stood in the harbor of Alexandria, Egypt?', 'The Lighthouse (Pharos)', array['The Colossus', 'The Hanging Gardens', 'The Temple of Artemis'], null, 'Written by Claude for this project; check before relying on it'),
+  ('hist-26', 'hist', 'Who was the first woman to win a Nobel Prize?', 'Marie Curie', array['Florence Nightingale', 'Rosalind Franklin', 'Mother Teresa'], 'In 1903, for physics.', 'Written by Claude for this project; check before relying on it'),
+  ('hist-27', 'hist', 'Which treaty ended World War I with Germany in 1919?', 'The Treaty of Versailles', array['The Treaty of Paris', 'The Treaty of Ghent', 'The Treaty of Tordesillas'], null, 'Written by Claude for this project; check before relying on it'),
+  ('hist-28', 'hist', 'Which Chinese dynasty is linked to the Terracotta Army?', 'The Qin dynasty', array['The Ming dynasty', 'The Tang dynasty', 'The Han dynasty'], null, 'Written by Claude for this project; check before relying on it'),
+  ('hist-29', 'hist', 'Who led the Soviet Union during the 1962 Cuban Missile Crisis?', 'Nikita Khrushchev', array['Joseph Stalin', 'Leonid Brezhnev', 'Mikhail Gorbachev'], null, 'Written by Claude for this project; check before relying on it'),
+  ('hist-30', 'hist', 'Which battle in 1815 ended Napoleon''s rule as emperor?', 'The Battle of Waterloo', array['The Battle of Trafalgar', 'The Battle of Hastings', 'The Battle of Gettysburg'], null, 'Written by Claude for this project; check before relying on it'),
+  ('hist-31', 'hist', 'Which ancient city was buried by the eruption of Mount Vesuvius in 79 AD?', 'Pompeii', array['Athens', 'Carthage', 'Troy'], null, 'Written by Claude for this project; check before relying on it'),
+  ('hist-32', 'hist', 'Who was the first President of South Africa elected after apartheid ended?', 'Nelson Mandela', array['Desmond Tutu', 'F. W. de Klerk', 'Thabo Mbeki'], 'He took office in 1994.', 'Written by Claude for this project; check before relying on it'),
+  ('hist-33', 'hist', 'Which famous explorer''s ship was named the Santa María?', 'Christopher Columbus', array['Vasco da Gama', 'Ferdinand Magellan', 'Marco Polo'], null, 'Written by Claude for this project; check before relying on it'),
+  ('sci-22', 'sci', 'What force keeps the planets in orbit around the Sun?', 'Gravity', array['Magnetism', 'Friction', 'Static electricity'], null, 'Written by Claude for this project; check before relying on it'),
+  ('sci-23', 'sci', 'What is the closest star to Earth?', 'The Sun', array['Proxima Centauri', 'Sirius', 'Polaris'], null, 'Written by Claude for this project; check before relying on it'),
+  ('sci-24', 'sci', 'Which element has the chemical symbol O?', 'Oxygen', array['Gold', 'Osmium', 'Oganesson'], null, 'Written by Claude for this project; check before relying on it'),
+  ('sci-25', 'sci', 'What do bees collect from flowers to make honey?', 'Nectar', array['Tree sap', 'Dew', 'Fruit juice'], null, 'Written by Claude for this project; check before relying on it'),
+  ('sci-26', 'sci', 'What is the center of an atom called?', 'The nucleus', array['The cell', 'The electron', 'The core shell'], null, 'Written by Claude for this project; check before relying on it'),
+  ('sci-27', 'sci', 'Which organ pumps blood around the human body?', 'The heart', array['The lungs', 'The kidneys', 'The liver'], null, 'Written by Claude for this project; check before relying on it'),
+  ('sci-28', 'sci', 'Which animal is the fastest on land?', 'The cheetah', array['The lion', 'The pronghorn', 'The greyhound'], null, 'Written by Claude for this project; check before relying on it'),
+  ('arts-17', 'arts', 'Who painted the ceiling of the Sistine Chapel?', 'Michelangelo', array['Raphael', 'Leonardo da Vinci', 'Donatello'], null, 'Written by Claude for this project; check before relying on it'),
+  ('arts-18', 'arts', 'Which author created the detective Sherlock Holmes?', 'Sir Arthur Conan Doyle', array['Agatha Christie', 'Edgar Allan Poe', 'Charles Dickens'], null, 'Written by Claude for this project; check before relying on it'),
+  ('arts-19', 'arts', 'Which ballet by Tchaikovsky features a Sugar Plum Fairy?', 'The Nutcracker', array['Swan Lake', 'Sleeping Beauty', 'Giselle'], null, 'Written by Claude for this project; check before relying on it'),
+  ('arts-20', 'arts', 'Who wrote the children''s book Charlotte''s Web?', 'E. B. White', array['Beverly Cleary', 'Roald Dahl', 'Judy Blume'], null, 'Written by Claude for this project; check before relying on it'),
+  ('arts-21', 'arts', 'Who wrote A Christmas Carol?', 'Charles Dickens', array['Jane Austen', 'Thomas Hardy', 'Lewis Carroll'], null, 'Written by Claude for this project; check before relying on it'),
+  ('arts-22', 'arts', 'Which Spanish artist painted Guernica?', 'Pablo Picasso', array['Salvador Dalí', 'Joan Miró', 'Francisco Goya'], null, 'Written by Claude for this project; check before relying on it'),
+  ('arts-23', 'arts', 'Which author wrote Little Women?', 'Louisa May Alcott', array['Emily Dickinson', 'Laura Ingalls Wilder', 'L. M. Montgomery'], null, 'Written by Claude for this project; check before relying on it'),
+  ('arts-24', 'arts', 'Who wrote the adventure novel Treasure Island?', 'Robert Louis Stevenson', array['Daniel Defoe', 'Jules Verne', 'Rudyard Kipling'], null, 'Written by Claude for this project; check before relying on it'),
+  ('play-18', 'play', 'In which sport would you perform a slam dunk?', 'Basketball', array['Volleyball', 'Netball', 'Handball'], null, 'Written by Claude for this project; check before relying on it'),
+  ('play-19', 'play', 'How many players are on a baseball team in the field at one time?', 'Nine', array['Seven', 'Ten', 'Eleven'], null, 'Written by Claude for this project; check before relying on it'),
+  ('play-20', 'play', 'What is the name for three strikes in a row in bowling?', 'A turkey', array['A hat trick', 'A birdie', 'An eagle'], null, 'Written by Claude for this project; check before relying on it'),
+  ('play-21', 'play', 'In which sport do you score a birdie?', 'Golf', array['Tennis', 'Archery', 'Cricket'], null, 'Written by Claude for this project; check before relying on it'),
+  ('play-22', 'play', 'How many minutes are in a regulation soccer match, not counting extra time?', '90', array['60', '80', '100'], null, 'Written by Claude for this project; check before relying on it'),
+  ('play-23', 'play', 'Which board game uses the words check and checkmate?', 'Chess', array['Checkers', 'Backgammon', 'Go'], null, 'Written by Claude for this project; check before relying on it'),
+  ('play-24', 'play', 'In which sport is the Stanley Cup awarded?', 'Ice hockey', array['Basketball', 'Baseball', 'Lacrosse'], null, 'Written by Claude for this project; check before relying on it'),
+  ('play-25', 'play', 'What color card does a soccer referee show to send a player off?', 'Red', array['Yellow', 'Blue', 'Green'], null, 'Written by Claude for this project; check before relying on it'),
+  ('food-22', 'food', 'Which cheese is traditionally used on a Greek salad?', 'Feta', array['Cheddar', 'Brie', 'Gouda'], null, 'Written by Claude for this project; check before relying on it'),
+  ('food-23', 'food', 'What is the main ingredient in hummus?', 'Chickpeas', array['Lentils', 'Black beans', 'Peanuts'], null, 'Written by Claude for this project; check before relying on it'),
+  ('food-24', 'food', 'What do you call a baby kangaroo?', 'A joey', array['A cub', 'A kit', 'A pup'], null, 'Written by Claude for this project; check before relying on it'),
+  ('food-25', 'food', 'Which popular drink is made by steeping dried leaves in hot water?', 'Tea', array['Cocoa', 'Coffee', 'Cider'], null, 'Written by Claude for this project; check before relying on it'),
+  ('food-26', 'food', 'Which Italian dish is made of layers of pasta, sauce and cheese?', 'Lasagna', array['Ravioli', 'Gnocchi', 'Risotto'], null, 'Written by Claude for this project; check before relying on it'),
+  ('food-27', 'food', 'How many hours are in a week?', '168', array['144', '156', '180'], null, 'Written by Claude for this project; check before relying on it'),
+  ('arts-25', 'arts', 'Which singer made "All I Want for Christmas Is You" famous in 1994?', 'Mariah Carey', array['Celine Dion', 'Whitney Houston', 'Madonna'], null, 'Written by Claude for this project; check before relying on it'),
+  ('arts-26', 'arts', 'Who wrote the song "White Christmas"?', 'Irving Berlin', array['Bing Crosby', 'Cole Porter', 'George Gershwin'], 'Bing Crosby''s recording became the best-selling single of its time.', 'Written by Claude for this project; check before relying on it'),
+  ('arts-27', 'arts', 'In which language was the carol "Silent Night" first written?', 'German', array['Latin', 'English', 'French'], 'It was written in Austria in 1818 as "Stille Nacht".', 'Written by Claude for this project; check before relying on it'),
+  ('arts-28', 'arts', 'Which singing cowboy recorded "Rudolph the Red-Nosed Reindeer" in 1949?', 'Gene Autry', array['Roy Rogers', 'Bing Crosby', 'Johnny Cash'], null, 'Written by Claude for this project; check before relying on it'),
+  ('arts-29', 'arts', 'In which language was the carol "O Holy Night" first written?', 'French', array['German', 'Italian', 'Latin'], 'It began as a French poem in 1847.', 'Written by Claude for this project; check before relying on it'),
+  ('arts-30', 'arts', 'Which charity supergroup recorded "Do They Know It''s Christmas?" in 1984?', 'Band Aid', array['Live Aid', 'USA for Africa', 'The Traveling Wilburys'], null, 'Written by Claude for this project; check before relying on it'),
+  ('arts-31', 'arts', 'Which British duo recorded the song "Last Christmas"?', 'Wham!', array['Pet Shop Boys', 'Eurythmics', 'Soft Cell'], 'George Michael and Andrew Ridgeley.', 'Written by Claude for this project; check before relying on it'),
+  ('arts-32', 'arts', 'Which singer had a hit in 1958 with "Rockin'' Around the Christmas Tree"?', 'Brenda Lee', array['Connie Francis', 'Patsy Cline', 'Dusty Springfield'], 'She was only 13 when she recorded it.', 'Written by Claude for this project; check before relying on it'),
+  ('arts-33', 'arts', 'Which singer is most linked with the recording of "The Christmas Song" ("Chestnuts Roasting on an Open Fire")?', 'Nat King Cole', array['Frank Sinatra', 'Dean Martin', 'Perry Como'], null, 'Written by Claude for this project; check before relying on it'),
+  ('arts-34', 'arts', 'Which jazz pianist composed the music for the TV special A Charlie Brown Christmas?', 'Vince Guaraldi', array['Dave Brubeck', 'Duke Ellington', 'Thelonious Monk'], null, 'Written by Claude for this project; check before relying on it'),
+  ('arts-35', 'arts', '"Carol of the Bells" is based on a folk chant from which country?', 'Ukraine', array['Poland', 'Austria', 'Russia'], 'The chant is called "Shchedryk".', 'Written by Claude for this project; check before relying on it'),
+  ('arts-36', 'arts', 'In the song "The Twelve Days of Christmas", how many gifts are given in total across all twelve days?', '364', array['78', '144', '12'], '1 + 2 + 3 and so on, added up for each day, makes 364.', 'Written by Claude for this project; check before relying on it'),
+  ('food-28', 'food', 'Which Italian sweet bread, with dried fruit, is a Christmas tradition from Milan?', 'Panettone', array['Focaccia', 'Ciabatta', 'Biscotti'], null, 'Written by Claude for this project; check before relying on it'),
+  ('food-29', 'food', 'Which steamed, corn-husk-wrapped dish is a traditional Christmas food in Mexico?', 'Tamales', array['Empanadas', 'Tortillas', 'Churros'], null, 'Written by Claude for this project; check before relying on it'),
+  ('food-30', 'food', 'Which drink made from milk, cream, sugar and eggs, often with nutmeg, is popular at Christmas in North America?', 'Eggnog', array['Hot chocolate', 'Mulled cider', 'Rice pudding'], null, 'Written by Claude for this project; check before relying on it'),
+  ('food-31', 'food', 'Which German Christmas bread, filled with dried fruit and dusted with sugar, is linked to Dresden?', 'Stollen', array['Pretzel', 'Pumpernickel', 'Strudel'], null, 'Written by Claude for this project; check before relying on it'),
+  ('food-32', 'food', 'Which fried potato pancakes are traditionally eaten during Hanukkah?', 'Latkes', array['Blintzes', 'Knishes', 'Pierogi'], 'Fried foods recall the miracle of the oil.', 'Written by Claude for this project; check before relying on it'),
+  ('food-33', 'food', 'Which flat, unleavened bread is eaten during the Jewish holiday of Passover?', 'Matzo', array['Challah', 'Pita', 'Naan'], null, 'Written by Claude for this project; check before relying on it'),
+  ('food-34', 'food', 'In Chinese tradition, what do long noodles eaten at celebrations like birthdays and the New Year stand for?', 'A long life', array['Wealth', 'Many children', 'Good travel'], null, 'Written by Claude for this project; check before relying on it'),
+  ('food-35', 'food', 'In Spain, what do many people eat at midnight on New Year''s Eve for good luck, one with each chime of the clock?', 'Twelve grapes', array['Twelve olives', 'Twelve almonds', 'Twelve cherries'], null, 'Written by Claude for this project; check before relying on it'),
+  ('food-36', 'food', 'Which food is traditionally eaten on New Year''s Day in the American South to bring good luck?', 'Black-eyed peas', array['Corn bread', 'Fried okra', 'Pecan pie'], null, 'Written by Claude for this project; check before relying on it'),
+  ('food-37', 'food', 'Which sweet bread is baked in Mexico for the Day of the Dead?', 'Pan de muerto', array['Rosca de reyes', 'Conchas', 'Bolillos'], null, 'Written by Claude for this project; check before relying on it'),
+  ('food-38', 'food', 'What is the name of the meal that breaks the daily fast during Ramadan?', 'Iftar', array['Suhoor', 'Eid', 'Halal'], 'Suhoor is the meal before dawn.', 'Written by Claude for this project; check before relying on it'),
+  ('food-39', 'food', 'In New Orleans, a small plastic baby is hidden in which cake during Mardi Gras season?', 'King cake', array['Pound cake', 'Pecan praline cake', 'Beignet cake'], null, 'Written by Claude for this project; check before relying on it'),
+  ('food-40', 'food', 'In Britain, a Christmas pudding is traditionally set alight with what?', 'Brandy', array['Vinegar', 'Whipped cream', 'Rum butter'], null, 'Written by Claude for this project; check before relying on it'),
+  ('food-41', 'food', 'Which Chinese filled dumplings, shaped like gold ingots, are eaten at the Lunar New Year?', 'Jiaozi', array['Baozi', 'Wontons', 'Shumai'], null, 'Written by Claude for this project; check before relying on it'),
+  ('food-42', 'food', 'Which festival of lights, celebrated with oil lamps and sweets, is observed by Hindus, Jains and Sikhs in autumn?', 'Diwali', array['Holi', 'Navratri', 'Vesak'], null, 'Written by Claude for this project; check before relying on it'),
+  ('food-43', 'food', 'In which country is it a popular tradition to eat fried chicken from KFC at Christmas?', 'Japan', array['Brazil', 'Australia', 'Italy'], 'A famous 1970s advertising campaign started it.', 'Written by Claude for this project; check before relying on it'),
+  ('food-44', 'food', 'In the Italian-American Christmas Eve tradition, how many kinds of fish are served at the feast?', 'Seven', array['Three', 'Five', 'Twelve'], 'The Feast of the Seven Fishes.', 'Written by Claude for this project; check before relying on it'),
+  ('sci-29', 'sci', 'Velcro was inspired by the way which kind of plant seed clings to clothing and fur?', 'Burrs', array['Dandelion seeds', 'Acorns', 'Pine cones'], 'Swiss engineer George de Mestral noticed burrs stuck to his dog''s fur in the 1940s.', 'Written by Claude for this project; check before relying on it'),
+  ('sci-30', 'sci', 'The nose of Japan''s Shinkansen bullet train was reshaped to cut noise, inspired by the beak of which bird?', 'The kingfisher', array['The eagle', 'The pelican', 'The woodpecker'], null, 'Written by Claude for this project; check before relying on it'),
+  ('sci-31', 'sci', 'Self-cleaning paints and surfaces copy the water-shedding leaves of which plant?', 'The lotus', array['The fern', 'The cactus', 'The water lily pad'], 'It is known as the lotus effect.', 'Written by Claude for this project; check before relying on it'),
+  ('sci-32', 'sci', 'Dry adhesives that stick without glue were inspired by the feet of which animal?', 'The gecko', array['The frog', 'The spider', 'The beetle'], null, 'Written by Claude for this project; check before relying on it'),
+  ('sci-33', 'sci', 'Which animal''s skin inspired fast swimsuits and surfaces that reduce drag?', 'The shark', array['The dolphin', 'The eel', 'The seal'], null, 'Written by Claude for this project; check before relying on it'),
+  ('sci-34', 'sci', 'Which insects'' mounds inspired the natural cooling system of the Eastgate Centre building in Harare, Zimbabwe?', 'Termites', array['Ants', 'Bees', 'Wasps'], null, 'Written by Claude for this project; check before relying on it'),
+  ('sci-35', 'sci', 'The bumpy flipper edges of which animal inspired more efficient wind turbine blades?', 'The humpback whale', array['The blue whale', 'The orca', 'The manatee'], null, 'Written by Claude for this project; check before relying on it'),
+  ('sci-36', 'sci', 'Which creature''s silk has inspired research into fibers that are strong for their weight, compared with steel?', 'The spider', array['The beetle', 'The ant', 'The firefly'], null, 'Written by Claude for this project; check before relying on it'),
+  ('sci-37', 'sci', 'Which German pioneer built and flew gliders in the 1890s after studying how birds fly?', 'Otto Lilienthal', array['Samuel Langley', 'Louis Blériot', 'Count Zeppelin'], null, 'Written by Claude for this project; check before relying on it'),
+  ('sci-38', 'sci', 'The hexagonal cells of which insect''s nest inspired lightweight honeycomb panels used in aircraft?', 'The honeybee', array['The wasp', 'The ant', 'The termite'], null, 'Written by Claude for this project; check before relying on it'),
+  ('sci-39', 'sci', 'Which bird''s feathers have inspired quieter fans and aircraft designs because it flies almost silently?', 'The owl', array['The hawk', 'The swan', 'The crow'], null, 'Written by Claude for this project; check before relying on it'),
+  ('sci-40', 'sci', 'Road reflectors called "cat''s eyes" were invented in 1934 by Percy Shaw, supposedly after seeing what?', 'A cat''s eyes shining in his headlights', array['A glowworm on the road', 'Moonlight on a puddle', 'A fox in a field'], null, 'Written by Claude for this project; check before relying on it'),
+  ('sci-41', 'sci', 'What is the word for designing technology and products by copying ideas from nature?', 'Biomimicry', array['Biochemistry', 'Bioengineering', 'Biodiversity'], 'It is also called biomimetics.', 'Written by Claude for this project; check before relying on it')
 on conflict do nothing;
 
 -- 32. Connections (Andry, 5 Nov): API keys for Daily, Resend, Twilio and R2, kept encrypted in Supabase Vault and set

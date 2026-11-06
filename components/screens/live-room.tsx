@@ -86,7 +86,8 @@ function steps(run: string | undefined, total: number) {
   });
 }
 
-// The last minutes of a session: a banner above the controls counts down to the end (Kelly, 2 Nov).
+// The last minutes of a session: a banner above the controls counts down to the end (Kelly, 2 Nov). Kelly 6 Nov:
+// no countdown before that (minute 55 of an hour), so the top bar shows the end time until then.
 const WRAP_UP_MINUTES = 5;
 const WRAP_UP_TEXT = 'It’s not goodbye… it’s until we meet again.';
 
@@ -227,6 +228,7 @@ export default function LiveRoomPage() {
   const starts = info ? new Date(info.starts_at).getTime() : 0;
   const locked = info ? now > new Date(info.locks_at).getTime() : false;
   const wrapUp = ends > 0 && now > 0 && ends > now && ends - now <= WRAP_UP_MINUTES * 60_000;
+  const endsLabel = ends ? new Date(ends).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '';
   const catalog = room ? catalogFor(room) : undefined;
   const plan = steps(catalog?.run, room?.minutes ?? 60);
   const trivia = catalog?.slug === TRIVIA_SLUG && phase !== 'loading' && room && account ? room.id : null;
@@ -342,7 +344,9 @@ export default function LiveRoomPage() {
         </div>
         <div className="live-time">
           <span>{now ? new Date(now).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : ''}</span>
-          <strong className={wrapUp ? 'live-time-low' : ''}>{ends ? `${clock(ends - now)} left` : ''}</strong>
+          <strong className={wrapUp ? 'live-time-low' : ''}>
+            {ends ? (wrapUp ? `${clock(ends - now)} left` : `Ends ${endsLabel}`) : ''}
+          </strong>
         </div>
       </header>
 
@@ -362,7 +366,11 @@ export default function LiveRoomPage() {
             {current ? (
               <>
                 <span className="prompt-time">
-                  {current.minutes} min · {clock((current.start + current.minutes - elapsedMin) * 60_000)} left
+                  {current.minutes} min · until{' '}
+                  {new Date(starts + (current.start + current.minutes) * 60_000).toLocaleTimeString('en-US', {
+                    hour: 'numeric',
+                    minute: '2-digit',
+                  })}
                 </span>
                 <h1>{current.text}</h1>
               </>

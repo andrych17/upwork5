@@ -34,6 +34,9 @@ const interests = [
 ];
 const PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const PHOTO_MAX = 5 * 1024 * 1024;
+// Same limits as profiles_screen_name_check in schema.sql.
+const SCREEN_NAME_MIN = 2;
+const SCREEN_NAME_MAX = 24;
 
 type Result = { success: boolean; error?: string } | null;
 
@@ -55,6 +58,7 @@ export default function SignupPage() {
   // Step 1
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
+  const [screenName, setScreenName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [ageOk, setAgeOk] = useState(false);
@@ -114,6 +118,9 @@ export default function SignupPage() {
     resumed.current = true;
     if (account) return go(2);
     if (!firstName.trim()) return setErrorMsg('Add your first name.');
+    const screen = screenName.trim().replace(/\s+/g, ' ');
+    if (screen && (screen.length < SCREEN_NAME_MIN || screen.length > SCREEN_NAME_MAX))
+      return setErrorMsg(`Screen names are ${SCREEN_NAME_MIN} to ${SCREEN_NAME_MAX} characters.`);
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) return setErrorMsg('Check the email address.');
     if (password.length < 8) return setErrorMsg('Use a password with at least 8 characters.');
     if (!ageOk) return setErrorMsg('Please confirm the age line to continue.');
@@ -148,7 +155,11 @@ export default function SignupPage() {
       email: email.trim(),
       password,
       options: {
-        data: { first_name: firstName.trim(), last_name: lastName.trim() },
+        data: {
+          first_name: firstName.trim(),
+          last_name: lastName.trim(),
+          screen_name: screenName.trim().replace(/\s+/g, ' ') || null,
+        },
         emailRedirectTo: `${window.location.origin}/signup`,
       },
     });
@@ -368,6 +379,20 @@ export default function SignupPage() {
                       />
                     </label>
                     <label className="full-field">
+                      <span>Screen name (optional)</span>
+                      <input
+                        type="text"
+                        autoComplete="nickname"
+                        placeholder="What others see, e.g. Kel or KC"
+                        maxLength={SCREEN_NAME_MAX}
+                        value={screenName}
+                        onChange={(e) => setScreenName(e.target.value)}
+                      />
+                      <small className="field-hint">
+                        Shown to other members in rooms, games and Buddy Rooms. Leave it blank to use your first name.
+                      </small>
+                    </label>
+                    <label className="full-field">
                       <span>Email</span>
                       <input
                         type="email"
@@ -462,7 +487,7 @@ export default function SignupPage() {
                     <button type="button" className="link-button" onClick={() => void resendCode()}>
                       send a new code
                     </button>
-                    . Clicking the link in the email works too.
+                    .
                   </p>
                 </div>
               )}

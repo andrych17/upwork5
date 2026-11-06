@@ -716,3 +716,23 @@
     animation: none;
   }
 }
+
+/* Sign-up: hint under the optional screen name (Kelly 6 Nov). */
+.form-grid .field-hint {
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: #555;
+}
+
+/* Trivia rules on the booking page (Kelly 6 Nov) */
+.trivia-book-rules ol.full-run-copy {
+  display: grid;
+  gap: 6px;
+  padding-left: 1.4rem;
+}
+
+.trivia-book-rules > p:not(.section-label) {
+  max-width: 780px;
+  margin: 14px 0 0;
+  line-height: 1.6;
+}

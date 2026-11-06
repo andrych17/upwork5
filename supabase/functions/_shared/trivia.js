@@ -16,7 +16,7 @@
  *     row a player is marked away and skipped until they act again.
  *   - Questions don't repeat in a room until every question in that colour has been used.
  *
- * state = { v, room, phase: "lobby"|"spin"|"move"|"question"|"over", players: [{id,name,pos,badges:[bool],color,misses,away,right,asked}],
+ * state = { v, room, phase: "lobby"|"spin"|"move"|"question"|"over", players: [{id,name,pos,badges:[bool],color,misses,away,right,points,asked}],
  *           turn, spin, options, q: {id,cat,order,final,badgeSpace,clock:{total,left,running,since,pausedAt,pausedUsed}}|null, deadline, timekeeper (the volunteer Timer's id or null), themes (category ids for a theme night, or []), lastSpin, spins, used:{cat:[id]}, rng, log:[text], last, winner, turns }
  * The engine never stores which answer is right inside a form a page should read: pages use cardFor() to get the
  * choices in display order, and last (the previous answer's reveal) to show what was right afterwards.
@@ -35,6 +35,8 @@
     maxPauseSeconds: 60,     // the Timer can stop the sand, but only this long in total per question; then it runs again
     startRunning: true,      // the sand starts running when a question opens; the Timer can stop and restart it
     keepTurnOnCorrect: true,
+    pointsPerRight: 1,       // points for every question answered right
+    badgeBonus: 2,           // extra points the first time a player earns each colour's badge
     awayAfterMisses: 2,
     spacesPerColour: 6,      // ring length = colours x this
     logLines: 40
@@ -93,6 +95,20 @@
     return { id: q.id, cat: cat, order: order, final: !!final };
   }
   function qById(bank, id) { for (var i = 0; i < bank.questions.length; i++) if (bank.questions[i].id === id) return bank.questions[i]; return null; }
+
+  /* Scoreboard. A player's score = points: pointsPerRight for each question answered right, plus badgeBonus for each badge earned.
+   * Ranked by score, then by badges, then by accuracy; players level on score and badges share a rank (1, 1, 3).
+   * The winner is whoever answers the final question right, so they are not always ranked first: the page marks them separately. */
+  function scoreboard(state) {
+    var nb = state.players.length ? state.players[0].badges.length : 0;
+    var rows = state.players.map(function (p, i) {
+      var b = p.badges.filter(Boolean).length;
+      return { id: p.id, name: p.name, color: p.color, seat: i + 1, score: p.points || 0, right: p.right, asked: p.asked, badges: b, badgesTotal: nb, accuracy: p.asked ? p.right / p.asked : 0, away: !!p.away };
+    });
+    rows.sort(function (a, b) { return b.score - a.score || b.badges - a.badges || b.accuracy - a.accuracy || a.seat - b.seat; });
+    rows.forEach(function (r, i) { var prev = rows[i - 1]; r.rank = prev && prev.score === r.score && prev.badges === r.badges ? prev.rank : i + 1; });
+    return rows;
+  }
 
   /* Theme night: a room can use only some of the categories (state.themes = list of category ids; empty = all).
    * view() returns the bank as that room sees it: just those categories (renumbered) and their questions. */
@@ -165,7 +181,7 @@
   function doAnswer(s, cfg, bank, now, displayIndex, timedOut) {
     var p = cur(s), q = s.q, bq = qById(bank, q.id), ok = !timedOut && displayIndex >= 0 && q.order[displayIndex] === 0;
     var all = [bq.a].concat(bq.wrong);
-    p.asked++; if (ok) p.right++;
+    p.asked++; if (ok) { p.right++; p.points = (p.points || 0) + cfg.pointsPerRight; }
     s.last = { player: p.name, q: bq.q, cat: q.cat, ok: ok, timedOut: !!timedOut, correct: bq.a, chosen: displayIndex >= 0 && !timedOut ? all[q.order[displayIndex]] : null, note: bq.note || "", final: q.final };
     if (timedOut) say(s, cfg, p.name + " ran out of time.");
     else say(s, cfg, p.name + (ok ? " got it right." : " got it wrong."));
@@ -174,7 +190,7 @@
       return endTurn(s, cfg, bank, now);
     }
     if (ok) {
-      if (q.badgeSpace && !p.badges[q.cat]) { p.badges[q.cat] = true; say(s, cfg, p.name + " earned the " + ((bank.categories[q.cat] || {}).name || "new") + " badge."); }
+      if (q.badgeSpace && !p.badges[q.cat]) { p.badges[q.cat] = true; p.points = (p.points || 0) + cfg.badgeBonus; say(s, cfg, p.name + " earned the " + ((bank.categories[q.cat] || {}).name || "new") + " badge (+" + cfg.badgeBonus + " bonus)."); }
       if (cfg.keepTurnOnCorrect) { s.q = null; return startStep(s, cfg, bank, now); }
     }
     endTurn(s, cfg, bank, now);
@@ -196,7 +212,7 @@
       if (s.players.length >= cfg.maxPlayers) return err("This room is full (" + cfg.maxPlayers + " players).");
       var name = uniqueName(s, cleanName(action.name));
       var used = s.players.map(function (x) { return x.color; }), c = 0; while (used.indexOf(c) >= 0 && c < COLOURS) c++;
-      s.players.push({ id: action.id, name: name, pos: 0, badges: bank.categories.map(function () { return false; }), color: c % COLOURS, misses: 0, away: false, right: 0, asked: 0 });
+      s.players.push({ id: action.id, name: name, pos: 0, badges: bank.categories.map(function () { return false; }), color: c % COLOURS, misses: 0, away: false, right: 0, points: 0, asked: 0 });
       say(s, cfg, name + " joined."); return { ok: true, state: s };
     }
     if (t === "leave") {
@@ -243,7 +259,7 @@
     if (t === "again") {
       if (s.phase !== "over") return err("The game isn't over.");
       if (!find(s, action.id)) return err("You are not in this room.");
-      s.players.forEach(function (x) { x.pos = 0; x.badges = x.badges.map(function () { return false; }); x.misses = 0; x.away = false; x.right = 0; x.asked = 0; });
+      s.players.forEach(function (x) { x.pos = 0; x.badges = x.badges.map(function () { return false; }); x.misses = 0; x.away = false; x.right = 0; x.points = 0; x.asked = 0; });
       s.phase = "lobby"; s.winner = null; s.last = null; s.q = null; s.turn = 0; s.log = []; return { ok: true, state: s };
     }
     if (t === "timeout") {
@@ -402,7 +418,7 @@
   }
 
   return {
-    DEFAULT_CONFIG: DEFAULT_CONFIG, cfgOf: cfgOf, board: board, newRoom: newRoom, apply: apply, cardFor: cardFor, view: view, qById: qById,
+    DEFAULT_CONFIG: DEFAULT_CONFIG, cfgOf: cfgOf, board: board, newRoom: newRoom, apply: apply, cardFor: cardFor, view: view, scoreboard: scoreboard, qById: qById,
     parseCsv: parseCsv, csvToBank: csvToBank, csvOf: csvOf, validateBank: validateBank, mergeBank: mergeBank, norm: norm
   };
 });

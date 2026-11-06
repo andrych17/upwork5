@@ -109,6 +109,34 @@ export default function HelloVideoQueue({ onCount }: { onCount?: (count: number)
     );
   };
 
+  // Kelly 6 Nov: a declined person (blurry video, faces not visible) can be let back in to record again.
+  const reopen = async (person: Declined) => {
+    const note = window.prompt(
+      `Let ${person.name || 'this member'} record a new Hello Video? They get an email asking them to record again. ` +
+        'Add a note they will see (optional), for example "Please record somewhere brighter."',
+      '',
+    );
+    if (note === null) return;
+    const who = person.name || 'This member';
+    const supabase = getSupabase();
+    if (supabase) {
+      const { data, error } = await supabase.rpc('hello_video_reopen', {
+        p_user: person.id,
+        p_note: note.trim() || null,
+      });
+      const res = data as { success: boolean; error?: string } | null;
+      if (error || !res?.success) {
+        setMessage({ tone: 'error', text: error?.message || res?.error || 'Could not save. Please try again.' });
+        return;
+      }
+    }
+    setDeclined((current) => current.filter((x) => x.id !== person.id));
+    setMessage({
+      tone: 'ok',
+      text: `${who} can record again and will get an email. Their new video shows up here when it arrives. If you already refunded them, they need to pay again before booking.`,
+    });
+  };
+
   const show = useCallback((res: EdgeResult<{ items: QueueItem[] }>) => {
     setLoading(false);
     if (res.error !== null) setMessage({ tone: 'error', text: res.error });
@@ -130,13 +158,13 @@ export default function HelloVideoQueue({ onCount }: { onCount?: (count: number)
     onCount?.(items.length);
   }, [items.length, onCount]);
 
-  // approve: let them in. Not approved: ask for a new video, held bookings stay. Decline: held bookings are released.
+  // approve: let them in. Ask for a new video: held bookings stay. Decline: held bookings are released.
   const review = async (item: QueueItem, approve: boolean, release = false) => {
     setMessage(null);
     if (
       release &&
       !window.confirm(
-        `Decline ${item.name || 'this member'}? Their held bookings are released, the credits go back, and they can’t record again. Refund the payment in your payment processor.`,
+        `Decline ${item.name || 'this member'}? Their held bookings are released and the credits go back. They can’t record again unless you choose Let them record again below. Refund the payment in your payment processor.`,
       )
     )
       return;
@@ -172,7 +200,8 @@ export default function HelloVideoQueue({ onCount }: { onCount?: (count: number)
   return (
     <div style={{ padding: '20px', display: 'grid', gap: '16px' }}>
       <p style={{ margin: 0, fontSize: '13px', color: '#6b7280' }}>
-        Only admins can see these. A video is deleted as soon as you choose Approve, Not approved or Decline.
+        Only admins can see these. A video is deleted as soon as you choose Approve, Ask for a new video or Decline.
+        Blurry, dark or faces not visible: choose Ask for a new video and add a note.
         {!live && ' (Preview: sample members. Videos play here once uploads are connected.)'}
         {live && ' Links expire after 15 minutes; '}
         {live && (
@@ -241,7 +270,7 @@ export default function HelloVideoQueue({ onCount }: { onCount?: (count: number)
             <input
               type="text"
               maxLength={300}
-              placeholder="Note if not approved (optional, the member sees it)"
+              placeholder="Note for the member if it isn’t approved (optional, they see it)"
               value={reasons[item.id] ?? ''}
               onChange={(e) => setReasons((current) => ({ ...current, [item.id]: e.target.value }))}
               style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid #d1d5db', fontSize: '14px' }}
@@ -261,7 +290,7 @@ export default function HelloVideoQueue({ onCount }: { onCount?: (count: number)
                 onClick={() => review(item, false)}
                 style={{ ...button, background: '#f3f4f6', color: '#991b1b' }}
               >
-                Not approved
+                Ask for a new video
               </button>
               <button
                 type="button"
@@ -282,7 +311,8 @@ export default function HelloVideoQueue({ onCount }: { onCount?: (count: number)
             Declined: refund needed ({declined.filter((x) => !x.refunded_at).length})
           </h3>
           <p style={{ margin: 0, fontSize: '13px', color: '#6b7280' }}>
-            Refund these payments in your payment processor, then tick Mark refunded so nobody is forgotten.
+            Refund these payments in your payment processor, then tick Mark refunded so nobody is forgotten. Declined by
+            mistake, or the video was just blurry? Let them record again.
           </p>
           {declined.map((person) => (
             <div
@@ -306,17 +336,26 @@ export default function HelloVideoQueue({ onCount }: { onCount?: (count: number)
                   {person.refunded_at && ` · refunded ${new Date(person.refunded_at).toLocaleDateString()}`}
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => markRefunded(person, !person.refunded_at)}
-                style={{
-                  ...button,
-                  background: person.refunded_at ? '#f3f4f6' : '#059669',
-                  color: person.refunded_at ? '#4b5563' : 'white',
-                }}
-              >
-                {person.refunded_at ? 'Undo' : 'Mark refunded'}
-              </button>
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                <button
+                  type="button"
+                  onClick={() => reopen(person)}
+                  style={{ ...button, background: '#f3f4f6', color: '#065f46' }}
+                >
+                  Let them record again
+                </button>
+                <button
+                  type="button"
+                  onClick={() => markRefunded(person, !person.refunded_at)}
+                  style={{
+                    ...button,
+                    background: person.refunded_at ? '#f3f4f6' : '#059669',
+                    color: person.refunded_at ? '#4b5563' : 'white',
+                  }}
+                >
+                  {person.refunded_at ? 'Undo' : 'Mark refunded'}
+                </button>
+              </div>
             </div>
           ))}
         </section>

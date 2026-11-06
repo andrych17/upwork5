@@ -75,6 +75,8 @@ export interface MembershipSummary {
   hello_status: 'none' | 'pending' | 'approved' | 'rejected' | 'declined';
   hello_required: boolean;
   hello_hold: boolean;
+  /** app_config.contact_email: where Contact us sends members (null = no link) */
+  contact_email: string | null;
   /** app_config.test_payments: Pay buttons succeed without a card */
   test_payments: boolean;
   /** Sign-up steps (section 24) */

@@ -39,7 +39,7 @@ select t(room_join(:'R2', :'SOPEN')->>'error' like 'Rooms open for you once%', '
 update bookings set held = false where session_id = :'SOPEN' and user_id = :'R2';
 select t(room_join(:'R1', :'SLATER')->>'error' = 'The room opens 5 minutes before the start.', 'too early');
 select t(room_join(:'R2', :'SLATER')->>'error' = 'The room opens 5 minutes before the start.', 'too early, even without a seat');
-select t(room_join(:'R1', :'SLOCK')->>'error' like 'The room closed to new arrivals%', 'locked 10 minutes after the start');
+select t(room_join(:'R1', :'SLOCK')->>'error' like 'The room closed to new arrivals%', 'locked after the start');
 select t((room_join(:'R2', :'SLOCK')->>'success')::boolean, 'someone who already joined can come back');
 select t(room_join(:'R1', :'SDONE')->>'error' = 'This session has ended.', 'ended sessions are closed');
 select t(room_join(:'R3', :'SLOCK')->>'error' = 'You don’t have a seat in this session.', 'no seat, no room');
@@ -79,6 +79,20 @@ select t((admin_resolve_report((select id from room_reports where reported_id = 
 select t(admin_resolve_report((select id from room_reports where reported_id = :'R2'))->>'error' like '%already resolved%',
   'no double resolve');
 reset role;
+
+-- Kelly 6 Nov: late joiners are cut off 5 minutes after the start, and that is the default for every session.
+select t((select column_default from information_schema.columns
+          where table_name = 'app_config' and column_name = 'booking_closes_minutes') like '%-5%',
+         'default cutoff is 5 minutes after the start');
+update app_config set booking_closes_minutes = -5;
+insert into sessions (id, title, slug, starts_at) values
+  ('00000000-0000-0000-0000-0000000007e5', 'Late Three', 'late-three', now() - interval '3 minutes'),
+  ('00000000-0000-0000-0000-0000000007e6', 'Late Seven', 'late-seven', now() - interval '7 minutes');
+insert into bookings (session_id, user_id, charged_to) values
+  ('00000000-0000-0000-0000-0000000007e5', :'R1', :'R1'), ('00000000-0000-0000-0000-0000000007e6', :'R1', :'R1');
+select t((room_join(:'R1', '00000000-0000-0000-0000-0000000007e5')->>'success')::boolean, '3 minutes late still gets in');
+select t(room_join(:'R1', '00000000-0000-0000-0000-0000000007e6')->>'error'
+         = 'The room closed to new arrivals 5 minutes after the start.', '7 minutes late is too late');
 
 -- Late arrivals (6 Nov): while booking stays open past 10 minutes, new arrivals can still enter the room.
 update app_config set booking_closes_minutes = -30;

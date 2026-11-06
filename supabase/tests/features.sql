@@ -217,6 +217,66 @@ select t(hello_declined_list()->'items'->0->>'refunded_at' is not null, 'the lis
 select t(hello_mark_refunded(:'Q')->>'error' like '%not declined%', 'only declined people can be marked');
 reset role;
 
+-- Kelly 6 Nov: "Contact us" goes to the admin email, and a declined person can be let back in to record again
+update app_config set contact_email = 'hello@meetdoconnect.com' where id = 1;
+set role service_role;
+select t(hello_video_start(:'P', 'video/webm', 1000000, 45)->>'error'
+         = 'Your Hello Video was not approved. Please contact us at hello@meetdoconnect.com.', 'the decline message gives the email');
+reset role;
+select set_config('request.jwt.claim.sub', :'P', false);
+set role authenticated;
+select t(get_my_membership()->>'contact_email' = 'hello@meetdoconnect.com', 'the membership page gets the email');
+select t(hello_video_reopen(:'P')->>'error' = 'Only an admin can do this.', 'members cannot reopen their own video');
+reset role;
+select set_config('request.jwt.claim.sub', :'A', false);
+set role authenticated;
+select t(hello_video_reopen(:'Q')->>'error' = 'This person was not declined.', 'only declined people can be let back in');
+select t((hello_video_reopen(:'P', '  Faces were not visible, please sit near a light.  ')->>'success')::boolean,
+         'admin lets the declined person record again');
+select t(jsonb_array_length(hello_declined_list()->'items') = 0, 'they leave the refund list');
+reset role;
+select t((select hello_status = 'rejected' and hello_refunded_at is null from profiles where id = :'P'),
+         'back to "record again", refund mark cleared');
+select t((select reject_reason from hello_videos where user_id = :'P' order by created_at desc limit 1)
+         = 'Faces were not visible, please sit near a light.', 'their video page shows the new note');
+select t(exists (select 1 from member_notices where user_id = :'P' and kind = 'hello_redo'
+                 and note = 'Faces were not visible, please sit near a light.' and claimed_at is null),
+         'an email asking for a new video is queued');
+select t(exists (select 1 from admin_log where profile_id = :'P' and action = 'hello_reopened'), 'the reopen is logged');
+set role service_role;
+select t(hello_video_start(:'P', 'video/webm', 1000000, 45) ? 'id', 'they can record again');
+reset role;
+select set_config('request.jwt.claim.sub', :'A', false);
+set role authenticated;
+select t(admin_update_config('{"contact_email": "not an email"}')->>'error' = 'Check the contact email address.',
+         'a bad contact email is refused');
+select t(admin_update_config('{"contact_email": 5}')->>'error' = 'A setting has the wrong type.', 'contact email must be text');
+select t((admin_update_config('{"contact_email": " "}')->>'success')::boolean, 'an empty contact email is saved');
+select t((select contact_email from app_config where id = 1) is null, 'an empty contact email turns the link off');
+reset role;
+set role service_role;
+update profiles set hello_status = 'declined' where id = :'P';
+select t(hello_video_start(:'P', 'video/webm', 1000000, 45)->>'error' = 'Your Hello Video was not approved. Please contact us.',
+         'no email set, no address in the message');
+update profiles set hello_status = 'none' where id = :'P';
+reset role;
+
+-- Kelly 6 Nov: a screen name from the sign-up form is what other members see
+insert into auth.users (id, email, raw_user_meta_data) values
+  ('00000000-0000-0000-0000-0000000005a1', 'nick@example.com', '{"first_name": "Katherine", "screen_name": "  Kat   C  "}'),
+  ('00000000-0000-0000-0000-0000000005a2', 'long@example.com', '{"first_name": "Lou", "screen_name": "x"}'),
+  ('00000000-0000-0000-0000-0000000005a3', 'ctrl@example.com', '{"first_name": "Ola", "screen_name": "Bad\u0007name"}');
+select t((select screen_name from profiles where id = '00000000-0000-0000-0000-0000000005a1') = 'Kat C',
+         'screen name saved with spaces tidied');
+select t((select screen_name is null from profiles where id = '00000000-0000-0000-0000-0000000005a2')
+         and (select screen_name is null from profiles where id = '00000000-0000-0000-0000-0000000005a3'),
+         'too short or odd screen names are dropped, sign-up still works');
+select t((select public_name(p) from profiles p where id = '00000000-0000-0000-0000-0000000005a1') = 'Kat C'
+         and (select public_name(p) from profiles p where id = '00000000-0000-0000-0000-0000000005a2') = 'Lou',
+         'others see the screen name, or the first name without one');
+select t(not exists (select 1 from profiles where screen_name is not null and screen_name <> btrim(screen_name)),
+         'no screen name has stray spaces');
+
 -- Weekly limit counted for the whole Household (default) or per person
 -- extra credits can go past the weekly limit, so the holder has none left for this check
 update profiles set addon_credits = 0 where id = :'H';

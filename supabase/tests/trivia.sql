@@ -20,8 +20,14 @@ insert into bookings (session_id, user_id, charged_to, status) values
   (:'TS', :'T1', :'T1', 'confirmed'), (:'TS', :'T2', :'T2', 'confirmed'),
   (:'TL', :'T1', :'T1', 'confirmed'), (:'TX', :'T1', :'T1', 'confirmed');
 
-select t((select count(*) from trivia_categories) = 6 and (select count(*) from trivia_questions) = 89,
-         'Kelly''s 89 starter questions in 6 categories');
+select t((select count(*) from trivia_categories) = 6 and (select count(*) from trivia_questions) = 207,
+         'Kelly''s 207 questions (6 Nov bank) in 6 categories');
+select t(not exists (select 1 from trivia_questions where id = 'arts-07' or q ilike '%Louvre%'),
+         'the Louvre question she dropped is not seeded');
+select t((select string_agg(color, ',' order by sort) from trivia_categories)
+         = '#0057E7,#E4002B,#00A651,#7B2CBF,#FF7A00,#FFD500', 'her 6 Nov colours');
+select t((select count(*) from trivia_questions where id ~ '^(geo|hist|sci|arts|play|food)-[0-9]{2}$') = 207
+         and (select count(*) from trivia_questions where note = '') = 0, 'ids per category, no empty notes');
 
 -- Who may play
 select t(trivia_seat(:'T1', :'TS')->>'name' = 'Maya', 'a seat holder plays under their first name');
@@ -33,6 +39,9 @@ update profiles set hello_status = 'approved' where id = :'T2';
 select t(trivia_seat(:'T1', :'TS')->>'error' like 'Rooms open for you once%', 'Hello Video rule as in the video room');
 select t((trivia_seat(:'T2', :'TS')->>'success')::boolean, 'approved video plays');
 update app_config set require_hello_video = false where id = 1;
+update profiles set screen_name = 'JJ' where id = :'T2';
+select t(trivia_seat(:'T2', :'TS')->>'name' = 'JJ', 'a screen name is what other players see');
+update profiles set screen_name = null where id = :'T2';
 
 -- Saving moves: one row per session, rev checked, state and secret move together
 select t(trivia_save(:'TS', -1, '{"phase": "lobby"}', null, '{"rng": 7}'), 'room created');

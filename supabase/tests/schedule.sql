@@ -87,6 +87,15 @@ select t(book_session(:'gone', false)->>'error' = 'Booking closed 10 minutes aft
 select t((select closes_at = starts_at + interval '10 minutes' from get_schedule(null, null, 'sched-late')),
   'closes_at is 10 minutes after the start');
 reset role;
+insert into sessions (slug, title, starts_at, capacity, published) values
+  ('sched-six', 'Sched Six', now() - interval '6 minutes', 12, true);
+select id as six from sessions where slug = 'sched-six' \gset
+update app_config set booking_closes_minutes = -5;
+select set_config('request.jwt.claim.sub', :'P3', false);
+set role authenticated;
+select t(book_session(:'six', false)->>'error' = 'Booking closed 5 minutes after the start.',
+  'with -5 (Kelly 6 Nov), booking closes 5 minutes after the start');
+reset role;
 update app_config set booking_closes_minutes = 15;
 select set_config('request.jwt.claim.sub', :'P1', false);
 set role authenticated;
