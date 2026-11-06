@@ -1,12 +1,14 @@
 'use client';
 
 // Activity log, read only: admin actions, credits given, member emails, session reminders, room entries (every try to
-// enter a live room, schema section 34) and app errors (browser-side problems with video, camera and uploads, section 33).
+// enter a live room, schema section 34), video visits from Daily (room-history Edge Function: who was in, until when,
+// admins too) and app errors (browser-side problems with video, camera and uploads, section 33).
 import { useCallback, useState } from 'react';
 import { useAdmin } from '@/components/admin/shell';
+import { callEdge } from '@/lib/edge';
 import { PAGE_SIZE, fmtWhen, fullName, useLoad } from '@/lib/admin';
 
-type Tab = 'admin' | 'credits' | 'notices' | 'reminders' | 'rooms' | 'errors';
+type Tab = 'admin' | 'credits' | 'notices' | 'reminders' | 'rooms' | 'video' | 'errors';
 
 type Who = { first_name: string | null; last_name: string | null; email: string | null } | null;
 
@@ -25,6 +27,7 @@ const TABS: { key: Tab; label: string }[] = [
   { key: 'notices', label: 'Member emails' },
   { key: 'reminders', label: 'Reminders' },
   { key: 'rooms', label: 'Room entries' },
+  { key: 'video', label: 'Video (Daily)' },
   { key: 'errors', label: 'App errors' },
 ];
 
@@ -32,6 +35,20 @@ const TABS: { key: Tab; label: string }[] = [
 const device = (ua: string | null) => ua?.match(/\(([^)]+)\)/)?.[1] ?? ua ?? '';
 
 const name = (w: Who) => (w ? fullName(w) : '');
+
+/** One visit to a live room, from Daily (supabase/functions/room-history). */
+interface Visit {
+  session_id: string;
+  title: string;
+  starts_at: string | null;
+  user_id: string | null;
+  name: string;
+  is_admin: boolean;
+  joined_at: string;
+  left_at: string | null;
+  minutes: number;
+  ongoing: boolean;
+}
 const sentence = (s: string) => s.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
 
 function describe(details: Record<string, unknown>): string {
@@ -137,6 +154,25 @@ export default function AdminLogs() {
             .filter(Boolean)
             .join(' · '),
           failed: r.email_sent === false,
+        })),
+      };
+    } else if (tab === 'video') {
+      // ponytail: Daily returns the last 30 days in one answer, paged here in the browser; asked again on each page.
+      // Upgrade path: keep the answer between pages if the history grows past a few hundred visits.
+      const res = await callEdge<{ rows: Visit[] }>('room-history', { days: 30 });
+      result = {
+        error: res.error,
+        rows: (res.data?.rows ?? []).slice(from, to + 1).map((v, i) => ({
+          key: `${v.session_id}-${v.user_id ?? v.name}-${v.joined_at}-${i}`,
+          when: v.joined_at,
+          what: `${v.ongoing ? 'In the room now' : `In the room ${v.minutes} min`}, ${v.title}`,
+          who: `${v.name}${v.is_admin ? ' (admin)' : ''}`,
+          detail: [
+            v.left_at ? `left ${fmtWhen(v.left_at)}` : 'still in',
+            v.starts_at ? `session ${fmtWhen(v.starts_at)}` : '',
+          ]
+            .filter(Boolean)
+            .join(' · '),
         })),
       };
     } else if (tab === 'rooms') {

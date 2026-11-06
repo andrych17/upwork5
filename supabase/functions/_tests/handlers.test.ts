@@ -465,3 +465,95 @@ Deno.test('room-join creates the Daily room once and gives a token only to peopl
   forgetKeys();
   Deno.env.delete('DAILY_MONTHLY_MINUTES');
 });
+
+Deno.test('room-history shows admins who was in each room, from Daily, mapped to members and sessions', async () => {
+  const adminId = '77777777-7777-7777-7777-777777777777';
+  const memberId = '88888888-8888-8888-8888-888888888888';
+  const session = '99999999-9999-9999-9999-999999999999';
+  let caller = adminId;
+  const call = (h: Handler, body: unknown = {}) =>
+    h(
+      new Request('https://fn.test', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer t' },
+        body: JSON.stringify(body),
+      }),
+    );
+
+  Deno.env.delete('DAILY_API_KEY');
+  assert((await call(await load('../room-history/index.ts?off'))).status === 503, 'no key: not configured');
+  Deno.env.set('DAILY_API_KEY', 'daily-key');
+  const handler = await load('../room-history/index.ts?on');
+
+  const t0 = Math.floor(Date.now() / 1000) - 3600;
+  calls = [];
+  answer = ({ url }) => {
+    if (url.pathname === '/auth/v1/user') return json({ id: caller, aud: 'authenticated', role: 'authenticated' });
+    if (url.pathname === '/rest/v1/profiles' && url.searchParams.get('select') === 'is_admin')
+      return json({ is_admin: url.searchParams.get('id') === `eq.${adminId}` });
+    if (url.pathname === '/rest/v1/profiles')
+      return json([
+        { id: memberId, first_name: 'Troy', last_name: 'D', email: 't@example.com', is_admin: false },
+        { id: adminId, first_name: 'Kelly', last_name: 'C', email: 'k@example.com', is_admin: true },
+      ]);
+    if (url.pathname === '/rest/v1/sessions')
+      return json([{ id: session, title: 'Trivia', starts_at: new Date(t0 * 1000).toISOString() }]);
+    if (url.pathname === '/v1/meetings')
+      return json({
+        data: [
+          {
+            id: 'm2',
+            room: `mdc-${session}`,
+            ongoing: true,
+            participants: [{ user_id: memberId, user_name: 'Troy', join_time: t0 + 1800, duration: null }],
+          },
+          {
+            id: 'm1',
+            room: `mdc-${session}`,
+            ongoing: false,
+            participants: [
+              { user_id: memberId, user_name: 'Troy', join_time: t0, duration: 600 },
+              { user_id: adminId, user_name: 'Kelly', join_time: t0 + 60, duration: 125 },
+              { user_id: null, user_name: 'Guest', join_time: t0 + 120, duration: 30 },
+            ],
+          },
+          { id: 'm0', room: 'someone-elses-room', participants: [{ user_id: memberId, join_time: t0, duration: 9 }] },
+        ],
+      });
+    return new Response('unexpected', { status: 599 });
+  };
+
+  caller = memberId;
+  assert((await call(handler)).status === 403, 'members cannot read the history');
+
+  caller = adminId;
+  const res = await call(handler, { days: 7 });
+  assert(res.status === 200, `admin gets the history (${res.status})`);
+  const { days, rows } = (await res.json()) as {
+    days: number;
+    rows: {
+      name: string;
+      is_admin: boolean;
+      minutes: number;
+      ongoing: boolean;
+      left_at: string | null;
+      title: string;
+    }[];
+  };
+  const daily = calls.find((c) => c.url.pathname === '/v1/meetings');
+  assert(daily?.auth === 'Bearer daily-key', 'asks Daily with the key');
+  assert(days === 7 && daily.url.searchParams.get('timeframe_start') !== null, 'looks back the asked number of days');
+  assert(rows.length === 4, 'one row per visit in our rooms only');
+  assert(rows[0].name === 'Troy D' && rows[0].ongoing && rows[0].left_at === null, 'newest first, still in the room');
+  const kelly = rows.find((r) => r.name === 'Kelly C');
+  assert(kelly?.is_admin && kelly.minutes === 3 && kelly.left_at !== null, 'admin visit with minutes and leave time');
+  assert(
+    rows.some((r) => r.name === 'Guest' && !r.is_admin),
+    'someone without a member id keeps the Daily name',
+  );
+  assert(
+    rows.every((r) => r.title === 'Trivia'),
+    'mapped to the session title',
+  );
+  assert((await call(handler, { days: 999 })).status === 200, 'out-of-range days fall back to 30');
+});
