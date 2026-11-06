@@ -7,7 +7,8 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import GoogleButton from '@/components/google-button';
 import PasswordInput from '@/components/password-input';
-import { getSupabase, setDemoUser } from '@/lib/supabase';
+import { mustFinishSignup } from '@/lib/signup-step';
+import { getSupabase, setDemoUser, type MembershipSummary } from '@/lib/supabase';
 
 export default function SigninPage() {
   const router = useRouter();
@@ -50,7 +51,13 @@ export default function SigninPage() {
             monthly_credits: 13,
             payment_status: 'active',
           });
-          router.push(nextFromQuery('/calendar') as Route);
+          // Someone who stopped before the Terms or the plan (e.g. confirmed by the email link on another
+          // device) continues sign-up; everyone else goes where they were headed.
+          // ponytail: only the password path checks this; "Sign in with Google" still lands on /calendar.
+          // Upgrade path: send Google back to /signin and run the same check once the session is picked up.
+          const { data: membership } = await supabase.rpc('get_my_membership');
+          const unfinished = mustFinishSignup(membership as MembershipSummary | null);
+          router.push((unfinished ? '/signup' : nextFromQuery('/calendar')) as Route);
           return;
         }
       } else {

@@ -14,6 +14,7 @@ import { useAccount } from '@/lib/account';
 import { money, usd, type Interval, type Tier } from '@/lib/prices';
 import { usePlans } from '@/lib/use-plans';
 import { savePushSubscription, VAPID_PUBLIC_KEY } from '@/lib/push';
+import { resumeStep } from '@/lib/signup-step';
 import { getSupabase, setDemoUser, type MembershipSummary } from '@/lib/supabase';
 
 const STEPS = 6;
@@ -39,14 +40,6 @@ type Result = { success: boolean; error?: string } | null;
 async function loadSummary(): Promise<MembershipSummary | null> {
   const { data } = (await getSupabase()?.rpc('get_my_membership')) ?? { data: null };
   return data as MembershipSummary | null;
-}
-
-/** The first step this person has not finished. */
-function resumeStep(s: MembershipSummary | null): number {
-  if (!s?.terms_accepted) return 2;
-  if (s.role !== 'member' && s.payment_status === 'pending') return 3;
-  if (s.hello_status === 'none' || s.hello_status === 'rejected') return 4;
-  return 5;
 }
 
 export default function SignupPage() {
