@@ -1,11 +1,12 @@
 'use client';
 
-// Activity log, read only: admin actions, credits given, member emails, and session reminders.
+// Activity log, read only: admin actions, credits given, member emails, session reminders, and app errors
+// (browser-side problems with video, camera and uploads, schema section 33).
 import { useCallback, useState } from 'react';
 import { useAdmin } from '@/components/admin/shell';
 import { PAGE_SIZE, fmtWhen, fullName, useLoad } from '@/lib/admin';
 
-type Tab = 'admin' | 'credits' | 'notices' | 'reminders';
+type Tab = 'admin' | 'credits' | 'notices' | 'reminders' | 'errors';
 
 type Who = { first_name: string | null; last_name: string | null; email: string | null } | null;
 
@@ -23,7 +24,11 @@ const TABS: { key: Tab; label: string }[] = [
   { key: 'credits', label: 'Credits given' },
   { key: 'notices', label: 'Member emails' },
   { key: 'reminders', label: 'Reminders' },
+  { key: 'errors', label: 'App errors' },
 ];
+
+/** The device part of a user agent, e.g. "iPhone; CPU iPhone OS 18_1 like Mac OS X". */
+const device = (ua: string | null) => ua?.match(/\(([^)]+)\)/)?.[1] ?? ua ?? '';
 
 const name = (w: Who) => (w ? fullName(w) : '');
 const sentence = (s: string) => s.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
@@ -123,10 +128,44 @@ export default function AdminLogs() {
           when: r.created_at,
           what: sentence(r.kind),
           who: name(r.member),
-          detail: [r.email_sent === null ? 'waiting to send' : r.email_sent ? 'email sent' : 'email failed', r.note, r.error]
+          detail: [
+            r.email_sent === null ? 'waiting to send' : r.email_sent ? 'email sent' : 'email failed',
+            r.note,
+            r.error,
+          ]
             .filter(Boolean)
             .join(' · '),
           failed: r.email_sent === false,
+        })),
+      };
+    } else if (tab === 'errors') {
+      const { data, error: e } = await supabase
+        .from('client_errors')
+        .select(
+          'id,kind,message,page,user_agent,details,created_at,member:profiles(first_name,last_name,email),session:sessions(title)',
+        )
+        .order('created_at', { ascending: false })
+        .range(from, to);
+      const list = (data ?? []) as unknown as {
+        id: string;
+        kind: string;
+        message: string;
+        page: string | null;
+        user_agent: string | null;
+        details: Record<string, unknown>;
+        created_at: string;
+        member: Who;
+        session: { title: string } | null;
+      }[];
+      result = {
+        error: e,
+        rows: list.map((r) => ({
+          key: r.id,
+          when: r.created_at,
+          what: `${sentence(r.kind)}${r.session ? `, ${r.session.title}` : ''}`,
+          who: name(r.member),
+          detail: [r.message, r.page, device(r.user_agent), describe(r.details ?? {})].filter(Boolean).join(' · '),
+          failed: true,
         })),
       };
     } else {
@@ -168,7 +207,11 @@ export default function AdminLogs() {
       };
     }
 
-    return { rows: result.rows.slice(0, PAGE_SIZE), hasMore: result.rows.length > PAGE_SIZE, error: Boolean(result.error) };
+    return {
+      rows: result.rows.slice(0, PAGE_SIZE),
+      hasMore: result.rows.length > PAGE_SIZE,
+      error: Boolean(result.error),
+    };
   }, [supabase, tab, page]);
 
   const { data: log, loading } = useLoad(fetchLog);
@@ -202,7 +245,11 @@ export default function AdminLogs() {
             ))}
           </div>
         </div>
-        {error && <p className="adm-msg adm-msg-error" style={{ margin: '1rem' }}>{error}</p>}
+        {error && (
+          <p className="adm-msg adm-msg-error" style={{ margin: '1rem' }}>
+            {error}
+          </p>
+        )}
         <div className="adm-table-wrap">
           <table className="adm-table">
             <thead>
@@ -231,7 +278,12 @@ export default function AdminLogs() {
         <div className="adm-pager">
           <span>{loading ? 'Loading…' : `Page ${page + 1}`}</span>
           <div className="adm-toolbar">
-            <button type="button" className="adm-btn adm-btn-sm" disabled={page === 0} onClick={() => setPage(page - 1)}>
+            <button
+              type="button"
+              className="adm-btn adm-btn-sm"
+              disabled={page === 0}
+              onClick={() => setPage(page - 1)}
+            >
               Newer
             </button>
             <button type="button" className="adm-btn adm-btn-sm" disabled={!hasMore} onClick={() => setPage(page + 1)}>

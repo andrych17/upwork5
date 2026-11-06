@@ -13,7 +13,7 @@
     "lint": "eslint .",
     "typecheck": "next typegen && tsc --noEmit",
     "format": "prettier --write .",
-    "test": "node scripts/test-engine.ts && node scripts/test-schedule.ts && node scripts/test-chess.ts && node scripts/test-usage.ts && node scripts/test-history.ts && node scripts/test-prices.ts && node scripts/test-date-range.ts && node scripts/test-password.ts && node scripts/test-trivia.ts && node scripts/test-signup.ts"
+    "test": "node scripts/test-engine.ts && node scripts/test-schedule.ts && node scripts/test-chess.ts && node scripts/test-usage.ts && node scripts/test-history.ts && node scripts/test-prices.ts && node scripts/test-date-range.ts && node scripts/test-password.ts && node scripts/test-trivia.ts && node scripts/test-signup.ts && node scripts/test-client-errors.ts"
   },
   "dependencies": {
     "@daily-co/daily-js": "0.94.0",

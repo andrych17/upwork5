@@ -5,6 +5,7 @@
 // while recording, watch it back, then send. The file goes straight to a private R2 bucket through a
 // 10-minute signed link from the hello-video Edge Function; only admins watch it, and it is deleted on review.
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { logClientError } from '@/lib/client-errors';
 import { callEdge } from '@/lib/edge';
 import {
   canRecord,
@@ -187,19 +188,22 @@ export default function HelloRecorder({ onSent, title = 'Record your Hello Video
       duration: clip.duration,
     });
     if (started.error !== null) {
+      logClientError('hello_upload', started.error, { details: { size: clip.blob.size } });
       setError(started.error);
       setPhase('review');
       return;
     }
     try {
       await put(started.data.upload_url, clip, started.data.content_type, setProgress);
-    } catch {
+    } catch (e) {
+      logClientError('hello_upload', e, { details: { size: clip.blob.size, mime: clip.mime } });
       setError('The upload stopped. Check your connection and press Send again.');
       setPhase('review');
       return;
     }
     const finished = await callEdge<{ status: string }>('hello-video', { action: 'finish', id: started.data.id });
     if (finished.error !== null) {
+      logClientError('hello_upload', finished.error, { details: { step: 'finish' } });
       setError(finished.error);
       setPhase('review');
       return;

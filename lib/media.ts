@@ -2,6 +2,7 @@
 
 // Camera and microphone helpers shared by the Hello Video recorder, the camera check and the live room.
 import { useEffect, useState } from 'react';
+import { logClientError } from '@/lib/client-errors';
 
 export interface Devices {
   cameras: MediaDeviceInfo[];
@@ -18,8 +19,9 @@ export const canCapture = () => typeof navigator !== 'undefined' && Boolean(navi
 
 export const canRecord = () => canCapture() && typeof MediaRecorder !== 'undefined';
 
-/** Plain words for a getUserMedia failure. */
+/** Plain words for a getUserMedia failure; the failure itself goes to Admin > Activity log > App errors. */
 export function cameraError(error: unknown): string {
+  logClientError('camera', error, { details: { in_app_browser: isInAppBrowser() } });
   if (isInAppBrowser()) return 'This app’s built-in browser can’t use the camera. Open the link in Chrome or Safari.';
   const name = error instanceof DOMException ? error.name : '';
   if (name === 'NotAllowedError' || name === 'SecurityError')

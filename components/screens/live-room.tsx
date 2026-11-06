@@ -13,6 +13,7 @@ import TriviaRoom, { leaveTrivia } from '@/components/games/trivia-room';
 import { useAccount } from '@/lib/account';
 import { callEdge } from '@/lib/edge';
 import { loadRoomPrefs } from '@/lib/media';
+import { logClientError } from '@/lib/client-errors';
 import { catalogFor, fetchRoom, type Room } from '@/lib/rooms';
 import { getSupabase } from '@/lib/supabase';
 import { TRIVIA_SLUG } from '@/lib/trivia';
@@ -143,6 +144,7 @@ export default function LiveRoomPage() {
       const joined = await callEdge<JoinInfo>('room-join', { session_id: r.id });
       if (!alive) return;
       if (joined.error !== null) {
+        logClientError('room_join', joined.error, { sessionId: r.id });
         setError(joined.error);
         setPhase('error');
         return;
@@ -172,8 +174,12 @@ export default function LiveRoomPage() {
       // going on to Buddy picks as if the person had left.
       let failed = false;
       c.on('left-meeting', () => alive && !failed && router.push(`/after-session?s=${encodeURIComponent(slug)}`));
+      // Camera trouble and non-fatal problems don't end the call; they are only recorded for the admins.
+      c.on('camera-error', (e) => logClientError('daily_camera', e, { sessionId: r.id }));
+      c.on('nonfatal-error', (e) => logClientError('daily_nonfatal', e, { sessionId: r.id }));
       c.on('error', (e) => {
         failed = true;
+        logClientError('daily_fatal', e, { sessionId: r.id });
         const why = `${e?.errorMsg ?? ''} ${e?.error?.type ?? ''}`;
         setError(
           why.includes('payment-method')
@@ -194,8 +200,9 @@ export default function LiveRoomPage() {
         if (!alive) return;
         refresh();
         setPhase('in');
-      } catch {
+      } catch (e) {
         if (!alive || failed) return;
+        logClientError('daily_join', e, { sessionId: r.id });
         setError('The camera or microphone didn’t start, or the connection failed. Check them and try again.');
         setPhase('error');
       }

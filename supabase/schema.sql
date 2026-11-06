@@ -3845,3 +3845,72 @@ revoke execute on function admin_service_keys() from public, anon;
 revoke execute on function admin_set_service_key(text, text) from public, anon;
 grant execute on function admin_service_keys() to authenticated;
 grant execute on function admin_set_service_key(text, text) to authenticated;
+
+-- ========================================================================
+-- 33. App errors (Andry, 6 Nov): what went wrong in a member's browser (Daily video, camera and microphone, room
+-- entry, Hello Video upload), so "my video didn't work" can be traced in Admin > Activity log > App errors. The
+-- browser writes only through log_client_error(); admins read the table. Rows are kept 30 days, and one person can
+-- send at most 30 in 10 minutes so a broken page can't flood it.
+create table if not exists client_errors (
+  id uuid primary key default gen_random_uuid(),
+  profile_id uuid references profiles(id) on delete cascade,
+  session_id uuid references sessions(id) on delete set null,
+  kind text not null check (length(kind) between 1 and 40),
+  message text not null check (length(message) between 1 and 500),
+  page text check (length(page) <= 200),
+  user_agent text check (length(user_agent) <= 300),
+  details jsonb not null default '{}' check (length(details::text) <= 2000),
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_client_errors_created on client_errors (created_at desc);
+create index if not exists idx_client_errors_profile on client_errors (profile_id, created_at desc);
+create index if not exists idx_client_errors_session on client_errors (session_id);
+
+alter table client_errors enable row level security;
+drop policy if exists "Admins can view app errors" on client_errors;
+create policy "Admins can view app errors" on client_errors for select using (is_admin());
+revoke insert, update, delete on client_errors from anon, authenticated;
+
+create or replace function log_client_error(
+  p_kind text,
+  p_message text,
+  p_session uuid default null,
+  p_page text default null,
+  p_user_agent text default null,
+  p_details jsonb default '{}'
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_me uuid := auth.uid();
+begin
+  if v_me is null then
+    return jsonb_build_object('success', false, 'error', 'Please sign in.');
+  end if;
+  if (select count(*) from client_errors
+      where profile_id = v_me and created_at > now() - interval '10 minutes') >= 30 then
+    return jsonb_build_object('success', false, 'error', 'Too many error reports. Try again later.');
+  end if;
+  -- ponytail: rows past 30 days are trimmed on write instead of by a cron job; fine at this volume.
+  -- Upgrade path: a daily pg_cron delete if errors ever arrive by the thousands.
+  delete from client_errors where created_at < now() - interval '30 days';
+  insert into client_errors (profile_id, session_id, kind, message, page, user_agent, details)
+  values (
+    v_me,
+    (select id from sessions where id = p_session),
+    left(coalesce(nullif(trim(p_kind), ''), 'error'), 40),
+    left(coalesce(nullif(trim(p_message), ''), '(no message)'), 500),
+    left(p_page, 200),
+    left(p_user_agent, 300),
+    case when jsonb_typeof(p_details) = 'object' and length(p_details::text) <= 2000 then p_details else '{}' end
+  );
+  return jsonb_build_object('success', true);
+end;
+$$;
+
+revoke execute on function log_client_error(text, text, uuid, text, text, jsonb) from public, anon;
+grant execute on function log_client_error(text, text, uuid, text, text, jsonb) to authenticated;
