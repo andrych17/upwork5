@@ -84,3 +84,17 @@ reset role;
 update app_config set booking_closes_minutes = -30;
 select t((room_join(:'R1', :'SLOCK')->>'success')::boolean, 'new arrivals enter 20 minutes in while booking is open (-30)');
 update app_config set booking_closes_minutes = 15;
+
+-- Room log (section 34): every try to enter is written down; only admins read it.
+select t(exists (select 1 from room_log where session_id = :'SLOCK' and profile_id = :'R1' and event = 'refused'
+                 and detail like 'The room closed to new arrivals%'), 'a turned-away try is logged with the reason');
+select t(exists (select 1 from room_log where session_id = :'SLOCK' and profile_id = :'R1' and event = 'entered'),
+         'the first entry is logged');
+select t(exists (select 1 from room_log where session_id = :'SLOCK' and profile_id = :'R2' and event = 'returned'),
+         'coming back after a drop is logged as returned');
+select t(exists (select 1 from room_log where session_id = :'SLOCK' and profile_id = :'RA' and as_admin and event = 'entered'),
+         'admin entries are marked');
+select set_config('request.jwt.claim.sub', :'R1', false);
+set role authenticated;
+select t(not exists (select 1 from room_log), 'members cannot read the room log');
+reset role;

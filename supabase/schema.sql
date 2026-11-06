@@ -2661,7 +2661,8 @@ revoke insert, update, delete on room_reports from anon, authenticated;
 
 -- Server only (service role, from room-join): may p_user enter p_session now? Admins may enter any session
 -- while it is open, without a seat. Marks the seat as joined.
-create or replace function room_join(p_user uuid, p_session uuid)
+-- The decision only; room_join() (section 34) calls this and writes the room log.
+create or replace function room_join_decide(p_user uuid, p_session uuid)
 returns jsonb
 language plpgsql
 security definer
@@ -2792,7 +2793,7 @@ begin
 end;
 $$;
 
-revoke execute on function room_join(uuid, uuid) from public, anon, authenticated;
+revoke execute on function room_join_decide(uuid, uuid) from public, anon, authenticated;
 revoke execute on function report_participant(uuid, uuid, text, text) from public, anon;
 grant execute on function report_participant(uuid, uuid, text, text) to authenticated;
 revoke execute on function admin_resolve_report(uuid) from public, anon;
@@ -3914,3 +3915,64 @@ $$;
 
 revoke execute on function log_client_error(text, text, uuid, text, text, jsonb) from public, anon;
 grant execute on function log_client_error(text, text, uuid, text, text, jsonb) to authenticated;
+
+-- ========================================================================
+-- 34. Room log (Andry, 6 Nov): every try to enter a live room, so admins can see who came and when, who came back
+-- after a drop, and who was turned away (and why) in Admin > Activity log > Room entries. room_join() wraps the
+-- decision (room_join_decide(), section 25) and writes one row per try. "entered" means the database let the person
+-- in; a video failure after that (Daily down, minutes used up) shows in App errors (section 33). Leaving isn't
+-- logged: the call ends in the browser and nothing reaches the server.
+create table if not exists room_log (
+  id uuid primary key default gen_random_uuid(),
+  session_id uuid not null references sessions(id) on delete cascade,
+  profile_id uuid references profiles(id) on delete set null,
+  event text not null check (event in ('entered', 'returned', 'refused')),
+  as_admin boolean not null default false,
+  detail text check (length(detail) <= 200),
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_room_log_created on room_log (created_at desc);
+create index if not exists idx_room_log_session on room_log (session_id);
+create index if not exists idx_room_log_profile on room_log (profile_id);
+
+alter table room_log enable row level security;
+drop policy if exists "Admins can view the room log" on room_log;
+create policy "Admins can view the room log" on room_log for select using (is_admin());
+revoke insert, update, delete on room_log from anon, authenticated;
+
+-- Entries from before the log existed, from bookings.joined_at (first entry only). Runs only while the log is empty.
+insert into room_log (session_id, profile_id, event, created_at)
+select session_id, user_id, 'entered', joined_at from bookings
+where joined_at is not null and not exists (select 1 from room_log);
+
+create or replace function room_join(p_user uuid, p_session uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_was_in boolean;
+  v jsonb;
+begin
+  select bool_or(joined_at is not null) into v_was_in from bookings
+  where session_id = p_session and user_id = p_user and status in ('confirmed', 'attended');
+  v := room_join_decide(p_user, p_session);
+  if exists (select 1 from sessions where id = p_session) then
+    insert into room_log (session_id, profile_id, event, as_admin, detail)
+    values (
+      p_session,
+      (select id from profiles where id = p_user),
+      case when not coalesce((v->>'success')::boolean, false) then 'refused'
+           when coalesce(v_was_in, false) then 'returned'
+           else 'entered' end,
+      coalesce((v->>'is_admin')::boolean, false),
+      left(v->>'error', 200)
+    );
+  end if;
+  return v;
+end;
+$$;
+
+revoke execute on function room_join(uuid, uuid) from public, anon, authenticated;

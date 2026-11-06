@@ -1,12 +1,12 @@
 'use client';
 
-// Activity log, read only: admin actions, credits given, member emails, session reminders, and app errors
-// (browser-side problems with video, camera and uploads, schema section 33).
+// Activity log, read only: admin actions, credits given, member emails, session reminders, room entries (every try to
+// enter a live room, schema section 34) and app errors (browser-side problems with video, camera and uploads, section 33).
 import { useCallback, useState } from 'react';
 import { useAdmin } from '@/components/admin/shell';
 import { PAGE_SIZE, fmtWhen, fullName, useLoad } from '@/lib/admin';
 
-type Tab = 'admin' | 'credits' | 'notices' | 'reminders' | 'errors';
+type Tab = 'admin' | 'credits' | 'notices' | 'reminders' | 'rooms' | 'errors';
 
 type Who = { first_name: string | null; last_name: string | null; email: string | null } | null;
 
@@ -24,6 +24,7 @@ const TABS: { key: Tab; label: string }[] = [
   { key: 'credits', label: 'Credits given' },
   { key: 'notices', label: 'Member emails' },
   { key: 'reminders', label: 'Reminders' },
+  { key: 'rooms', label: 'Room entries' },
   { key: 'errors', label: 'App errors' },
 ];
 
@@ -136,6 +137,35 @@ export default function AdminLogs() {
             .filter(Boolean)
             .join(' · '),
           failed: r.email_sent === false,
+        })),
+      };
+    } else if (tab === 'rooms') {
+      const { data, error: e } = await supabase
+        .from('room_log')
+        .select(
+          'id,event,as_admin,detail,created_at,member:profiles(first_name,last_name,email),session:sessions(title,starts_at)',
+        )
+        .order('created_at', { ascending: false })
+        .range(from, to);
+      const list = (data ?? []) as unknown as {
+        id: string;
+        event: 'entered' | 'returned' | 'refused';
+        as_admin: boolean;
+        detail: string | null;
+        created_at: string;
+        member: Who;
+        session: { title: string; starts_at: string } | null;
+      }[];
+      const verb = { entered: 'Entered', returned: 'Came back', refused: 'Turned away' } as const;
+      result = {
+        error: e,
+        rows: list.map((r) => ({
+          key: r.id,
+          when: r.created_at,
+          what: `${verb[r.event]}${r.session ? `, ${r.session.title}` : ''}`,
+          who: `${name(r.member)}${r.as_admin ? ' (admin)' : ''}`,
+          detail: [r.session ? `session ${fmtWhen(r.session.starts_at)}` : '', r.detail].filter(Boolean).join(' · '),
+          failed: r.event === 'refused',
         })),
       };
     } else if (tab === 'errors') {
