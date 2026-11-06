@@ -726,6 +726,7 @@
 
 /* Trivia rules on the booking page (Kelly 6 Nov) */
 .trivia-book-rules ol.full-run-copy {
+  list-style: decimal;
   display: grid;
   gap: 6px;
   padding-left: 1.4rem;

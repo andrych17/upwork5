@@ -569,6 +569,7 @@
 }
 
 .trivia-rules ol {
+  list-style: decimal;
   gap: 4px;
   margin: 8px 0 0;
   padding-left: 1.3rem;
