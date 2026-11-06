@@ -6,7 +6,18 @@ import { useEffect, useState } from 'react';
 import InviteBanner from '@/components/invite-banner';
 import MenuToggle from '@/components/menu-toggle';
 import { useAccount } from '@/lib/account';
-import { addDays, centralDay, fetchRooms, isOpen, mondayOf, roomInfo, seatLabel, when, type Room } from '@/lib/rooms';
+import {
+  addDays,
+  addMinutes,
+  centralDay,
+  fetchRooms,
+  isOpen,
+  mondayOf,
+  roomInfo,
+  seatLabel,
+  when,
+  type Room,
+} from '@/lib/rooms';
 import { getSupabase } from '@/lib/supabase';
 import { useNow } from '@/lib/use-now';
 
@@ -287,7 +298,8 @@ export default function SchedulePage() {
                 const at = when(room.starts_at);
                 const seats = seatLabel(room);
                 const open = isOpen(room, now);
-                const started = new Date(room.starts_at).getTime() <= now;
+                // Booking can stay open past the start (late arrivals), so "Ended" waits for the real end.
+                const ended = new Date(addMinutes(room.starts_at, room.minutes)).getTime() <= now;
                 const isExpanded = expanded === room.id;
                 return (
                   <article className={`session-row ${isExpanded ? 'expanded' : ''}`} key={room.id}>
@@ -324,7 +336,7 @@ export default function SchedulePage() {
                       ) : open ? (
                         <Link href={{ pathname: '/book', query: { s: room.slug } }}>Book</Link>
                       ) : (
-                        <span>{started ? 'Ended' : seats.text === 'Full' ? 'Full' : 'Closed'}</span>
+                        <span>{ended ? 'Ended' : seats.text === 'Full' ? 'Full' : 'Closed'}</span>
                       )}
                     </div>
                     {isExpanded && (

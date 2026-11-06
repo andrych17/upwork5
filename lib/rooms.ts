@@ -17,7 +17,7 @@ export interface Room {
   minutes: number;
   capacity: number;
   booked: number;
-  /** booking closes here (app_config.booking_closes_minutes before the start) */
+  /** booking closes here (app_config.booking_closes_minutes before the start; negative = after it) */
   closes_at: string;
   /** free cancellation until here (app_config.cancel_hours before the start) */
   cancel_by: string;

@@ -67,3 +67,29 @@ select t((set_booking_camera((:'b1'::jsonb->>'booking_id')::uuid, false)->>'succ
 select t((set_booking_camera((:'b2'::jsonb->>'booking_id')::uuid, true)->>'success')::boolean, 'the freed card can be used again');
 reset role;
 update app_config set bhd_per_month = 3;
+
+-- Late arrivals (Kelly 6 Nov): with booking_closes_minutes = -10, booking stays open until 10 minutes after the start,
+-- when the room locks to newcomers.
+\set P3 '00000000-0000-0000-0000-0000000000b3'
+insert into auth.users (id, email, raw_user_meta_data) values (:'P3', 'p3@example.com', '{"first_name": "Rae"}');
+select paid(array[:'P3']::uuid[]);
+insert into sessions (slug, title, starts_at, capacity, published) values
+  ('sched-late', 'Sched Late', now() - interval '5 minutes', 12, true),
+  ('sched-gone', 'Sched Gone', now() - interval '11 minutes', 12, true);
+select id as late from sessions where slug = 'sched-late' \gset
+select id as gone from sessions where slug = 'sched-gone' \gset
+update app_config set booking_closes_minutes = -10;
+select set_config('request.jwt.claim.sub', :'P3', false);
+set role authenticated;
+select t((book_session(:'late', false)->>'success')::boolean, 'booking 5 minutes after the start is open with -10');
+select t(book_session(:'gone', false)->>'error' = 'Booking closed 10 minutes after the start.',
+  'booking 11 minutes after the start is closed');
+select t((select closes_at = starts_at + interval '10 minutes' from get_schedule(null, null, 'sched-late')),
+  'closes_at is 10 minutes after the start');
+reset role;
+update app_config set booking_closes_minutes = 15;
+select set_config('request.jwt.claim.sub', :'P1', false);
+set role authenticated;
+select t((book_session(:'late', false)->>'error') = 'Booking closes 15 minutes before the start.',
+  'positive cutoff still closes before the start');
+reset role;

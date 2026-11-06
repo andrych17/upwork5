@@ -34,7 +34,8 @@ create table if not exists app_config (
   cancel_hours int not null default 24,
   grace_days int not null default 3,
   bhd_per_month int not null default 3,
-  booking_closes_minutes int not null default 15,
+  -- minutes before the start; negative = after it (Kelly 6 Nov: late arrivals book and enter until 10 after)
+  booking_closes_minutes int not null default -10,
   book_ahead_days int not null default 14
 );
 
@@ -394,7 +395,9 @@ begin
 
   if v_session.starts_at <= now() + make_interval(mins => v_cfg.booking_closes_minutes) then
     return jsonb_build_object('success', false, 'error',
-      format('Booking closes %s minutes before the start.', v_cfg.booking_closes_minutes));
+      case when v_cfg.booking_closes_minutes < 0
+           then format('Booking closed %s minutes after the start.', -v_cfg.booking_closes_minutes)
+           else format('Booking closes %s minutes before the start.', v_cfg.booking_closes_minutes) end);
   end if;
   if v_session.starts_at > now() + make_interval(days => v_cfg.book_ahead_days) then
     return jsonb_build_object('success', false, 'error',
@@ -2039,7 +2042,7 @@ begin
      or v_new.household_max_people not between 1 and 10 or v_new.welcome_trial_days not between 0 and 60
      or v_new.welcome_credits not between 0 and 50 or v_new.cancel_hours not between 0 and 168
      or v_new.grace_days not between 0 and 30 or v_new.bhd_per_month not between 0 and 20
-     or v_new.booking_closes_minutes not between 0 and 240 or v_new.book_ahead_days not between 1 and 180
+     or v_new.booking_closes_minutes not between -10 and 240 or v_new.book_ahead_days not between 1 and 180
      or least(v_new.solo_monthly_cents, v_new.solo_annual_cents, v_new.household_monthly_cents,
               v_new.household_annual_cents, v_new.extra_1_cents, v_new.extra_5_cents) < 0
      or greatest(v_new.solo_monthly_cents, v_new.solo_annual_cents, v_new.household_monthly_cents,

@@ -63,9 +63,9 @@ const NUMBERS: { key: NumberKey; label: string; hint: string; min: number; max: 
   { key: 'bhd_per_month', label: 'Bad Hair Day cards per month', hint: 'Camera-off sessions.', min: 0, max: 20 },
   {
     key: 'booking_closes_minutes',
-    label: 'Booking closes (minutes before)',
-    hint: 'No new seats after this.',
-    min: 0,
+    label: 'Booking closes (minutes before the start)',
+    hint: 'Negative = after the start. -10 lets late arrivals book until the room locks.',
+    min: -10,
     max: 240,
   },
   { key: 'book_ahead_days', label: 'Book ahead (days)', hint: 'How far the calendar opens.', min: 1, max: 180 },

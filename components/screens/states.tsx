@@ -56,7 +56,7 @@ const bookingMessages = [
   ['Card change closed', 'Bad Hair Day cards can be added or removed until three hours before the start.'],
   ['Overlap', 'This overlaps another session you booked.'],
   ['Full', 'This session is full.'],
-  ['Booking closed', 'Booking closed 15 minutes before the start.'],
+  ['Booking closed', 'Booking closed 10 minutes after the start.'],
   ['Too far ahead', 'You can book up to 14 days ahead.'],
   [
     'Payment paused',
