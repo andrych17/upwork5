@@ -149,6 +149,12 @@ export const addMinutes = (iso: string, minutes: number) =>
 export const ROOM_OPENS_MINUTES = 5;
 export const ROOM_LOCKS_MINUTES = 10;
 
+/** When the room locks to new arrivals: 10 minutes in, or later while booking stays open (same rule as room_join). */
+export function locksAt(room: Pick<Room, 'starts_at' | 'closes_at'>): string {
+  const tenIn = addMinutes(room.starts_at, ROOM_LOCKS_MINUTES);
+  return new Date(room.closes_at).getTime() > new Date(tenIn).getTime() ? room.closes_at : tenIn;
+}
+
 // ---------- loading ----------
 
 export async function fetchRooms(supabase: SupabaseClient, fromDay: string, toDay: string): Promise<Room[] | null> {

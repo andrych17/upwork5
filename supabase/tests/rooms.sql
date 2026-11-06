@@ -79,3 +79,8 @@ select t((admin_resolve_report((select id from room_reports where reported_id = 
 select t(admin_resolve_report((select id from room_reports where reported_id = :'R2'))->>'error' like '%already resolved%',
   'no double resolve');
 reset role;
+
+-- Late arrivals (6 Nov): while booking stays open past 10 minutes, new arrivals can still enter the room.
+update app_config set booking_closes_minutes = -30;
+select t((room_join(:'R1', :'SLOCK')->>'success')::boolean, 'new arrivals enter 20 minutes in while booking is open (-30)');
+update app_config set booking_closes_minutes = 15;

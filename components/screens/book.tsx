@@ -11,10 +11,10 @@ import { sendBuddyMessage } from '@/lib/buddies';
 import { updateBuddyDemo, useBuddyDemo } from '@/lib/buddy-demo';
 import { useAccount } from '@/lib/account';
 import {
-  ROOM_LOCKS_MINUTES,
   ROOM_OPENS_MINUTES,
   addMinutes,
   fetchRoom,
+  locksAt,
   roomInfo,
   seatLabel,
   seatsLeft,
@@ -446,7 +446,7 @@ export default function BookPage({ slug }: { slug: string }) {
           <div className="booking-help">
             <strong>Booking closes at {timeOf(session.closes_at)}.</strong>
             <p>
-              The room opens at {opensAt} and closes to new arrivals {ROOM_LOCKS_MINUTES} minutes after the start.
+              The room opens at {opensAt} and closes to new arrivals at {timeOf(locksAt(session))}.
             </p>
           </div>
         </aside>

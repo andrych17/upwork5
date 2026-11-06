@@ -64,8 +64,8 @@ const NUMBERS: { key: NumberKey; label: string; hint: string; min: number; max: 
   {
     key: 'booking_closes_minutes',
     label: 'Booking closes (minutes before the start)',
-    hint: 'Negative = after the start. -10 lets late arrivals book until the room locks.',
-    min: -10,
+    hint: 'Negative = after the start: late arrivals can book and enter until then. -60 keeps a 60-minute session open to the end.',
+    min: -240,
     max: 240,
   },
   { key: 'book_ahead_days', label: 'Book ahead (days)', hint: 'How far the calendar opens.', min: 1, max: 180 },

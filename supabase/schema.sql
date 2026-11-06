@@ -34,7 +34,8 @@ create table if not exists app_config (
   cancel_hours int not null default 24,
   grace_days int not null default 3,
   bhd_per_month int not null default 3,
-  -- minutes before the start; negative = after it (Kelly 6 Nov: late arrivals book and enter until 10 after)
+  -- minutes before the start; negative = after it, and new arrivals may enter the room until then too
+  -- (Kelly 6 Nov: late arrivals book and enter until 10 after; -60 keeps a 60-minute session open to the end)
   booking_closes_minutes int not null default -10,
   book_ahead_days int not null default 14
 );
@@ -2042,7 +2043,7 @@ begin
      or v_new.household_max_people not between 1 and 10 or v_new.welcome_trial_days not between 0 and 60
      or v_new.welcome_credits not between 0 and 50 or v_new.cancel_hours not between 0 and 168
      or v_new.grace_days not between 0 and 30 or v_new.bhd_per_month not between 0 and 20
-     or v_new.booking_closes_minutes not between -10 and 240 or v_new.book_ahead_days not between 1 and 180
+     or v_new.booking_closes_minutes not between -240 and 240 or v_new.book_ahead_days not between 1 and 180
      or least(v_new.solo_monthly_cents, v_new.solo_annual_cents, v_new.household_monthly_cents,
               v_new.household_annual_cents, v_new.extra_1_cents, v_new.extra_5_cents) < 0
      or greatest(v_new.solo_monthly_cents, v_new.solo_annual_cents, v_new.household_monthly_cents,
@@ -2685,7 +2686,8 @@ begin
     return jsonb_build_object('success', false, 'error', 'This session was not found.');
   end if;
   v_opens := v_s.starts_at - interval '5 minutes';
-  v_locks := v_s.starts_at + interval '10 minutes';
+  -- New arrivals: 10 minutes after the start, or later while booking stays open (booking_closes_minutes < -10).
+  v_locks := v_s.starts_at + make_interval(mins => greatest(10, -v_cfg.booking_closes_minutes));
   v_ends := v_s.starts_at + make_interval(mins => v_s.minutes);
   if now() < v_opens then
     return jsonb_build_object('success', false, 'error', 'The room opens 5 minutes before the start.');
@@ -2705,7 +2707,8 @@ begin
         'Rooms open for you once your Hello Video is approved. Your seat is saved.');
     end if;
     if now() > v_locks and v_b.joined_at is null then
-      return jsonb_build_object('success', false, 'error', 'The room closed to new arrivals ten minutes after the start.');
+      return jsonb_build_object('success', false, 'error',
+        format('The room closed to new arrivals %s minutes after the start.', greatest(10, -v_cfg.booking_closes_minutes)));
     end if;
     update bookings set joined_at = coalesce(joined_at, now()) where id = v_b.id;
   end if;

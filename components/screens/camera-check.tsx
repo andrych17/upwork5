@@ -18,7 +18,7 @@ import {
   type Devices,
   type RoomPrefs,
 } from '@/lib/media';
-import { ROOM_LOCKS_MINUTES, ROOM_OPENS_MINUTES, addMinutes, fetchRoom, timeOf, type Room } from '@/lib/rooms';
+import { ROOM_OPENS_MINUTES, addMinutes, fetchRoom, locksAt, timeOf, type Room } from '@/lib/rooms';
 import { getSupabase } from '@/lib/supabase';
 import { useQueryParam } from '@/lib/use-query';
 
@@ -241,12 +241,7 @@ export default function CameraCheckPage() {
               Pick a session to join <span aria-hidden="true">→</span>
             </Link>
           )}
-          {room && (
-            <p className="join-window-note">
-              The room locks at {timeOf(addMinutes(room.starts_at, ROOM_LOCKS_MINUTES))}, {ROOM_LOCKS_MINUTES} minutes
-              after the start.
-            </p>
-          )}
+          {room && <p className="join-window-note">The room locks to new arrivals at {timeOf(locksAt(room))}.</p>}
         </div>
       </section>
     </main>
