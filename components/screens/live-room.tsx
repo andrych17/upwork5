@@ -90,6 +90,7 @@ function steps(run: string | undefined, total: number) {
 // no countdown before that (minute 55 of an hour), so the top bar shows the end time until then.
 const WRAP_UP_MINUTES = 5;
 const ROLES_REFRESH_MS = 20_000;
+const lowerFirst = (t: string) => t.charAt(0).toLowerCase() + t.slice(1);
 const WRAP_UP_TEXT = 'It’s not goodbye… it’s until we meet again.';
 
 const clock = (ms: number) => {
@@ -421,7 +422,7 @@ export default function LiveRoomPage() {
             <span className="role-badge">{myRole ?? (info?.is_admin ? 'Admin' : 'Participant')}</span>
             <p>
               {myRole
-                ? `You’re the ${myRole} today. ${ROOM_ROLES.find((r) => r.role === myRole)?.does ?? ''}`
+                ? `Today you’re the ${myRole}, who ${lowerFirst(ROOM_ROLES.find((r) => r.role === myRole)?.does ?? '')}`
                 : info?.is_admin
                   ? 'You can see everyone in the room. Members can report privately from Safety controls.'
                   : 'Mute, Report and Leave are one tap away under Safety controls.'}
