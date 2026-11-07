@@ -5,10 +5,12 @@ import { runInNewContext } from 'node:vm';
 import {
   ANSWER_SECONDS,
   AWAY_AFTER_MISSES,
+  BADGE_AFTER,
   BADGE_BONUS,
   MAX_PAUSE_SECONDS,
   MAX_PLAYERS,
   POINTS_PER_RIGHT,
+  SESSION_MINUTES,
   SPINNER_MAX,
   TRIVIA_RULES,
   board,
@@ -18,6 +20,7 @@ import {
   roomCategories,
   scoreboard,
   wheelAfter,
+  winnersOf,
   type TriviaPlayer,
   type TriviaState,
 } from '../lib/trivia.ts';
@@ -72,22 +75,44 @@ assert.equal(clockLeft({ ...q(true), phase: 'spin' }, 0), null, 'no hourglass ou
 const snap = (rev: number) => ({ rev, card: null, state: q(true) });
 assert.ok(newer(null, snap(0)) && newer(snap(1), snap(2)) && !newer(snap(2), snap(2)) && !newer(snap(3), snap(2)));
 
-// Kelly 6 Nov: the rules and scoreboard the page shows follow her engine's settings and ranking.
+// Kelly 7 Nov: the rules and scoreboard the page shows follow her engine's settings and ranking.
 const cfg = engine.DEFAULT_CONFIG;
 assert.deepEqual(
-  [MAX_PLAYERS, SPINNER_MAX, ANSWER_SECONDS, POINTS_PER_RIGHT, BADGE_BONUS, MAX_PAUSE_SECONDS, AWAY_AFTER_MISSES],
+  [
+    MAX_PLAYERS,
+    SPINNER_MAX,
+    ANSWER_SECONDS,
+    POINTS_PER_RIGHT,
+    BADGE_AFTER,
+    BADGE_BONUS,
+    MAX_PAUSE_SECONDS,
+    AWAY_AFTER_MISSES,
+    SESSION_MINUTES,
+  ],
   [
     cfg.maxPlayers,
     cfg.spinnerMax,
     cfg.answerSeconds,
     cfg.pointsPerRight,
+    cfg.badgeAfter,
     cfg.badgeBonus,
     cfg.maxPauseSeconds,
     cfg.awayAfterMisses,
+    cfg.sessionMinutes,
   ],
   'rules text uses the engine settings',
 );
-assert.equal(TRIVIA_RULES.length, 8);
+// Her trivia-rules.txt, numbers filled in from the settings above (US spelling on the site).
+const rulesTxt = readFileSync(new URL('./fixtures/trivia-rules.txt', import.meta.url), 'utf8')
+  .split('\n')
+  .filter((l) => /^\d+\. /.test(l))
+  .map((l) =>
+    l
+      .replace(/^\d+\. /, '')
+      .replace(/colour/g, 'color')
+      .replace(/category's/g, 'category’s'),
+  );
+assert.deepEqual(TRIVIA_RULES, rulesTxt, 'the 8 Basic Rules match trivia-rules.txt word for word');
 const player = (
   id: string,
   points: number | undefined,
@@ -100,8 +125,8 @@ const scored = {
   players: [
     player('a', 5, 3, 6, [true, false, false]),
     player('b', 7, 5, 6, [true, false, false]),
-    player('c', 5, 3, 4, [true, false, false]), // same score and badges as a, better accuracy: ranked above, same rank
-    player('d', 5, 1, 2, [true, true, false], true),
+    player('c', 5, 3, 4, [true, false, false]), // same score and badges as a, better accuracy: listed above, same rank
+    player('d', 5, 1, 2, [true, true, false], true), // more badges: listed first of the three, still the same rank
     player('e', undefined, 0, 0, [false, false, false]),
   ],
 };
@@ -118,8 +143,12 @@ assert.deepEqual(
 );
 assert.deepEqual(
   mine.map((r) => `${r.id}${r.rank}`),
-  ['b1', 'd2', 'c3', 'a3', 'e5'],
+  ['b1', 'd2', 'c2', 'a2', 'e5'],
+  'level scores share a rank whatever the badges (7 Nov)',
 );
+assert.deepEqual(winnersOf({ winner: 'a', winners: ['a', 'c'] }), ['a', 'c'], 'a tie is a shared win');
+assert.deepEqual(winnersOf({ winner: 'a' }), ['a'], 'games saved before 7 Nov');
+assert.deepEqual(winnersOf({ winner: null, winners: [] }), []);
 assert.equal(inkOn('#FFD500'), '#111', 'dark letters on her yellow');
 assert.equal(inkOn('#0057E7'), '#fff', 'white letters on her blue');
 assert.equal(inkOn('nonsense'), '#fff');

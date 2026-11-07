@@ -1,7 +1,8 @@
 // Trivia, Trivier, Triviest (schema section 31). Every move of a session's game runs here with Kelly's engine, so
 // the page never sees an answer and nobody can play for someone else.
 // POST { session_id, action: { type, ... } } -> { state, card, rev, now, categories }
-// The player is the signed-in member: trivia_seat checks the seat and the room window and gives the first name.
+// The player is the signed-in member: trivia_seat checks the seat and the room window and gives the first name and
+// the session's end, which is when Kelly's engine ends the game (the highest score wins).
 // Deploy with JWT verification on (the default).
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2';
 import { admin, body, caller, cors, fail, json } from '../_shared/http.ts';
@@ -55,9 +56,10 @@ Deno.serve(async (req) => {
 
     const { data: seat, error: seatError } = await db.rpc('trivia_seat', { p_user: user.id, p_session: sessionId });
     if (seatError) throw new Error(`trivia_seat: ${seatError.message}`);
-    const s = seat as { success: boolean; error?: string; name?: string };
+    const s = seat as { success: boolean; error?: string; name?: string; ends_at?: string };
     if (!s.success) return fail(req, 403, 'NOT_ALLOWED', s.error ?? 'You can’t play in this room.');
 
+    const endsAt = s.ends_at ? Date.parse(s.ends_at) || undefined : undefined;
     const bank = await loadBank(db);
     const T = engine();
     for (let i = 0; i < MAX_TRIES; i++) {
@@ -74,7 +76,7 @@ Deno.serve(async (req) => {
       const rev = row ? row.rev : -1;
       const state = row ? joinSecret(row.state, secretOf(row)) : T.newRoom(sessionId, bank.categories.length);
       const now = Date.now();
-      const moved = T.apply(state, { ...action, id: user.id, name: s.name ?? 'Member' }, { bank, now });
+      const moved = T.apply(state, { ...action, id: user.id, name: s.name ?? 'Member' }, { bank, now, endsAt });
       if (!moved.ok) return fail(req, 409, 'MOVE_REFUSED', moved.error);
       // A game that ended because players left goes back to the lobby with its last result still set.
       if (action.type === 'start') moved.state.last = null;

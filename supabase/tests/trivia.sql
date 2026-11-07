@@ -6,6 +6,8 @@
 \set TS '00000000-0000-0000-0000-0000000000e4'
 \set TL '00000000-0000-0000-0000-0000000000e5'
 \set TX '00000000-0000-0000-0000-0000000000e6'
+\set TG '00000000-0000-0000-0000-0000000000e7'
+\set TE '00000000-0000-0000-0000-0000000000e8'
 
 insert into auth.users (id, email, raw_user_meta_data) values
   (:'T1', 't1@example.com', '{"first_name": "Maya"}'),
@@ -15,18 +17,21 @@ select paid(array[:'T1', :'T2', :'T3']::uuid[]);
 insert into sessions (id, title, slug, starts_at) values
   (:'TS', 'Trivia, Trivier, Triviest', 'trivia-trivier-triviest-test', now() - interval '10 minutes'),
   (:'TL', 'Trivia, Trivier, Triviest', 'trivia-trivier-triviest-later', now() + interval '2 hours'),
-  (:'TX', 'Quiet Co-Work', 'quiet-co-work-trivia-test', now() - interval '10 minutes');
+  (:'TX', 'Quiet Co-Work', 'quiet-co-work-trivia-test', now() - interval '10 minutes'),
+  (:'TG', 'Trivia, Trivier, Triviest', 'trivia-trivier-triviest-grace', now() - interval '62 minutes'),
+  (:'TE', 'Trivia, Trivier, Triviest', 'trivia-trivier-triviest-ended', now() - interval '66 minutes');
 insert into bookings (session_id, user_id, charged_to, status) values
   (:'TS', :'T1', :'T1', 'confirmed'), (:'TS', :'T2', :'T2', 'confirmed'),
-  (:'TL', :'T1', :'T1', 'confirmed'), (:'TX', :'T1', :'T1', 'confirmed');
+  (:'TL', :'T1', :'T1', 'confirmed'), (:'TX', :'T1', :'T1', 'confirmed'),
+  (:'TG', :'T1', :'T1', 'confirmed'), (:'TE', :'T1', :'T1', 'confirmed');
 
-select t((select count(*) from trivia_categories) = 6 and (select count(*) from trivia_questions) = 207,
-         'Kelly''s 207 questions (6 Nov bank) in 6 categories');
+select t((select count(*) from trivia_categories) = 6 and (select count(*) from trivia_questions) = 224,
+         'Kelly''s 224 questions (7 Nov bank) in 6 categories');
 select t(not exists (select 1 from trivia_questions where id = 'arts-07' or q ilike '%Louvre%'),
          'the Louvre question she dropped is not seeded');
 select t((select string_agg(color, ',' order by sort) from trivia_categories)
          = '#0057E7,#E4002B,#00A651,#7B2CBF,#FF7A00,#FFD500', 'her 6 Nov colours');
-select t((select count(*) from trivia_questions where id ~ '^(geo|hist|sci|arts|play|food)-[0-9]{2}$') = 207
+select t((select count(*) from trivia_questions where id ~ '^(geo|hist|sci|arts|play|food)-[0-9]{2}$') = 224
          and (select count(*) from trivia_questions where note = '') = 0, 'ids per category, no empty notes');
 
 -- Who may play
@@ -34,6 +39,11 @@ select t(trivia_seat(:'T1', :'TS')->>'name' = 'Maya', 'a seat holder plays under
 select t(trivia_seat(:'T3', :'TS')->>'error' = 'You don’t have a seat in this session.', 'no seat, no game');
 select t(trivia_seat(:'T1', :'TL')->>'error' like 'The game opens with the room%', 'not before the room opens');
 select t(trivia_seat(:'T1', :'TX')->>'error' = 'This session has no trivia game.', 'only Trivia sessions have a game');
+select t((trivia_seat(:'T1', :'TS')->>'ends_at')::timestamptz
+         = (select starts_at + make_interval(mins => minutes) from sessions where id = :'TS'),
+         'the session end goes to the engine, which ends the game then (Kelly 7 Nov)');
+select t((trivia_seat(:'T1', :'TG')->>'success')::boolean, 'still playable while the video room is open after the end');
+select t(trivia_seat(:'T1', :'TE')->>'error' = 'This session has ended.', 'closed with the video room, 5 minutes after the end');
 update app_config set require_hello_video = true where id = 1;
 update profiles set hello_status = 'approved' where id = :'T2';
 select t(trivia_seat(:'T1', :'TS')->>'error' like 'Rooms open for you once%', 'Hello Video rule as in the video room');

@@ -1,4 +1,5 @@
-// Glue between Kelly's trivia engine (trivia.js, unchanged from her 6 Nov zip: scoring added) and the trivia-act Edge Function:
+// Glue between Kelly's trivia engine (trivia.js, unchanged from her 7 Nov zip: points, badges after 4 right, game ends with
+// the session, pause requests) and the trivia-act Edge Function:
 // which moves the page may send, and which parts of the game state stay on the server.
 import './trivia.js';
 
@@ -43,7 +44,7 @@ export interface TriviaEngine {
   apply(
     state: GameState,
     action: TriviaAction & { id: string; name: string },
-    ctx: { bank: Bank; now: number },
+    ctx: { bank: Bank; now: number; endsAt?: number },
   ): Result;
   cardFor(state: GameState, bank: Bank): unknown;
   validateBank(input: unknown): { ok: boolean; errors: string[]; bank: Bank };
@@ -64,6 +65,7 @@ const TYPES = new Set([
   'timeout',
   'timer',
   'clock',
+  'pause',
   'spin',
   'move',
   'answer',

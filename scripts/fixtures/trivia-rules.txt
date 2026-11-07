@@ -1,0 +1,16 @@
+MeetDoConnect Trivia: Basic Rules of the Game
+
+1. On your turn, spin the spinner (1 to 6) and move that many spaces, in either direction round the ring.
+2. Answer a question in the colour of the space you land on. You have 60 seconds, shown by the hourglass.
+3. Right answer: 10 points, and you keep your turn. Wrong answer or out of time: no points and the turn passes.
+4. Answer 4 questions right in one category to earn that category's badge, worth 5 bonus points.
+5. Landing on the ↻ space gives you another spin.
+6. The Timer is a volunteer who works the hourglass. If another player asks for a pause because of an unforeseen interruption, the Timer can pause the sand (up to 60 seconds per question). The Timer cannot pause for themselves, so gives up this help on their own questions.
+7. Miss your turn 2 times in a row and you are marked away and skipped until you act again.
+8. The game ends when the 60-minute session ends. The highest score wins; players tied on the top score win together.
+
+Scoring: 10 points per right answer + 5 bonus points per badge. The scoreboard ranks players high to low and updates after every question.
+
+Colour key (the colour of a space is the question category):
+Blue = Geography, Red = History, Green = Science & Nature, Purple = Arts & Books, Orange = Sports & Games, Yellow = Food & Everyday Life
+The row of small circles beside each player's name shows badges: empty until that category's badge is earned, then filled with the category colour.

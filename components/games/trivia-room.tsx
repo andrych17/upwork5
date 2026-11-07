@@ -1,14 +1,15 @@
 'use client';
 
-// Trivia, Trivier, Triviest inside the live room: Kelly's board game (trivia.html in her 6 Nov zip) for the
+// Trivia, Trivier, Triviest inside the live room: Kelly's board game (trivia.html in her 7 Nov zip) for the
 // people in the session, each on their own device. Every move goes to the trivia-act Edge Function, which runs her
 // engine and saves the game; everyone gets the new state through Realtime, with a short refresh as a fallback.
 // The page never has the answers: the card lists the choices in display order and `last` shows what was right.
-import { useCallback, useEffect, useEffectEvent, useRef, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useEffectEvent, useRef, useState } from 'react';
 import { callEdge } from '@/lib/edge';
 import { getSupabase } from '@/lib/supabase';
 import {
   ACTION_SECONDS,
+  BADGE_AFTER,
   BADGE_BONUS,
   MAX_PLAYERS,
   PLAYER_COLOURS,
@@ -22,6 +23,7 @@ import {
   roomCategories,
   scoreboard,
   wheelAfter,
+  winnersOf,
   type TriviaCategory,
   type TriviaMove,
   type TriviaPlayer,
@@ -128,18 +130,7 @@ function Board({
               </text>
             </g>
           );
-        const cat = cats[sp.cat];
-        const color = cat?.color ?? '#888888';
-        if (sp.type === 'badge')
-          return (
-            <g key={sp.i}>
-              <circle cx={p.x} cy={p.y} r="23" fill={color} stroke="#fff" strokeWidth="4" />
-              <circle cx={p.x} cy={p.y} r="23" fill="none" stroke={color} strokeWidth="2" />
-              <text x={p.x} y={p.y + 6} textAnchor="middle" fontSize="17" fontWeight="700" fill={inkOn(color)}>
-                {cat?.name.charAt(0) ?? ''}
-              </text>
-            </g>
-          );
+        const color = cats[sp.cat]?.color ?? '#888888';
         return <circle key={sp.i} cx={p.x} cy={p.y} r="15" fill={color} stroke="#fff" strokeWidth="2" />;
       })}
       <Wheel deg={wheel} />
@@ -156,26 +147,16 @@ function Board({
           const y = base.y + spread * Math.sin(a);
           const turn = playing && k === s.turn;
           return (
-            <g key={s.players[k].id} className={turn ? 'trivia-pulse' : undefined}>
-              <circle
-                cx={x.toFixed(1)}
-                cy={y.toFixed(1)}
-                r={small ? 8 : 10}
-                fill={PLAYER_COLOURS[s.players[k].color]}
-                stroke={turn ? '#000' : '#fff'}
-                strokeWidth={turn ? 3 : 2}
-              />
-              <text
-                x={x.toFixed(1)}
-                y={(y + 4).toFixed(1)}
-                textAnchor="middle"
-                fontSize={small ? 9 : 11}
-                fontWeight="700"
-                fill="#fff"
-              >
-                {k + 1}
-              </text>
-            </g>
+            <circle
+              key={s.players[k].id}
+              className={turn ? 'trivia-pulse' : undefined}
+              cx={x.toFixed(1)}
+              cy={y.toFixed(1)}
+              r={small ? 8 : 10}
+              fill={PLAYER_COLOURS[s.players[k].color]}
+              stroke={turn ? '#000' : '#fff'}
+              strokeWidth={turn ? 3 : 2}
+            />
           );
         });
       })}
@@ -258,9 +239,7 @@ function PlayerRow({
   const tags = [p.id === me && 'you', p.id === s.timekeeper && 'Timer', p.away && 'away'].filter(Boolean);
   return (
     <li className={turn ? 'trivia-player now' : 'trivia-player'}>
-      <span className="trivia-dot" style={{ background: PLAYER_COLOURS[p.color] }}>
-        {k + 1}
-      </span>
+      <span className="trivia-dot" style={{ background: PLAYER_COLOURS[p.color] }} />
       <div>
         <strong>{p.name}</strong>
         {s.phase !== 'lobby' && (
@@ -277,7 +256,7 @@ function PlayerRow({
             key={c.id}
             className={p.badges[i] ? 'trivia-pip on' : 'trivia-pip'}
             style={p.badges[i] ? { background: c.color } : undefined}
-            title={`${c.name}${p.badges[i] ? ' badge earned' : ' badge not yet'}`}
+            title={`${c.name}: ${p.badges[i] ? 'badge earned' : `${p.catRight?.[i] ?? 0} of ${BADGE_AFTER} right so far`}`}
           />
         ))}
       </span>
@@ -312,9 +291,8 @@ function Legend({ cats }: { cats: TriviaCategory[] }) {
         ))}
       </div>
       <p className="trivia-hint">
-        Small colored space = a question in that category. Big lettered circle = badge space (answer right to earn that
-        badge). ↻ = spin again. Numbered circles are the players. In the Players list, the small circles on the right
-        show badges: empty until you earn that color, then filled.
+        Each colored space is a question in that category. ↻ = spin again. In the Players list, the row of small circles
+        on the right shows badges: empty until you answer {BADGE_AFTER} right in that category, then filled.
       </p>
     </div>
   );
@@ -322,6 +300,7 @@ function Legend({ cats }: { cats: TriviaCategory[] }) {
 
 function ScoreTable({ s, me, final }: { s: TriviaState; me: string; final?: boolean }) {
   const turnId = !final ? s.players[s.turn]?.id : undefined;
+  const winners = final ? winnersOf(s) : [];
   return (
     <table className="trivia-scores">
       <thead>
@@ -335,18 +314,16 @@ function ScoreTable({ s, me, final }: { s: TriviaState; me: string; final?: bool
       </thead>
       <tbody>
         {scoreboard(s).map((r) => {
-          const win = final && s.winner === r.id;
+          const win = winners.includes(r.id);
           const cls = [r.id === me ? 'me' : '', win ? 'win' : ''].filter(Boolean).join(' ');
           return (
             <tr key={r.id} className={cls || undefined}>
               <td className="n">{r.rank}</td>
               <td>
-                <span className="trivia-dot small" style={{ background: PLAYER_COLOURS[r.color] }}>
-                  {r.seat}
-                </span>
+                <span className="trivia-dot small" style={{ background: PLAYER_COLOURS[r.color] }} />
                 {r.name}
                 {r.id === me ? ' (you)' : ''}
-                {win ? ' ★ winner' : ''}
+                {win ? (winners.length > 1 ? ' ★ tied for the win' : ' ★ winner') : ''}
                 {r.id === turnId ? ' ◀ turn' : ''}
                 {r.away ? ' (away)' : ''}
               </td>
@@ -363,7 +340,12 @@ function ScoreTable({ s, me, final }: { s: TriviaState; me: string; final?: bool
   );
 }
 
-const SCORE_HINT = `${POINTS_PER_RIGHT} point for every right answer, plus ${BADGE_BONUS} bonus points for each badge earned. Ties are ranked by badges.`;
+const SCORE_HINT = `${POINTS_PER_RIGHT} points for every right answer, plus ${BADGE_BONUS} bonus points for each badge (${BADGE_AFTER} right answers in a category).`;
+
+const clockText = (ms: number) => {
+  const sec = Math.max(0, Math.floor(ms / 1000));
+  return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
+};
 
 export default function TriviaRoom({ sessionId, me }: { sessionId: string; me: string }) {
   const [view, setView] = useState<View | null>(null);
@@ -457,13 +439,16 @@ export default function TriviaRoom({ sessionId, me }: { sessionId: string; me: s
     const t = Date.now();
     setNow(t);
     const s = view?.snap.state;
-    if (!s || s.phase === 'lobby' || s.phase === 'over' || !s.deadline || timedOut.current === s.deadline) return;
+    if (!s || s.phase === 'lobby' || s.phase === 'over') return;
+    // The step's deadline, or the end of the session if that comes first (the engine then ends the game).
+    const due = s.endsAt && (!s.deadline || s.endsAt < s.deadline) ? s.endsAt : s.deadline;
+    if (!due || timedOut.current === due) return;
     const mine = Math.max(
       0,
       s.players.findIndex((p) => p.id === me),
     );
-    if (t + offset < s.deadline + TIMEOUT_GRACE_MS + mine * TIMEOUT_STAGGER_MS) return;
-    timedOut.current = s.deadline;
+    if (t + offset < due + TIMEOUT_GRACE_MS + mine * TIMEOUT_STAGGER_MS) return;
+    timedOut.current = due;
     void act({ type: 'timeout' }, true);
   });
 
@@ -510,6 +495,79 @@ export default function TriviaRoom({ sessionId, me }: { sessionId: string; me: s
   const clock = clockLeft(s, serverNow);
   const stepLeft = playing && s.phase !== 'question' ? Math.max(0, Math.ceil((s.deadline - serverNow) / 1000)) : null;
   const nameOf = (id: string | null) => s.players.find((p) => p.id === id)?.name ?? '';
+  const winners = winnersOf(s).map(nameOf);
+  const asked = s.q?.pauseReq ? nameOf(s.q.pauseReq) : '';
+  const sessionLeft = playing && s.endsAt ? s.endsAt - serverNow : null;
+  // Kelly 7 Nov: another player asks for a pause, then the Timer pauses the sand (never on the Timer's own question).
+  const timerControls = (): ReactNode => {
+    const stepDown = (
+      <button
+        className="trivia-btn quiet"
+        type="button"
+        disabled={busy}
+        onClick={() => void act({ type: 'timer', on: false })}
+      >
+        Step down
+      </button>
+    );
+    if (amTimer) {
+      let note: ReactNode = (
+        <span className="trivia-hint">You are the Timer. Pause requests appear with the next question.</span>
+      );
+      if (clock && myTurn) note = <span className="trivia-hint">You can’t pause the sand on your own question.</span>;
+      else if (clock && !clock.running)
+        note = (
+          <button
+            className="trivia-btn primary"
+            type="button"
+            disabled={busy}
+            onClick={() => void act({ type: 'clock', run: true })}
+          >
+            Restart the sand
+          </button>
+        );
+      else if (clock && asked)
+        note = (
+          <>
+            <span className="trivia-hint">{asked} asked for a pause.</span>
+            <button
+              className="trivia-btn primary"
+              type="button"
+              disabled={busy}
+              onClick={() => void act({ type: 'clock', run: false })}
+            >
+              Pause the sand
+            </button>
+          </>
+        );
+      else if (clock) note = <span className="trivia-hint">If a player asks for a pause, a button appears here.</span>;
+      return (
+        <>
+          {note}
+          {stepDown}
+        </>
+      );
+    }
+    if (!timer || timer.away)
+      return meIn ? (
+        <button
+          className="trivia-btn"
+          type="button"
+          disabled={busy}
+          onClick={() => void act({ type: 'timer', on: true })}
+        >
+          I’ll be the Timer
+        </button>
+      ) : null;
+    if (clock && !clock.running) return <span className="trivia-hint">Paused by the Timer.</span>;
+    if (!clock || timer.id === current?.id) return null;
+    if (asked) return <span className="trivia-hint">Pause requested. Waiting for {timer.name}.</span>;
+    return meIn ? (
+      <button className="trivia-btn" type="button" disabled={busy} onClick={() => void act({ type: 'pause' })}>
+        Ask for a pause
+      </button>
+    ) : null;
+  };
   const rows = () => (
     <ul className="trivia-players">
       {s.players.map((p, k) => (
@@ -527,9 +585,11 @@ export default function TriviaRoom({ sessionId, me }: { sessionId: string; me: s
             {s.phase === 'lobby'
               ? 'Waiting to start'
               : s.phase === 'over'
-                ? s.winner
-                  ? `${nameOf(s.winner)} wins`
-                  : 'Game over'
+                ? winners.length > 1
+                  ? `${winners.join(' and ')} tie for the win`
+                  : winners.length
+                    ? `${winners[0]} wins`
+                    : 'Game over'
                 : myTurn
                   ? 'Your turn'
                   : `${current?.name ?? ''}’s turn`}
@@ -604,7 +664,7 @@ export default function TriviaRoom({ sessionId, me }: { sessionId: string; me: s
           </div>
           <div>
             <p className="trivia-hint">
-              The Timer works the hourglass and can stop the sand for a while. Anyone can volunteer.
+              The Timer works the hourglass and can pause the sand when another player asks. Anyone can volunteer.
             </p>
             <div className="trivia-actions">
               <span>{timer ? `Timer: ${timer.name}` : 'No Timer yet.'}</span>
@@ -738,7 +798,6 @@ export default function TriviaRoom({ sessionId, me }: { sessionId: string; me: s
               {s.phase === 'question' && card && (
                 <div className="trivia-card">
                   <div className="trivia-band" style={{ background: card.color, color: inkOn(card.color) }}>
-                    {card.final ? 'Final question · ' : ''}
                     {card.catName}
                   </div>
                   <div className="trivia-card-body">
@@ -775,43 +834,10 @@ export default function TriviaRoom({ sessionId, me }: { sessionId: string; me: s
                     ? 'Waiting for the next question.'
                     : clock.running
                       ? 'The sand is running.'
-                      : `The sand is stopped. Stopped time left: ${Math.ceil(clock.pauseLeft / 1000)} s, then it runs again.`}
+                      : `The sand is paused. Paused time left: ${Math.ceil(clock.pauseLeft / 1000)} s, then it runs again.`}
                 </p>
-                <div className="trivia-actions">
-                  {amTimer && clock && !myTurn && (
-                    <button
-                      className="trivia-btn primary"
-                      type="button"
-                      disabled={busy}
-                      onClick={() => void act({ type: 'clock', run: !clock.running })}
-                    >
-                      {clock.running ? 'Stop the sand' : 'Start the sand'}
-                    </button>
-                  )}
-                  {amTimer && clock && myTurn && (
-                    <span className="trivia-hint">You can’t stop the sand on your own question.</span>
-                  )}
-                  {amTimer && (
-                    <button
-                      className="trivia-btn quiet"
-                      type="button"
-                      disabled={busy}
-                      onClick={() => void act({ type: 'timer', on: false })}
-                    >
-                      Step down
-                    </button>
-                  )}
-                  {!amTimer && meIn && (!timer || timer.away) && (
-                    <button
-                      className="trivia-btn"
-                      type="button"
-                      disabled={busy}
-                      onClick={() => void act({ type: 'timer', on: true })}
-                    >
-                      I’ll be the Timer
-                    </button>
-                  )}
-                </div>
+                <div className="trivia-actions">{timerControls()}</div>
+                {sessionLeft !== null && <p className="trivia-hint">Session ends in {clockText(sessionLeft)}</p>}
               </div>
             </div>
 
@@ -822,7 +848,9 @@ export default function TriviaRoom({ sessionId, me }: { sessionId: string; me: s
             <div className="trivia-panel">
               <h3>Scoreboard</h3>
               <ScoreTable s={s} me={me} />
-              <p className="trivia-hint">{SCORE_HINT} Updates after every question.</p>
+              <p className="trivia-hint">
+                {SCORE_HINT} Highest score wins at the end of the session. Updates after every question.
+              </p>
             </div>
           </div>
         </div>
@@ -832,7 +860,7 @@ export default function TriviaRoom({ sessionId, me }: { sessionId: string; me: s
         <div className="trivia-panel">
           <ScoreTable s={s} me={me} final />
           <p className="trivia-hint">
-            {SCORE_HINT} The winner is whoever answers the final question right, so they may not have the highest score.
+            {SCORE_HINT} The highest score wins. Players tied on the top score win together.
           </p>
           <div className="trivia-actions">
             <button

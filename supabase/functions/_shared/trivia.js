@@ -8,16 +8,16 @@
  * Rules as built (numbers are in DEFAULT_CONFIG):
  *   - 2 to 12 players. Each turn: spin (1 to 6), move that many spaces either way around the ring, answer a question
  *     in the colour of the space you land on. Landing on a "Roll again" space gives another spin and no question.
- *   - Correct on a colour's special space earns that colour's badge. Correct also keeps your turn (keepTurnOnCorrect).
- *   - With all badges, your next question is the final question in the middle. Correct wins; wrong, try again next turn.
- *   - Questions have a 60 second hourglass. The Timer (one player who volunteers) can stop and restart the sand, except on their own
- *     question, and stopped time is capped (maxPauseSeconds) so a game can't stall. Spin and move have a 30 second limit.
- *   - Spin, move and answer each have a time limit. A timed-out step is played automatically. After 2 misses in a
- *     row a player is marked away and skipped until they act again.
+ *   - A right answer is worth pointsPerRight (10) and keeps your turn (keepTurnOnCorrect). Wrong or out of time: no points, the turn passes.
+ *   - Answer badgeAfter (4) questions right in one category to earn that category's badge, worth badgeBonus (5) extra points.
+ *   - The game ends when the 60-minute session ends (state.endsAt). The highest score wins; players level on the top score win together.
+ *   - Questions have a 60 second hourglass. The Timer (one player who volunteers) can pause the sand only when another player has asked
+ *     for a pause (action "pause"), never on their own question, and paused time is capped (maxPauseSeconds). Spin and move have a 30 second limit.
+ *   - Spin, move and answer each have a time limit. A timed-out step is played automatically. After 2 misses in a row a player is marked away and skipped until they act again.
  *   - Questions don't repeat in a room until every question in that colour has been used.
  *
- * state = { v, room, phase: "lobby"|"spin"|"move"|"question"|"over", players: [{id,name,pos,badges:[bool],color,misses,away,right,points,asked}],
- *           turn, spin, options, q: {id,cat,order,final,badgeSpace,clock:{total,left,running,since,pausedAt,pausedUsed}}|null, deadline, timekeeper (the volunteer Timer's id or null), themes (category ids for a theme night, or []), lastSpin, spins, used:{cat:[id]}, rng, log:[text], last, winner, turns }
+ * state = { v, room, phase: "lobby"|"spin"|"move"|"question"|"over", players: [{id,name,pos,badges:[bool],catRight:[n per category],color,misses,away,right,points,asked}],
+ *           turn, spin, options, q: {id,cat,order,pauseReq (id of the player who asked for a pause, or null),clock:{total,left,running,since,pausedAt,pausedUsed}}|null, deadline, timekeeper (the volunteer Timer's id or null), themes (category ids for a theme night, or []), lastSpin, spins, used:{cat:[id]}, rng, log:[text], last, winner (first of the winners), winners:[ids], created, endsAt, turns }
  * The engine never stores which answer is right inside a form a page should read: pages use cardFor() to get the
  * choices in display order, and last (the previous answer's reveal) to show what was right afterwards.
  */
@@ -35,8 +35,10 @@
     maxPauseSeconds: 60,     // the Timer can stop the sand, but only this long in total per question; then it runs again
     startRunning: true,      // the sand starts running when a question opens; the Timer can stop and restart it
     keepTurnOnCorrect: true,
-    pointsPerRight: 1,       // points for every question answered right
-    badgeBonus: 2,           // extra points the first time a player earns each colour's badge
+    pointsPerRight: 10,      // points for every question answered right
+    badgeAfter: 4,           // right answers needed in one category to earn its badge
+    badgeBonus: 5,           // extra points for each badge
+    sessionMinutes: 60,      // the game ends this long after the room opens, unless the server passes ctx.endsAt
     awayAfterMisses: 2,
     spacesPerColour: 6,      // ring length = colours x this
     logLines: 40
@@ -53,14 +55,12 @@
   function hash(str) { var h = 2166136261; str = String(str); for (var i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } return h | 0; }
 
   /* ---------- the board ----------
-   * A ring. Every 6th space is a colour's badge space, every 6th space starting at 3 is "Roll again",
-   * the rest are plain spaces whose colour changes as you go round. */
+   * A ring. Every 6th space starting at 3 is "Roll again", the rest are plain coloured spaces whose colour changes as you go round. */
   function board(nCats, cfg) {
     cfg = cfgOf(cfg); var per = cfg.spacesPerColour, n = nCats * per, out = [], i, r;
     for (i = 0; i < n; i++) {
       r = i % per;
-      if (r === 0) out.push({ i: i, type: "badge", cat: i / per });
-      else if (r === Math.floor(per / 2)) out.push({ i: i, type: "roll", cat: -1 });
+      if (r === Math.floor(per / 2)) out.push({ i: i, type: "roll", cat: -1 });
       else out.push({ i: i, type: "plain", cat: (Math.floor(i / per) + r) % nCats });
     }
     return out;
@@ -69,7 +69,7 @@
   /* ---------- new room ---------- */
   function newRoom(code, nCats, seed) {
     return { v: 1, room: String(code), phase: "lobby", players: [], turn: 0, spin: null, options: [], q: null, deadline: 0, timekeeper: null, themes: [],
-      used: {}, rng: seed == null ? hash(code + ":" + Date.now()) : seed | 0, log: [], last: null, winner: null, turns: 0, nCats: nCats };
+      used: {}, rng: seed == null ? hash(code + ":" + Date.now()) : seed | 0, log: [], last: null, winner: null, winners: [], created: Date.now(), endsAt: 0, turns: 0, nCats: nCats };
   }
 
   /* ---------- helpers ---------- */
@@ -92,13 +92,13 @@
     var q = avail[rint(s, avail.length)]; used.push(q.id);
     var order = [], i; for (i = 0; i <= q.wrong.length; i++) order.push(i);
     for (i = order.length - 1; i > 0; i--) { var j = rint(s, i + 1), t = order[i]; order[i] = order[j]; order[j] = t; }
-    return { id: q.id, cat: cat, order: order, final: !!final };
+    return { id: q.id, cat: cat, order: order };
   }
   function qById(bank, id) { for (var i = 0; i < bank.questions.length; i++) if (bank.questions[i].id === id) return bank.questions[i]; return null; }
 
   /* Scoreboard. A player's score = points: pointsPerRight for each question answered right, plus badgeBonus for each badge earned.
-   * Ranked by score, then by badges, then by accuracy; players level on score and badges share a rank (1, 1, 3).
-   * The winner is whoever answers the final question right, so they are not always ranked first: the page marks them separately. */
+   * Listed high to low (level scores are listed by badges, then accuracy) and players level on score share a rank (1, 1, 3).
+   * The winners are the players ranked 1. */
   function scoreboard(state) {
     var nb = state.players.length ? state.players[0].badges.length : 0;
     var rows = state.players.map(function (p, i) {
@@ -106,7 +106,7 @@
       return { id: p.id, name: p.name, color: p.color, seat: i + 1, score: p.points || 0, right: p.right, asked: p.asked, badges: b, badgesTotal: nb, accuracy: p.asked ? p.right / p.asked : 0, away: !!p.away };
     });
     rows.sort(function (a, b) { return b.score - a.score || b.badges - a.badges || b.accuracy - a.accuracy || a.seat - b.seat; });
-    rows.forEach(function (r, i) { var prev = rows[i - 1]; r.rank = prev && prev.score === r.score && prev.badges === r.badges ? prev.rank : i + 1; });
+    rows.forEach(function (r, i) { var prev = rows[i - 1]; r.rank = prev && prev.score === r.score ? prev.rank : i + 1; });
     return rows;
   }
 
@@ -126,14 +126,14 @@
   function cardFor(s, bank) {
     if (!s.q) return null; bank = view(s, bank); var q = qById(bank, s.q.id); if (!q) return null;
     var all = [q.a].concat(q.wrong), cat = bank.categories[s.q.cat] || { name: "", color: "#888" };
-    return { id: q.id, cat: s.q.cat, catName: cat.name, color: cat.color, q: q.q, final: s.q.final, clock: s.q.clock, choices: s.q.order.map(function (k) { return all[k]; }) };
+    return { id: q.id, cat: s.q.cat, catName: cat.name, color: cat.color, q: q.q, pauseReq: s.q.pauseReq || null, clock: s.q.clock, choices: s.q.order.map(function (k) { return all[k]; }) };
   }
 
   // Opens a question and its hourglass.
   function openQuestion(s, cfg, now, q) {
     var total = cfg.answerSeconds * 1000;
     var run = !!cfg.startRunning || !find(s, s.timekeeper);   // with no Timer the sand always runs
-    q.clock = { total: total, left: total, running: run, since: now, pausedAt: run ? 0 : now, pausedUsed: 0 };
+    q.pauseReq = null; q.clock = { total: total, left: total, running: run, since: now, pausedAt: run ? 0 : now, pausedUsed: 0 };
     s.q = q; s.phase = "question";
     s.deadline = run ? now + total : now + cfg.maxPauseSeconds * 1000;
   }
@@ -143,15 +143,8 @@
     return from;
   }
   function startStep(s, cfg, bank, now) {
-    // Begin the current player's next step: the final question if they hold every badge, otherwise a spin.
-    var p = cur(s), allBadges = p.badges.length > 0 && p.badges.every(Boolean);
-    s.spin = null; s.options = [];
-    if (allBadges) {
-      var fq = drawQuestion(s, bank, rint(s, s.nCats), true);
-      if (!fq) { s.q = null; s.phase = "spin"; s.deadline = now + cfg.actionSeconds * 1000; return; }
-      openQuestion(s, cfg, now, fq);
-      say(s, cfg, p.name + " has every badge and gets the final question!");
-    } else { s.q = null; s.phase = "spin"; s.deadline = now + cfg.actionSeconds * 1000; }
+    // Begin the current player's next step: always a spin.
+    s.spin = null; s.options = []; s.q = null; s.phase = "spin"; s.deadline = now + cfg.actionSeconds * 1000;
   }
   function endTurn(s, cfg, bank, now) {
     s.turns++; s.q = null;
@@ -163,7 +156,7 @@
     if (space.type === "roll") { say(s, cfg, p.name + " landed on Roll again."); s.phase = "spin"; s.spin = null; s.options = []; s.deadline = now + cfg.actionSeconds * 1000; return; }
     var q = drawQuestion(s, bank, space.cat, false);
     if (!q) { say(s, cfg, "No questions available."); endTurn(s, cfg, bank, now); return; }
-    q.badgeSpace = space.type === "badge"; openQuestion(s, cfg, now, q);
+    openQuestion(s, cfg, now, q);
     s.options = []; s.spin = null;
   }
   function doSpin(s, cfg, bank, now) {
@@ -182,18 +175,21 @@
     var p = cur(s), q = s.q, bq = qById(bank, q.id), ok = !timedOut && displayIndex >= 0 && q.order[displayIndex] === 0;
     var all = [bq.a].concat(bq.wrong);
     p.asked++; if (ok) { p.right++; p.points = (p.points || 0) + cfg.pointsPerRight; }
-    s.last = { player: p.name, q: bq.q, cat: q.cat, ok: ok, timedOut: !!timedOut, correct: bq.a, chosen: displayIndex >= 0 && !timedOut ? all[q.order[displayIndex]] : null, note: bq.note || "", final: q.final };
+    s.last = { player: p.name, q: bq.q, cat: q.cat, ok: ok, timedOut: !!timedOut, correct: bq.a, chosen: displayIndex >= 0 && !timedOut ? all[q.order[displayIndex]] : null, note: bq.note || "" };
     if (timedOut) say(s, cfg, p.name + " ran out of time.");
     else say(s, cfg, p.name + (ok ? " got it right." : " got it wrong."));
-    if (q.final) {
-      if (ok) { s.phase = "over"; s.winner = p.id; s.q = null; s.deadline = 0; say(s, cfg, p.name + " wins the game!"); return; }
-      return endTurn(s, cfg, bank, now);
-    }
     if (ok) {
-      if (q.badgeSpace && !p.badges[q.cat]) { p.badges[q.cat] = true; p.points = (p.points || 0) + cfg.badgeBonus; say(s, cfg, p.name + " earned the " + ((bank.categories[q.cat] || {}).name || "new") + " badge (+" + cfg.badgeBonus + " bonus)."); }
+      p.catRight = p.catRight || []; p.catRight[q.cat] = (p.catRight[q.cat] || 0) + 1;
+      if (!p.badges[q.cat] && p.catRight[q.cat] >= cfg.badgeAfter) { p.badges[q.cat] = true; p.points = (p.points || 0) + cfg.badgeBonus; say(s, cfg, p.name + " earned the " + ((bank.categories[q.cat] || {}).name || "new") + " badge (+" + cfg.badgeBonus + " bonus points)."); }
       if (cfg.keepTurnOnCorrect) { s.q = null; return startStep(s, cfg, bank, now); }
     }
     endTurn(s, cfg, bank, now);
+  }
+  function finishGame(s, cfg, why) {
+    var rows = scoreboard(s), top = rows.length ? rows[0].score : 0, w = rows.filter(function (r) { return r.score === top; });
+    s.phase = "over"; s.q = null; s.deadline = 0; s.spin = null; s.options = [];
+    s.winners = w.map(function (r) { return r.id; }); s.winner = s.winners[0] || null;
+    say(s, cfg, (why || "The game is over.") + " " + (w.length > 1 ? w.map(function (r) { return r.name; }).join(" and ") + " tie for the win with " + top + " points." : w.length ? w[0].name + " wins with " + top + " points." : ""));
   }
   function miss(s, cfg, p) { p.misses++; if (p.misses >= cfg.awayAfterMisses && !p.away) { p.away = true; say(s, cfg, p.name + " is away and will be skipped."); } }
 
@@ -205,6 +201,7 @@
     var fullBank = bank; bank = view(s, fullBank);
     if (s.nCats && s.nCats !== bank.categories.length) return err("The question set changed while this room was open. Start a new room.");
     s.nCats = bank.categories.length;
+    if (s.endsAt && s.phase !== "lobby" && s.phase !== "over" && now >= s.endsAt) { finishGame(s, cfg, "The 60-minute session is over."); return { ok: true, state: s }; }
 
     if (t === "join") {
       p = find(s, action.id);
@@ -212,7 +209,7 @@
       if (s.players.length >= cfg.maxPlayers) return err("This room is full (" + cfg.maxPlayers + " players).");
       var name = uniqueName(s, cleanName(action.name));
       var used = s.players.map(function (x) { return x.color; }), c = 0; while (used.indexOf(c) >= 0 && c < COLOURS) c++;
-      s.players.push({ id: action.id, name: name, pos: 0, badges: bank.categories.map(function () { return false; }), color: c % COLOURS, misses: 0, away: false, right: 0, points: 0, asked: 0 });
+      s.players.push({ id: action.id, name: name, pos: 0, badges: bank.categories.map(function () { return false; }), catRight: bank.categories.map(function () { return 0; }), color: c % COLOURS, misses: 0, away: false, right: 0, points: 0, asked: 0 });
       say(s, cfg, name + " joined."); return { ok: true, state: s };
     }
     if (t === "leave") {
@@ -225,7 +222,7 @@
       if (idx < s.turn) s.turn--;
       if (s.turn >= s.players.length) s.turn = 0;
       if (s.phase !== "lobby" && s.phase !== "over") {
-        if (s.players.length < 2) { s.phase = "over"; s.winner = s.players[0].id; s.q = null; s.deadline = 0; say(s, cfg, "Only one player is left, so " + s.players[0].name + " wins."); }
+        if (s.players.length < 2) { finishGame(s, cfg, "Only one player is left."); }
         else if (wasTurn) { s.turn = (s.turn + s.players.length - 1) % s.players.length; endTurn(s, cfg, bank, now); }
       }
       return { ok: true, state: s };
@@ -246,7 +243,7 @@
       }
       if (ids.length === all.length) ids = [];
       s.themes = ids; var nb = view(s, fullBank); s.nCats = nb.categories.length; s.used = {};
-      s.players.forEach(function (x) { x.badges = nb.categories.map(function () { return false; }); x.pos = 0; });
+      s.players.forEach(function (x) { x.badges = nb.categories.map(function () { return false; }); x.catRight = nb.categories.map(function () { return 0; }); x.pos = 0; });
       say(s, cfg, find(s, action.id).name + " set the theme: " + (ids.length ? nb.categories.map(function (c) { return c.name; }).join(", ") : "all categories") + (action.random ? " (picked at random)." : "."));
       return { ok: true, state: s };
     }
@@ -254,13 +251,15 @@
       if (s.phase !== "lobby") return err("The game has already started.");
       if (!find(s, action.id)) return err("You are not in this room.");
       if (s.players.length < cfg.minPlayers) return err("You need at least " + cfg.minPlayers + " players.");
-      s.turn = 0; s.turns = 0; say(s, cfg, "The game has started!"); startStep(s, cfg, bank, now); return { ok: true, state: s };
+      s.endsAt = (ctx && ctx.endsAt) || ((s.created || now) + cfg.sessionMinutes * 60000);
+      if (now >= s.endsAt) return err("The 60-minute session is over.");
+      s.turn = 0; s.turns = 0; s.winners = []; say(s, cfg, "The game has started!"); startStep(s, cfg, bank, now); return { ok: true, state: s };
     }
     if (t === "again") {
       if (s.phase !== "over") return err("The game isn't over.");
       if (!find(s, action.id)) return err("You are not in this room.");
-      s.players.forEach(function (x) { x.pos = 0; x.badges = x.badges.map(function () { return false; }); x.misses = 0; x.away = false; x.right = 0; x.points = 0; x.asked = 0; });
-      s.phase = "lobby"; s.winner = null; s.last = null; s.q = null; s.turn = 0; s.log = []; return { ok: true, state: s };
+      s.players.forEach(function (x) { x.pos = 0; x.badges = x.badges.map(function () { return false; }); x.catRight = x.badges.map(function () { return 0; }); x.misses = 0; x.away = false; x.right = 0; x.points = 0; x.asked = 0; });
+      s.phase = "lobby"; s.winner = null; s.winners = []; s.created = now; s.endsAt = 0; s.last = null; s.q = null; s.turn = 0; s.log = []; return { ok: true, state: s };
     }
     if (t === "timeout") {
       if (s.phase === "lobby" || s.phase === "over") return err("Nothing to time out.");
@@ -287,20 +286,34 @@
     }
     if (t === "clock") {
       if (s.phase !== "question" || !s.q || !s.q.clock) return err("There is no question open.");
-      if (action.id !== s.timekeeper) return err("Only the Timer can start or stop the sand.");
-      if (action.id === cur(s).id) return err("The Timer can't stop the sand on their own question.");
+      if (action.id !== s.timekeeper) return err("Only the Timer can pause or restart the sand.");
       var c = s.q.clock;
       if (action.run === false) {
+        if (action.id === cur(s).id) return err("The Timer can't pause the sand on their own question.");
         if (!c.running) return { ok: true, state: s };
+        if (!s.q.pauseReq) return err("The sand can be paused only after another player asks for a pause.");
         var left = Math.max(0, s.deadline - now), allow = cfg.maxPauseSeconds * 1000 - c.pausedUsed;
         if (allow <= 0) return err("The stopped time for this question is used up.");
         if (left <= 0) return err("Time is up.");
-        c.left = left; c.running = false; c.pausedAt = now; s.deadline = now + allow; say(s, cfg, find(s, action.id).name + " stopped the sand.");
+        c.left = left; c.running = false; c.pausedAt = now; s.deadline = now + allow; s.q.pauseReq = null; say(s, cfg, find(s, action.id).name + " paused the sand.");
       } else {
         if (c.running) return { ok: true, state: s };
-        c.pausedUsed += Math.max(0, now - c.pausedAt); c.running = true; c.since = now; c.pausedAt = 0; s.deadline = now + c.left; say(s, cfg, find(s, action.id).name + " started the sand.");
+        c.pausedUsed += Math.max(0, now - c.pausedAt); c.running = true; c.since = now; c.pausedAt = 0; s.deadline = now + c.left; say(s, cfg, find(s, action.id).name + " restarted the sand.");
       }
       return { ok: true, state: s };
+    }
+
+    if (t === "pause") {
+      // Any player except the Timer can ask the Timer to pause the sand for an unforeseen interruption.
+      p = find(s, action.id); if (!p) return err("You are not in this room.");
+      if (s.phase !== "question" || !s.q || !s.q.clock) return err("There is no question open.");
+      var tk2 = find(s, s.timekeeper);
+      if (!tk2 || tk2.away) return err("There is no Timer to pause the sand.");
+      if (tk2.id === p.id) return err("The Timer can't ask for a pause for themselves.");
+      if (tk2.id === cur(s).id) return err("The Timer can't be given a pause on their own question.");
+      if (!s.q.clock.running) return err("The sand is already paused.");
+      if (s.q.pauseReq) return { ok: true, state: s };
+      s.q.pauseReq = p.id; say(s, cfg, p.name + " asked for a pause."); return { ok: true, state: s };
     }
 
     // Player moves from here on.

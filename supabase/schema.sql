@@ -3637,7 +3637,9 @@ create policy trivia_rooms_read on trivia_rooms for select to authenticated
       and b.status in ('confirmed', 'attended') and not b.held));
 
 -- Who may play a session's game: whoever room_join lets into the video room (seat, approved Hello Video, account
--- active), from 5 minutes before the start until the end. Admins can always play. Returns the player's first name.
+-- active), from 5 minutes before the start until the video room closes 5 minutes after the end (room-join's grace), so
+-- the final scores show once the game ends with the session. Admins can always play. Returns the player's name and
+-- ends_at, the session's end, which Kelly's engine uses as the end of the game (7 Nov rules).
 create or replace function trivia_seat(p_user uuid, p_session uuid)
 returns jsonb
 language plpgsql
@@ -3663,7 +3665,7 @@ begin
   end if;
   if now() < v_s.starts_at - interval '5 minutes' then
     return jsonb_build_object('success', false, 'error', 'The game opens with the room, 5 minutes before the start.');
-  elsif now() >= v_s.starts_at + make_interval(mins => v_s.minutes) then
+  elsif now() >= v_s.starts_at + make_interval(mins => v_s.minutes) + interval '5 minutes' then
     return jsonb_build_object('success', false, 'error', 'This session has ended.');
   end if;
   if not v_me.is_admin then
@@ -3675,7 +3677,8 @@ begin
       return jsonb_build_object('success', false, 'error', 'Rooms open for you once your Hello Video is approved.');
     end if;
   end if;
-  return jsonb_build_object('success', true, 'name', public_name(v_me));
+  return jsonb_build_object('success', true, 'name', public_name(v_me),
+                            'ends_at', v_s.starts_at + make_interval(mins => v_s.minutes));
 end;
 $$;
 
@@ -3718,7 +3721,7 @@ begin
   end if;
 end $$;
 
--- Kelly's question bank: 88 starter questions (25 Oct) plus 119 from her 6 Nov zip, 6 categories. Re-running keeps
+-- Kelly's question bank: 88 starter questions (25 Oct), 119 from her 6 Nov zip and 17 from her 7 Nov zip (224), 6 categories. Re-running keeps
 -- any edits made since (on conflict do nothing). Her 6 Nov bank dropped the Louvre question (arts-07), so it is no
 -- longer seeded; databases seeded before that turn it off once in jobs/meetdo-connect/kelly-fixes-2026-11-06.sql.
 insert into trivia_categories (id, name, color, sort) values
@@ -3945,6 +3948,27 @@ insert into trivia_questions (id, cat, q, a, wrong, note, source) values
   ('sci-39', 'sci', 'Which bird''s feathers have inspired quieter fans and aircraft designs because it flies almost silently?', 'The owl', array['The hawk', 'The swan', 'The crow'], null, 'Written by Claude for this project; check before relying on it'),
   ('sci-40', 'sci', 'Road reflectors called "cat''s eyes" were invented in 1934 by Percy Shaw, supposedly after seeing what?', 'A cat''s eyes shining in his headlights', array['A glowworm on the road', 'Moonlight on a puddle', 'A fox in a field'], null, 'Written by Claude for this project; check before relying on it'),
   ('sci-41', 'sci', 'What is the word for designing technology and products by copying ideas from nature?', 'Biomimicry', array['Biochemistry', 'Bioengineering', 'Biodiversity'], 'It is also called biomimetics.', 'Written by Claude for this project; check before relying on it')
+on conflict do nothing;
+-- Kelly's 7 Nov additions (Native farming and food, maps and navigation).
+insert into trivia_questions (id, cat, q, a, wrong, note, source) values
+  ('food-45', 'food', 'In the Three Sisters planting method used by many Native peoples, which three crops are grown together?', 'Corn, beans and squash', array['Corn, rice and potatoes', 'Wheat, beans and pumpkins', 'Corn, peppers and tomatoes'], 'Beans add nitrogen to the soil, corn gives them a pole to climb, and squash leaves shade the ground.', 'Written by Claude for this project; check before relying on it'),
+  ('food-46', 'food', 'In the Three Sisters method, which crop climbs the corn stalks?', 'Beans', array['Squash', 'Sunflowers', 'Peas'], null, 'Written by Claude for this project; check before relying on it'),
+  ('food-47', 'food', 'In the Three Sisters method, which crop''s wide leaves shade the soil and help keep weeds down?', 'Squash', array['Corn', 'Beans', 'Tobacco'], null, 'Written by Claude for this project; check before relying on it'),
+  ('food-48', 'food', 'Many Native peoples used controlled fires to clear brush and encourage new plant growth. What are these fires called?', 'Cultural burns', array['Slash piles', 'Firebreaks', 'Signal fires'], 'Also known as prescribed or controlled burns.', 'Written by Claude for this project; check before relying on it'),
+  ('food-49', 'food', 'Which Pueblo people of Arizona are famous for growing corn in the desert without irrigation, a method called dry farming?', 'The Hopi', array['The Sioux', 'The Cherokee', 'The Seminole'], null, 'Written by Claude for this project; check before relying on it'),
+  ('food-50', 'food', 'What are the rock-walled shoreline structures built by Pacific Northwest peoples to grow more clams called?', 'Clam gardens', array['Fish weirs', 'Tide pools', 'Shell mounds'], null, 'Written by Claude for this project; check before relying on it'),
+  ('food-51', 'food', 'Which grain, called manoomin by the Ojibwe, is harvested from canoes by knocking the seeds into the boat?', 'Wild rice', array['Wheat', 'Barley', 'Oats'], null, 'Written by Claude for this project; check before relying on it'),
+  ('food-52', 'food', 'Which Aztec farming method built fertile garden plots in shallow lakes?', 'Chinampas', array['Terraces', 'Slash and burn', 'Crop rotation'], 'Often called floating gardens.', 'Written by Claude for this project; check before relying on it'),
+  ('food-53', 'food', 'Which people built stone farming terraces on the steep slopes of the Andes?', 'The Inca', array['The Maya', 'The Aztec', 'The Navajo'], null, 'Written by Claude for this project; check before relying on it'),
+  ('food-54', 'food', 'Which staple crop was first grown in the Andes of South America and later spread around the world?', 'The potato', array['Wheat', 'Rice', 'Soybeans'], null, 'Written by Claude for this project; check before relying on it'),
+  ('geo-30', 'geo', 'Which Arctic people carved wooden maps of coastlines that float and can be read by touch, even in the dark?', 'The Inuit', array['The Sami', 'The Aleut', 'The Navajo'], 'Examples come from East Greenland.', 'Written by Claude for this project; check before relying on it'),
+  ('geo-31', 'geo', 'The Marshall Islanders made stick charts of palm ribs and shells to show what?', 'Ocean swells and islands', array['Mountain trails', 'Star names', 'Rainfall'], null, 'Written by Claude for this project; check before relying on it'),
+  ('geo-32', 'geo', 'Which star has long helped travelers in the Northern Hemisphere find north?', 'Polaris', array['Sirius', 'Betelgeuse', 'Vega'], 'Also called the North Star.', 'Written by Claude for this project; check before relying on it'),
+  ('geo-33', 'geo', 'On a globe, which imaginary lines run from the North Pole to the South Pole?', 'Lines of longitude', array['Lines of latitude', 'The equator', 'Tropics'], 'Also called meridians.', 'Written by Claude for this project; check before relying on it'),
+  ('geo-34', 'geo', 'Which Flemish mapmaker created a famous world map projection in 1569 that is still used today?', 'Gerardus Mercator', array['Ptolemy', 'Marco Polo', 'Christopher Columbus'], null, 'Written by Claude for this project; check before relying on it'),
+  ('geo-35', 'geo', 'What do the curved lines on a topographic map show?', 'Elevation (the height of the land)', array['Roads', 'Rainfall', 'Borders'], 'They are called contour lines.', 'Written by Claude for this project; check before relying on it'),
+  ('geo-36', 'geo', 'What is the decorated symbol on a map that shows north, south, east and west called?', 'A compass rose', array['A map key', 'A scale bar', 'A grid'], null, 'Written by Claude for this project; check before relying on it')
+
 on conflict do nothing;
 
 -- 32. Connections (Andry, 5 Nov): API keys for Daily, Resend, Twilio and R2, kept encrypted in Supabase Vault and set

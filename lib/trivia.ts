@@ -11,22 +11,24 @@ export const ACTION_SECONDS = 30;
 export const MAX_PAUSE_SECONDS = 60;
 export const MAX_PLAYERS = 12;
 export const SPINNER_MAX = 6;
-export const POINTS_PER_RIGHT = 1;
-export const BADGE_BONUS = 2;
+export const POINTS_PER_RIGHT = 10;
+export const BADGE_AFTER = 4;
+export const BADGE_BONUS = 5;
 export const AWAY_AFTER_MISSES = 2;
+export const SESSION_MINUTES = 60;
 
-// Kelly's Basic Rules (trivia-rules.txt, 6 Nov zip), shown on the booking page and in the game.
+// Kelly's Basic Rules (trivia-rules.txt, 7 Nov zip), shown on the booking page and in the game.
 export const TRIVIA_RULES: string[] = [
-  `Up to ${MAX_PLAYERS} players per room. Anyone in the room can press Start.`,
-  `On your turn, spin the spinner (1 to ${SPINNER_MAX}) and move that many spaces, either way round the ring.`,
+  `On your turn, spin the spinner (1 to ${SPINNER_MAX}) and move that many spaces, in either direction round the ring.`,
   `Answer a question in the color of the space you land on. You have ${ANSWER_SECONDS} seconds, shown by the hourglass.`,
-  `Right answer: ${POINTS_PER_RIGHT} point, and you keep your turn. Wrong answer or out of time: no points and the turn passes.`,
-  `Answer right on a big lettered badge space to earn that color’s badge, plus ${BADGE_BONUS} bonus points. Landing on the ↻ space gives you another spin.`,
-  'Once you hold every badge, answer the final question. Right wins the game. Wrong, and you try again next turn.',
-  `The Timer is a volunteer who can stop and start the sand, but not on their own question, and stopped time is limited to ${MAX_PAUSE_SECONDS} seconds per question.`,
+  `Right answer: ${POINTS_PER_RIGHT} points, and you keep your turn. Wrong answer or out of time: no points and the turn passes.`,
+  `Answer ${BADGE_AFTER} questions right in one category to earn that category’s badge, worth ${BADGE_BONUS} bonus points.`,
+  'Landing on the ↻ space gives you another spin.',
+  `The Timer is a volunteer who works the hourglass. If another player asks for a pause because of an unforeseen interruption, the Timer can pause the sand (up to ${MAX_PAUSE_SECONDS} seconds per question). The Timer cannot pause for themselves, so gives up this help on their own questions.`,
   `Miss your turn ${AWAY_AFTER_MISSES} times in a row and you are marked away and skipped until you act again.`,
+  `The game ends when the ${SESSION_MINUTES}-minute session ends. The highest score wins; players tied on the top score win together.`,
 ];
-export const TRIVIA_SCORING = `Scoring: ${POINTS_PER_RIGHT} point per right answer + ${BADGE_BONUS} bonus points per badge earned. Ties are ranked by badges. The scoreboard updates after every question. The winner is whoever answers the final question right.`;
+export const TRIVIA_SCORING = `Scoring: ${POINTS_PER_RIGHT} points per right answer + ${BADGE_BONUS} bonus points per badge. The scoreboard ranks players high to low and updates after every question.`;
 
 // Token colours, same order as the engine's 12 player colours.
 export const PLAYER_COLOURS = [
@@ -55,11 +57,13 @@ export interface TriviaPlayer {
   name: string;
   pos: number;
   badges: boolean[];
+  /** Right answers per category; the badge comes at BADGE_AFTER. Missing in games saved before 7 Nov. */
+  catRight?: number[];
   color: number;
   misses: number;
   away: boolean;
   right: number;
-  /** Kelly 6 Nov: 1 per right answer + 2 per badge. Missing in games saved before the scoring update. */
+  /** Kelly 7 Nov: 10 per right answer + 5 per badge. Missing in games saved before the scoring update. */
   points?: number;
   asked: number;
 }
@@ -79,7 +83,8 @@ export interface TriviaState {
   turn: number;
   spin: number | null;
   options: number[];
-  q: { id: string; cat: number; final: boolean; badgeSpace?: boolean; clock: TriviaClock } | null;
+  /** pauseReq: the player who asked the Timer for a pause on this question, until the Timer pauses. */
+  q: { id: string; cat: number; pauseReq?: string | null; clock: TriviaClock } | null;
   deadline: number;
   timekeeper: string | null;
   themes: string[];
@@ -92,9 +97,12 @@ export interface TriviaState {
     timedOut: boolean;
     correct: string;
     note: string;
-    final: boolean;
   } | null;
   winner: string | null;
+  /** Everyone on the top score when the game ended (a tie is a shared win). */
+  winners?: string[];
+  /** When the game ends: the session's end, set at Start. 0 in the lobby. */
+  endsAt?: number;
   nCats: number;
 }
 
@@ -102,7 +110,6 @@ export interface TriviaCard {
   catName: string;
   color: string;
   q: string;
-  final: boolean;
   choices: string[];
 }
 
@@ -113,7 +120,7 @@ export interface TriviaSnapshot {
 }
 
 export type TriviaMove =
-  | { type: 'join' | 'leave' | 'start' | 'again' | 'timeout' | 'spin' }
+  | { type: 'join' | 'leave' | 'start' | 'again' | 'timeout' | 'spin' | 'pause' }
   | { type: 'move'; to: number }
   | { type: 'answer'; choice: number }
   | { type: 'theme'; cats?: string[]; random?: number }
@@ -122,16 +129,15 @@ export type TriviaMove =
 
 export interface Space {
   i: number;
-  type: 'badge' | 'roll' | 'plain';
+  type: 'roll' | 'plain';
   cat: number;
 }
 
-/** The ring, exactly as the engine numbers it: every 6th space a badge space, the middle of each stretch "Roll again". */
+/** The ring, exactly as the engine numbers it: the middle of each stretch of 6 is "Roll again", the rest are colors. */
 export function board(nCats: number): Space[] {
   const per = SPACES_PER_COLOUR;
   return Array.from({ length: nCats * per }, (_, i): Space => {
     const r = i % per;
-    if (r === 0) return { i, type: 'badge', cat: i / per };
     if (r === Math.floor(per / 2)) return { i, type: 'roll', cat: -1 };
     return { i, type: 'plain', cat: (Math.floor(i / per) + r) % nCats };
   });
@@ -148,6 +154,11 @@ export function wheelAfter(deg: number, n: number): number {
   const target = -((n - 1) * 60 + 30);
   const delta = (((target - (deg % 360)) % 360) + 360) % 360;
   return deg + 1080 + delta;
+}
+
+/** Who won: everyone on the top score, or the single winner of a game saved before 7 Nov. */
+export function winnersOf(state: Pick<TriviaState, 'winner' | 'winners'>): string[] {
+  return state.winners?.length ? state.winners : state.winner ? [state.winner] : [];
 }
 
 /** Milliseconds left on the hourglass, and the stopped time still allowed, at server time `now`. */
@@ -176,7 +187,7 @@ export interface ScoreRow {
   rank: number;
 }
 
-/** The engine's scoreboard(): by score, then badges, then accuracy; level on score and badges = same rank (1, 1, 3). */
+/** The engine's scoreboard(): listed by score, then badges, then accuracy; level on score = same rank (1, 1, 3). */
 export function scoreboard(state: Pick<TriviaState, 'players'>): ScoreRow[] {
   const total = state.players[0]?.badges.length ?? 0;
   const accuracy = (r: { right: number; asked: number }) => (r.asked ? r.right / r.asked : 0);
@@ -196,7 +207,7 @@ export function scoreboard(state: Pick<TriviaState, 'players'>): ScoreRow[] {
   rows.sort((a, b) => b.score - a.score || b.badges - a.badges || accuracy(b) - accuracy(a) || a.seat - b.seat);
   rows.forEach((r, i) => {
     const prev = rows[i - 1];
-    r.rank = prev && prev.score === r.score && prev.badges === r.badges ? prev.rank : i + 1;
+    r.rank = prev && prev.score === r.score ? prev.rank : i + 1;
   });
   return rows;
 }
