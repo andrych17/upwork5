@@ -821,3 +821,31 @@ a.adm-stat:hover {
     transition: none;
   }
 }
+
+/* ---------- trivia questions (Kelly 7 Nov) ---------- */
+.adm-swatch {
+  display: inline-block;
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 50%;
+  vertical-align: -0.05rem;
+}
+
+.adm-steps {
+  display: grid;
+  gap: 0.375rem;
+  margin: 0 0 1rem;
+  padding-left: 1.25rem;
+  line-height: 1.5;
+}
+
+.adm-check {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.adm-check ul {
+  margin: 0.375rem 0 0;
+  padding-left: 1.25rem;
+}

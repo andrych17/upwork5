@@ -172,6 +172,26 @@ export async function fetchMine(supabase: SupabaseClient): Promise<Room[] | null
   return error ? null : ((data ?? []) as Room[]);
 }
 
+export type RoomRoleName = 'Starter' | 'Timekeeper' | 'Closer';
+export interface RoomRole {
+  role: RoomRoleName;
+  user_id: string;
+}
+
+/** The three room roles (schema section 35), described the way the booking page shows them. */
+export const ROOM_ROLES: { role: RoomRoleName; does: string }[] = [
+  { role: 'Starter', does: 'Welcomes the room and opens the five-minute check-in.' },
+  { role: 'Timekeeper', does: 'Gently signals when focused work and check-out begin.' },
+  { role: 'Closer', does: 'Wraps up the room and makes sure everyone gets a final word.' },
+];
+
+/** Who holds each role in a session's room. The first call once the room opens hands them out. */
+export async function fetchRoles(supabase: SupabaseClient, sessionId: string): Promise<RoomRole[] | null> {
+  const { data, error } = await supabase.rpc('room_roles', { p_session: sessionId });
+  const res = data as { success?: boolean; roles?: RoomRole[] } | null;
+  return error || !res?.success ? null : (res.roles ?? []);
+}
+
 export async function fetchRoom(supabase: SupabaseClient, slug: string): Promise<Room | null | undefined> {
   const { data, error } = await supabase.rpc('get_schedule', { p_from: null, p_to: null, p_slug: slug });
   if (error) return undefined;

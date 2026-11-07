@@ -84,3 +84,51 @@ select set_config('request.jwt.claim.sub', :'T3', false);
 set role authenticated;
 select t((select count(*) from trivia_rooms) = 0, 'people without a seat do not');
 reset role;
+
+-- Questions page import (section 36)
+\set TA '00000000-0000-0000-0000-0000000000e9'
+insert into auth.users (id, email, raw_user_meta_data) values (:'TA', 'ta@example.com', '{"first_name": "Ann"}');
+update profiles set is_admin = true where id = :'TA';
+select t(not exists (select 1 from trivia_questions where array_length(wrong, 1) > 3),
+         'every question has 3 wrong answers, so the 3-column spreadsheet loses nothing');
+select set_config('request.jwt.claim.sub', :'T1', false);
+set role authenticated;
+select t(admin_trivia_import('[{"cat": "geo", "q": "Q?", "a": "A", "wrong": ["B", "C"]}]')->>'error'
+         = 'Only an admin can change questions.', 'members cannot import');
+reset role;
+select set_config('request.jwt.claim.sub', :'TA', false);
+set role authenticated;
+select t(admin_trivia_import('[]')->>'error' = 'There are no questions in the file.', 'empty file');
+select t(admin_trivia_import('[{"cat": "nope", "q": "Q?", "a": "A", "wrong": ["B", "C"]}]')->>'error'
+         = 'Question 1: unknown category.', 'unknown category');
+select t(admin_trivia_import('[{"cat": "geo", "q": "Q?", "a": "A", "wrong": ["B"]}]')->>'error'
+         = 'Question 1: use 2 to 5 wrong answers.', 'at least 2 wrong answers');
+select t(admin_trivia_import('[{"cat": "geo", "q": "Q?", "a": "Paris", "wrong": ["paris!", "Rome"]}]')->>'error'
+         = 'Question 1: two answers are the same.', 'answers compared the way the engine does');
+select t(admin_trivia_import('[{"cat": "geo", "q": "Same?", "a": "A", "wrong": ["B", "C"]}, {"cat": "sci", "q": "same", "a": "A", "wrong": ["B", "C"]}]')->>'error'
+         = 'The file has the same question twice.', 'no duplicates in one file');
+select admin_trivia_import(jsonb_build_array(
+  jsonb_build_object('cat', 'geo', 'q', 'Which river flows through Cairo?', 'a', 'The Nile', 'wrong', jsonb_build_array('The Amazon', 'The Danube', 'The Volga')),
+  jsonb_build_object('cat', 'geo', 'q', 'what is the capital of australia', 'a', 'Canberra', 'wrong', jsonb_build_array('Sydney', 'Melbourne', 'Perth'), 'note', 'Edited note.'),
+  jsonb_build_object('cat', 'hist', 'q', 'Which ship sank in 1912 after hitting an iceberg on its first voyage?', 'a', 'The Titanic', 'wrong', jsonb_build_array('The Lusitania', 'The Britannic', 'The Mayflower'),
+                     'source', 'Written by Claude for this project; check before relying on it'))) as imp \gset
+reset role;
+select t((:'imp'::jsonb->>'added')::int = 1 and (:'imp'::jsonb->>'updated')::int = 1 and (:'imp'::jsonb->>'turned_off')::int = 0,
+         'add: 1 new, 1 changed (matched ignoring case and punctuation), 1 unchanged');
+select t((select id from trivia_questions where q = 'Which river flows through Cairo?') = 'geo-37', 'next id in the category');
+select t((select note from trivia_questions where id = 'geo-01') = 'Edited note.'
+         and (select q from trivia_questions where id = 'geo-01') = 'what is the capital of australia', 'the matched question is updated');
+select t((select count(*) from trivia_questions where active) = 225, 'nothing turned off when adding');
+select set_config('request.jwt.claim.sub', :'TA', false);
+set role authenticated;
+select t(admin_trivia_import('[{"cat": "geo", "q": "Only one?", "a": "A", "wrong": ["B", "C"]}]', true)->>'error'
+         like 'Replace needs questions in every category. The file has none for: History, Science & Nature%', 'replace needs every category');
+select admin_trivia_import((
+  select jsonb_agg(jsonb_build_object('cat', c.id, 'q', 'Replace test ' || c.id || '?', 'a', 'Yes', 'wrong', jsonb_build_array('No', 'Maybe')))
+  from trivia_categories c), true) as rep \gset
+reset role;
+select t((:'rep'::jsonb->>'added')::int = 6 and (:'rep'::jsonb->>'active')::int = 6
+         and (:'rep'::jsonb->>'turned_off')::int = 225, 'replace keeps only the file, turning the rest off');
+select t((select count(*) from trivia_questions where not active and id = 'geo-01') = 1, 'turned off, not deleted');
+select t((select details->>'turned_off' from admin_log where action = 'trivia_questions_imported' order by created_at desc, id desc limit 1) = '225',
+         'imports go in the admin log');

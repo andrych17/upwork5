@@ -14,7 +14,7 @@ import { useAccount } from '@/lib/account';
 import { callEdge } from '@/lib/edge';
 import { loadRoomPrefs } from '@/lib/media';
 import { logClientError } from '@/lib/client-errors';
-import { catalogFor, fetchRoom, type Room } from '@/lib/rooms';
+import { ROOM_ROLES, catalogFor, fetchRoles, fetchRoom, type Room, type RoomRole } from '@/lib/rooms';
 import { getSupabase } from '@/lib/supabase';
 import { TRIVIA_SLUG } from '@/lib/trivia';
 import { useQueryParam } from '@/lib/use-query';
@@ -89,6 +89,7 @@ function steps(run: string | undefined, total: number) {
 // The last minutes of a session: a banner above the controls counts down to the end (Kelly, 2 Nov). Kelly 6 Nov:
 // no countdown before that (minute 55 of an hour), so the top bar shows the end time until then.
 const WRAP_UP_MINUTES = 5;
+const ROLES_REFRESH_MS = 20_000;
 const WRAP_UP_TEXT = 'It’s not goodbye… it’s until we meet again.';
 
 const clock = (ms: number) => {
@@ -126,6 +127,7 @@ export default function LiveRoomPage() {
   const [reportWhy, setReportWhy] = useState('');
   const [reportNote, setReportNote] = useState('');
   const [reportError, setReportError] = useState('');
+  const [roles, setRoles] = useState<RoomRole[]>([]);
   const call = useRef<DailyCall | null>(null);
 
   // Join: room info, permission from the server, then Daily.
@@ -216,6 +218,25 @@ export default function LiveRoomPage() {
     };
   }, [slug, router]);
 
+  // Room roles (Kelly 7 Nov): handed out when the room opens, and a no-show's role moves to someone here at the start.
+  useEffect(() => {
+    const supabase = getSupabase();
+    if (!room || !info || !supabase) return;
+    let alive = true;
+    const load = async () => {
+      const r = await fetchRoles(supabase, room.id);
+      if (alive && r) setRoles(r);
+    };
+    void load();
+    const id = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void load();
+    }, ROLES_REFRESH_MS);
+    return () => {
+      alive = false;
+      window.clearInterval(id);
+    };
+  }, [room, info]);
+
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
@@ -224,6 +245,8 @@ export default function LiveRoomPage() {
   const me = tiles.find((t) => t.local);
   const others = tiles.filter((t) => !t.local);
   const person = (userId: string) => info?.people.find((p) => p.id === userId);
+  const roleOf = (userId: string) => roles.find((r) => r.user_id === userId)?.role;
+  const myRole = account ? roles.find((r) => r.user_id === account.id)?.role : undefined;
   const ends = info ? new Date(info.ends_at).getTime() : 0;
   const starts = info ? new Date(info.starts_at).getTime() : 0;
   const locked = info ? now > new Date(info.locks_at).getTime() : false;
@@ -319,6 +342,7 @@ export default function LiveRoomPage() {
               </div>
             )}
             {!t.local && <Media track={t.audio} kind="audio" muted={muted} />}
+            {roleOf(t.userId) && <span className="role-badge">{roleOf(t.userId)}</span>}
             <div className="tile-bottom">
               <strong>{t.local ? `You · ${info?.name ?? ''}` : t.name}</strong>
               <span>
@@ -394,12 +418,24 @@ export default function LiveRoomPage() {
             </div>
           )}
           <div className="your-role">
-            <span className="role-badge">{info?.is_admin ? 'Admin' : 'Participant'}</span>
+            <span className="role-badge">{myRole ?? (info?.is_admin ? 'Admin' : 'Participant')}</span>
             <p>
-              {info?.is_admin
-                ? 'You can see everyone in the room. Members can report privately from Safety controls.'
-                : 'Mute, Report and Leave are one tap away under Safety controls.'}
+              {myRole
+                ? `You’re the ${myRole} today. ${ROOM_ROLES.find((r) => r.role === myRole)?.does ?? ''}`
+                : info?.is_admin
+                  ? 'You can see everyone in the room. Members can report privately from Safety controls.'
+                  : 'Mute, Report and Leave are one tap away under Safety controls.'}
             </p>
+            {roles.length > 0 && (
+              <ul className="room-roles" aria-label="Roles in this room">
+                {roles.map((r) => (
+                  <li key={r.role}>
+                    <strong>{r.role}</strong>{' '}
+                    {r.user_id === account?.id ? 'You' : (person(r.user_id)?.name ?? 'Member')}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         </aside>
       </div>

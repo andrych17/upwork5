@@ -24,12 +24,19 @@ import {
   type TriviaPlayer,
   type TriviaState,
 } from '../lib/trivia.ts';
+import { questionsCsv, type QuestionRow } from '../lib/trivia-csv.ts';
 
 // The engine is a browser/Deno script (package.json makes .js files ES modules here), so run it as a plain script.
 const sandbox: {
   MeetDoTrivia?: {
     board(nCats: number): unknown[];
     scoreboard(state: unknown): Record<string, unknown>[];
+    csvToBank(text: string, categories: unknown[]): unknown;
+    validateBank(input: unknown): {
+      ok: boolean;
+      errors: string[];
+      bank: { categories: { id: string }[]; questions: Record<string, unknown>[] };
+    };
     DEFAULT_CONFIG: Record<string, number>;
   };
 } = {};
@@ -159,6 +166,49 @@ const room = readFileSync(new URL('../components/games/trivia-room.tsx', import.
 assert.ok(!/className=\{`[^`]*[\w-]\$\{[^}]*\?\s*'\w/.test(room), 'no class name glued to a conditional one');
 assert.ok(
   room.includes("'trivia-turn me'") && room.includes("'trivia-player now'") && room.includes("'trivia-pip on'"),
+);
+
+// Admin > Trivia questions: the downloaded spreadsheet goes back through Kelly's csvToBank + validateBank unchanged,
+// including commas, quotes, line breaks, accents and empty notes (categories written by name).
+const csvCats = [
+  { id: 'geo', name: 'Geography', color: '#0057E7' },
+  { id: 'sci', name: 'Science & Nature', color: '#00A651' },
+];
+const csvRows: QuestionRow[] = [
+  {
+    id: 'geo-01',
+    cat: 'geo',
+    q: 'Capital of Brazil?',
+    a: 'Brasília',
+    wrong: ['Rio', 'São Paulo', 'Salvador'],
+    note: 'Built in the 1950s, "on purpose".',
+    source: null,
+  },
+  {
+    id: 'sci-01',
+    cat: 'sci',
+    q: 'Water boils at, at sea level:',
+    a: '100 °C',
+    wrong: ['90 °C', '80, or so', 'line\nbreak'],
+    note: null,
+    source: 'Kelly',
+  },
+];
+const csv = questionsCsv(csvCats, csvRows);
+assert.ok(csv.startsWith('\uFEFFCategory,Question,Right answer,Wrong 1,Wrong 2,Wrong 3,Note,Source\r\n'), 'header row');
+const back = engine.validateBank(engine.csvToBank(csv, csvCats));
+assert.ok(back.ok, back.errors.join('; '));
+assert.deepEqual(
+  JSON.parse(JSON.stringify(back.bank.questions)).map((q: Record<string, unknown>) => [
+    back.bank.categories[q.cat as number].id,
+    q.q,
+    q.a,
+    q.wrong,
+    q.note,
+    q.source,
+  ]),
+  csvRows.map((r) => [r.cat, r.q, r.a, r.wrong, r.note ?? '', r.source ?? '']),
+  'spreadsheet round trip',
 );
 
 console.log('trivia: ok');

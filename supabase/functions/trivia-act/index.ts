@@ -31,7 +31,10 @@ async function loadBank(db: SupabaseClient): Promise<Bank> {
   ]);
   if (cats.error || qs.error) throw new Error(`trivia bank: ${(cats.error ?? qs.error)?.message}`);
   const checked = engine().validateBank({ categories: cats.data, questions: qs.data });
-  if (!checked.ok) throw new Error(`trivia bank: ${checked.errors[0]}`);
+  // One bad question (edited by hand in the dashboard) is left out instead of stopping every game.
+  if (!checked.ok) console.error('trivia bank', checked.errors.slice(0, 5));
+  if (checked.bank.categories.length < 2 || !checked.bank.questions.length)
+    throw new Error(`trivia bank: ${checked.errors[0] ?? 'empty'}`);
   cached = { at: Date.now(), bank: checked.bank };
   return checked.bank;
 }

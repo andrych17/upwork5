@@ -63,6 +63,11 @@ const NAV: { title: string; items: { href: Route; label: string; d: string; coun
     items: [
       { href: '/admin/sessions', label: 'Sessions', d: 'M4 6h16v14H4zM4 10h16M9 3v4M15 3v4' },
       { href: '/admin/bookings', label: 'Bookings', d: 'M5 4h14v16H5zM9 9h6M9 13h6M9 17h3' },
+      {
+        href: '/admin/questions',
+        label: 'Trivia questions',
+        d: 'M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .8-1 1.5V14M12 17.5v.01M12 21a9 9 0 1 1 0-18 9 9 0 0 1 0 18',
+      },
     ],
   },
   {

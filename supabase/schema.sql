@@ -4205,3 +4205,215 @@ end;
 $$;
 
 revoke execute on function room_join(uuid, uuid) from public, anon, authenticated;
+
+-- ========================================================================
+-- 35. Room roles (Kelly 7 Nov: "Roles: YES PLEASE"). When a room opens, Starter, Timekeeper and Closer go to the three
+-- seated members who have held a role the fewest times (ties broken by a fixed hash, as in Kelly's rooms.sql). From the
+-- start time, a role whose holder hasn't come in passes to someone in the room without one. room_roles() hands them out
+-- on the first call in the room window and is polled by the live room. Admins without a seat never get a role.
+-- ========================================================================
+create table if not exists session_roles (
+  session_id uuid not null references sessions(id) on delete cascade,
+  role text not null check (role in ('Starter', 'Timekeeper', 'Closer')),
+  user_id uuid not null references profiles(id) on delete cascade,
+  assigned_at timestamptz not null default now(),
+  primary key (session_id, role),
+  unique (session_id, user_id)
+);
+create index if not exists idx_session_roles_user on session_roles (user_id);
+alter table session_roles enable row level security;
+revoke all on session_roles from anon, authenticated;
+
+create or replace function room_roles(p_session uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_cfg app_config%rowtype;
+  v_s sessions%rowtype;
+  v_role text;
+  v_next uuid;
+begin
+  if auth.uid() is null then
+    return jsonb_build_object('success', false, 'error', 'Please sign in.');
+  end if;
+  if not is_admin() and not exists (
+    select 1 from bookings where session_id = p_session and user_id = auth.uid()
+      and status in ('confirmed', 'attended') and not held) then
+    return jsonb_build_object('success', false, 'error', 'You don’t have a seat in this session.');
+  end if;
+  select * into v_cfg from app_config where id = 1;
+  -- The row lock makes callers take turns, so two people opening the room at once can't hand out roles twice.
+  select * into v_s from sessions where id = p_session for update;
+  if not found then
+    return jsonb_build_object('success', false, 'error', 'This session was not found.');
+  end if;
+
+  if now() >= v_s.starts_at - interval '5 minutes' and now() < v_s.starts_at + make_interval(mins => v_s.minutes) then
+    -- First call in the room window: the seated members who can enter, fewest earlier roles first.
+    if not exists (select 1 from session_roles where session_id = p_session) then
+      insert into session_roles (session_id, role, user_id)
+      select p_session, r.role, c.user_id
+      from (
+        select b.user_id,
+               row_number() over (order by (select count(*) from session_roles h where h.user_id = b.user_id),
+                                           md5(p_session::text || b.user_id::text)) as n
+        from bookings b join profiles p on p.id = b.user_id
+        where b.session_id = p_session and b.status in ('confirmed', 'attended') and not b.held
+          and p.disabled_at is null and (not v_cfg.require_hello_video or p.hello_status = 'approved')
+      ) c
+      join (values (1, 'Starter'), (2, 'Timekeeper'), (3, 'Closer')) as r(n, role) on r.n = c.n;
+    end if;
+    -- From the start: a holder who hasn't come in hands the role to someone in the room without one.
+    if now() >= v_s.starts_at then
+      for v_role in
+        select sr.role from session_roles sr
+        where sr.session_id = p_session
+          and not exists (select 1 from bookings b where b.session_id = p_session and b.user_id = sr.user_id
+                            and b.status in ('confirmed', 'attended') and b.joined_at is not null)
+        order by array_position(array['Starter', 'Timekeeper', 'Closer'], sr.role)
+      loop
+        select b.user_id into v_next
+        from bookings b
+        where b.session_id = p_session and b.status in ('confirmed', 'attended') and not b.held
+          and b.joined_at is not null
+          and not exists (select 1 from session_roles x where x.session_id = p_session and x.user_id = b.user_id)
+        order by (select count(*) from session_roles h where h.user_id = b.user_id),
+                 md5(p_session::text || b.user_id::text)
+        limit 1;
+        exit when v_next is null;
+        update session_roles set user_id = v_next, assigned_at = now() where session_id = p_session and role = v_role;
+      end loop;
+    end if;
+  end if;
+
+  return jsonb_build_object('success', true, 'roles', coalesce((
+    select jsonb_agg(jsonb_build_object('role', role, 'user_id', user_id)
+                     order by array_position(array['Starter', 'Timekeeper', 'Closer'], role))
+    from session_roles where session_id = p_session), '[]'::jsonb));
+end;
+$$;
+
+revoke execute on function room_roles(uuid) from public, anon;
+grant execute on function room_roles(uuid) to authenticated;
+
+-- ========================================================================
+-- 36. Trivia questions page (Kelly 7 Nov). Admin > Trivia questions downloads the set as a spreadsheet (CSV) and uploads
+-- it back. The page checks the file with Kelly's engine first (validateBank, the same check trivia-act runs); this
+-- re-checks and saves it in one transaction. A question with the same wording (case and punctuation ignored) is updated,
+-- a new one is added with the next id in its category, and with p_replace every active question missing from the file
+-- is turned off, not deleted, so games in progress keep working and it can come back in a later upload.
+-- ========================================================================
+create or replace function trivia_norm(t text)
+returns text
+language sql
+immutable
+as $$
+  -- Kelly's norm(): lower case, anything that isn't a letter or digit becomes one space.
+  select btrim(regexp_replace(lower(coalesce(t, '')), '[^a-z0-9]+', ' ', 'g'));
+$$;
+
+create or replace function admin_trivia_import(p_questions jsonb, p_replace boolean default false)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_q jsonb;
+  v_row int := 0;
+  v_cat text;
+  v_text text;
+  v_a text;
+  v_wrong text[];
+  v_note text;
+  v_source text;
+  v_id text;
+  v_n int;
+  v_added int := 0;
+  v_updated int := 0;
+  v_off int := 0;
+  v_keep text[] := '{}';
+  v_missing text;
+begin
+  if not is_admin() then
+    return jsonb_build_object('success', false, 'error', 'Only an admin can change questions.');
+  end if;
+  if jsonb_typeof(p_questions) is distinct from 'array' or jsonb_array_length(p_questions) = 0 then
+    return jsonb_build_object('success', false, 'error', 'There are no questions in the file.');
+  end if;
+  if jsonb_array_length(p_questions) > 3000 then
+    return jsonb_build_object('success', false, 'error', 'Upload at most 3,000 questions at a time.');
+  end if;
+
+  -- Check every row before saving anything.
+  for v_q in select value from jsonb_array_elements(p_questions) loop
+    v_row := v_row + 1;
+    v_cat := v_q->>'cat';
+    v_text := btrim(coalesce(v_q->>'q', ''));
+    v_a := btrim(coalesce(v_q->>'a', ''));
+    select coalesce(array_agg(btrim(w)), '{}') into v_wrong
+      from jsonb_array_elements_text(case when jsonb_typeof(v_q->'wrong') = 'array' then v_q->'wrong' else '[]' end) w
+     where btrim(w) <> '';
+    if not exists (select 1 from trivia_categories where id = v_cat) then
+      return jsonb_build_object('success', false, 'error', format('Question %s: unknown category.', v_row));
+    elsif v_text = '' or length(v_text) > 500 or v_a = '' or length(v_a) > 200 then
+      return jsonb_build_object('success', false, 'error', format('Question %s: the question or the answer is empty or too long.', v_row));
+    elsif cardinality(v_wrong) not between 2 and 5 or exists (select 1 from unnest(v_wrong) w where length(w) > 200) then
+      return jsonb_build_object('success', false, 'error', format('Question %s: use 2 to 5 wrong answers.', v_row));
+    elsif (select count(distinct trivia_norm(x)) from unnest(v_a || v_wrong) x) < 1 + cardinality(v_wrong) then
+      return jsonb_build_object('success', false, 'error', format('Question %s: two answers are the same.', v_row));
+    end if;
+  end loop;
+  if (select count(distinct trivia_norm(value->>'q')) from jsonb_array_elements(p_questions)) < jsonb_array_length(p_questions) then
+    return jsonb_build_object('success', false, 'error', 'The file has the same question twice.');
+  end if;
+  if p_replace then
+    select string_agg(c.name, ', ' order by c.sort) into v_missing from trivia_categories c
+     where not exists (select 1 from jsonb_array_elements(p_questions) e where e.value->>'cat' = c.id);
+    if v_missing is not null then
+      return jsonb_build_object('success', false, 'error',
+        format('Replace needs questions in every category. The file has none for: %s.', v_missing));
+    end if;
+  end if;
+
+  for v_q in select value from jsonb_array_elements(p_questions) loop
+    v_cat := v_q->>'cat';
+    v_text := btrim(v_q->>'q');
+    v_a := btrim(v_q->>'a');
+    select array_agg(btrim(w)) into v_wrong from jsonb_array_elements_text(v_q->'wrong') w where btrim(w) <> '';
+    v_note := nullif(btrim(coalesce(v_q->>'note', '')), '');
+    v_source := nullif(btrim(coalesce(v_q->>'source', '')), '');
+    select id into v_id from trivia_questions where trivia_norm(q) = trivia_norm(v_text) limit 1;
+    if found then
+      update trivia_questions set cat = v_cat, q = v_text, a = v_a, wrong = v_wrong, note = v_note, source = v_source, active = true
+       where id = v_id and (cat, q, a, wrong, note, source, active) is distinct from (v_cat, v_text, v_a, v_wrong, v_note, v_source, true);
+      get diagnostics v_n = row_count;
+      v_updated := v_updated + v_n;
+    else
+      select v_cat || '-' || lpad((coalesce(max(substring(id from '-([0-9]+)$')::int), 0) + 1)::text, 2, '0') into v_id
+        from trivia_questions where cat = v_cat and id ~ ('^' || v_cat || '-[0-9]+$');
+      insert into trivia_questions (id, cat, q, a, wrong, note, source) values (v_id, v_cat, v_text, v_a, v_wrong, v_note, v_source);
+      v_added := v_added + 1;
+    end if;
+    v_keep := v_keep || v_id;
+  end loop;
+
+  if p_replace then
+    update trivia_questions set active = false where active and not (id = any(v_keep));
+    get diagnostics v_off = row_count;
+  end if;
+
+  insert into admin_log (admin_id, action, details)
+  values (auth.uid(), 'trivia_questions_imported',
+          jsonb_build_object('rows', jsonb_array_length(p_questions), 'replace', p_replace,
+                             'added', v_added, 'updated', v_updated, 'turned_off', v_off));
+  return jsonb_build_object('success', true, 'added', v_added, 'updated', v_updated, 'turned_off', v_off,
+                            'active', (select count(*) from trivia_questions where active));
+end;
+$$;
+
+revoke execute on function admin_trivia_import(jsonb, boolean) from public, anon;
+grant execute on function admin_trivia_import(jsonb, boolean) to authenticated;

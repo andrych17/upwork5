@@ -737,3 +737,18 @@
   margin: 14px 0 0;
   line-height: 1.6;
 }
+
+/* Live room: who holds each room role (Kelly 7 Nov) */
+.your-role .room-roles {
+  display: grid;
+  gap: 4px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.72rem;
+}
+
+.your-role .room-roles strong {
+  display: inline-block;
+  min-width: 80px;
+}

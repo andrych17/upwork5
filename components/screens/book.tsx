@@ -12,6 +12,7 @@ import { updateBuddyDemo, useBuddyDemo } from '@/lib/buddy-demo';
 import { useAccount } from '@/lib/account';
 import {
   ROOM_OPENS_MINUTES,
+  ROOM_ROLES,
   addMinutes,
   fetchRoom,
   locksAt,
@@ -306,18 +307,12 @@ export default function BookPage({ slug }: { slug: string }) {
                 '5 min: Say hello. Most of the hour: do the activity together, cameras on. Last few minutes: a short check-out where everyone shares one thing.'}
             </p>
             <div className="session-expectations">
-              <div>
-                <span>Starter</span>
-                <p>Welcomes the room and opens the five-minute check-in.</p>
-              </div>
-              <div>
-                <span>Timekeeper</span>
-                <p>Gently signals when focused work and check-out begin.</p>
-              </div>
-              <div>
-                <span>Closer</span>
-                <p>Wraps up the room and makes sure everyone gets a final word.</p>
-              </div>
+              {ROOM_ROLES.map((r) => (
+                <div key={r.role}>
+                  <span>{r.role}</span>
+                  <p>{r.does}</p>
+                </div>
+              ))}
             </div>
           </div>
 
