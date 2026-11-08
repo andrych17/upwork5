@@ -148,9 +148,15 @@
   word-break: break-all;
 }
 
+/* Three buttons don't fit the 15.5rem sidebar in one row: Password and Member site share a row, Sign out gets its own. */
 .adm-me-actions {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.5rem;
+}
+
+.adm-me-actions .adm-btn-danger {
+  grid-column: 1 / -1;
 }
 
 /* ---------- main ---------- */
@@ -793,6 +799,13 @@ a.adm-stat:hover {
 
   .adm-main {
     padding: 1.25rem 1rem 2.5rem;
+  }
+
+  /* Finger-sized account buttons in the drawer and the top bar */
+  .adm-me-actions .adm-btn,
+  .adm-topbar .adm-btn {
+    min-height: 44px;
+    font-size: 0.8125rem;
   }
 
   .adm-stats {
