@@ -127,7 +127,9 @@ insert into sessions (id, title, slug, starts_at) values
   ('00000000-0000-0000-0000-0000000000c2', 'Hold Soon', 'hold-soon', now() + interval '40 minutes'),
   ('00000000-0000-0000-0000-0000000000c3', 'Hold Later', 'hold-later', now() + interval '4 days');
 select monthly_credits as p0 from profiles where id = :'P' \gset
-update app_config set require_hello_video = true;
+-- Review time off here: these checks need a hold close to the start to test its release. The 48-hour
+-- review time itself is checked in schedule.sql.
+update app_config set require_hello_video = true, hello_wait_hours = 0;
 
 select set_config('request.jwt.claim.sub', :'P', false);
 set role authenticated;
@@ -184,7 +186,7 @@ select t(hello_video_review(:'A', (:'q2'::jsonb->>'id')::uuid, true)->>'status' 
 reset role;
 select t((select not held from bookings where user_id = :'Q' and status = 'confirmed'), 'approval turns the hold into a normal booking');
 
-update app_config set require_hello_video = false, hello_hold_bookings = false;
+update app_config set require_hello_video = false, hello_hold_bookings = false, hello_wait_hours = 48;
 
 -- 19c. Emails queued by the Hello Video steps and by released holds
 set role service_role;

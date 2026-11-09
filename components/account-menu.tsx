@@ -10,6 +10,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { canInstall, startInstall, useInstallMode } from '@/components/install-button';
 import { useAccount } from '@/lib/account';
+import { EMAIL } from '@/lib/placeholders';
 import { getSupabase, setDemoUser } from '@/lib/supabase';
 
 const LINKS: { href: Route; label: string }[] = [
@@ -103,6 +104,14 @@ export default function AccountMenu({ signedOut, tone = 'light' }: AccountMenuPr
               {installMode === 'ios' ? 'Add to Home Screen' : 'Install the app'}
             </button>
           )}
+          {/* Kelly 9 Nov: a way to reach her about account trouble. Opens an email, no ticket system. */}
+          <a
+            role="menuitem"
+            href={`mailto:${EMAIL}?subject=${encodeURIComponent('Help with my account')}`}
+            onClick={() => setOpen(false)}
+          >
+            Contact us
+          </a>
           {account.isAdmin && (
             <Link role="menuitem" className="account-admin" href="/admin" onClick={() => setOpen(false)}>
               Admin

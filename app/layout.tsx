@@ -6,6 +6,7 @@ import RegisterSW from '@/components/register-sw';
 import Reveal from '@/components/reveal';
 import InstallButton, { InstallCard } from '@/components/install-button';
 import MemberTabs from '@/components/member-tabs';
+import { EMAIL } from '@/lib/placeholders';
 import { PAGES, SITE_NAME, SITE_URL, TAGLINE, isDemo, noindex } from '@/lib/site';
 import './globals.css';
 
@@ -45,10 +46,11 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
             <span>Do</span>
             <span>Connect</span>
           </Link>
-          <nav aria-label="Policies">
+          <nav aria-label="Policies and contact">
             <Link href="/rules">Community Rules</Link>
             <Link href="/terms">Terms</Link>
             <Link href="/privacy">Privacy</Link>
+            <a href={`mailto:${EMAIL}`}>Contact us</a>
           </nav>
           <InstallButton />
         </footer>

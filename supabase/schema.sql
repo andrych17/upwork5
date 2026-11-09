@@ -73,6 +73,15 @@ alter table app_config add column if not exists contact_email text;
 alter table app_config drop constraint if exists app_config_contact_email_check;
 alter table app_config add constraint app_config_contact_email_check
   check (contact_email is null or (char_length(contact_email) <= 120 and contact_email ~ '^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$'));
+-- Kelly 9 Nov, test run before launch: until opens_at, every session looks full to visitors and to anyone whose
+-- Hello Video is not approved yet, so people who find the site cannot join. Testers she approved see the real
+-- seats. Null = open to all. Set in Admin > Settings (looks_full_until, section 8).
+alter table app_config add column if not exists opens_at timestamptz;
+-- Kelly 9 Nov: with require_hello_video on, sessions starting within this many hours look full to people whose
+-- video is not approved yet, so there is time to review it before their first session. 0 = off.
+alter table app_config add column if not exists hello_wait_hours int not null default 48;
+alter table app_config drop constraint if exists app_config_hello_wait_hours_check;
+alter table app_config add constraint app_config_hello_wait_hours_check check (hello_wait_hours between 0 and 168);
 
 insert into app_config default values on conflict do nothing;
 
@@ -349,6 +358,30 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function handle_new_user();
 
+-- 8a. Sessions that look full (Kelly 9 Nov). For a person (null = signed-out visitor), sessions starting before
+-- the returned time show as Full in get_schedule and book_session refuses them. Null = nothing hidden.
+-- Admins and people with an approved Hello Video always see the real seats. Before app_config.opens_at
+-- everyone else sees every session as Full; after it, with require_hello_video on, they see the next
+-- hello_wait_hours as Full. Only called from the security definer functions below, so it does not tell
+-- anyone outside whether a given person is approved.
+create or replace function looks_full_until(p_user uuid)
+returns timestamptz
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select case
+    when coalesce(p.is_admin or p.hello_status = 'approved', false) then null
+    when c.opens_at is not null and now() < c.opens_at then 'infinity'::timestamptz
+    when c.require_hello_video and c.hello_wait_hours > 0 then now() + make_interval(hours => c.hello_wait_hours)
+  end
+  from app_config c
+  left join profiles p on p.id = p_user
+  where c.id = 1
+$$;
+revoke execute on function looks_full_until(uuid) from public, anon, authenticated;
+
 -- 8. RPC Function: Book a Session
 -- Checks the payer's membership, seats, the weekly limit, credits and Bad Hair Day cards, then
 -- takes one credit. The payer's row is locked, so two household members booking at the same
@@ -433,6 +466,10 @@ begin
   if v_session.starts_at > now() + make_interval(days => v_cfg.book_ahead_days) then
     return jsonb_build_object('success', false, 'error',
       format('You can book up to %s days ahead.', v_cfg.book_ahead_days));
+  end if;
+  -- Same answer the calendar gives (section 8a): before the opening, or too soon for someone not approved yet.
+  if v_session.starts_at < looks_full_until(v_user_id) then
+    return jsonb_build_object('success', false, 'error', 'This session is full.');
   end if;
 
   if exists (
@@ -2050,10 +2087,11 @@ declare
   v_old app_config%rowtype;
   v_new app_config%rowtype;
   v_unknown text;
+  v_opens_at timestamptz;
   v_int_keys text[] := array['monthly_credits', 'household_monthly_credits', 'household_max_people',
     'welcome_trial_days', 'welcome_credits', 'cancel_hours', 'grace_days', 'bhd_per_month',
     'booking_closes_minutes', 'book_ahead_days', 'solo_monthly_cents', 'solo_annual_cents',
-    'household_monthly_cents', 'household_annual_cents', 'extra_1_cents', 'extra_5_cents'];
+    'household_monthly_cents', 'household_annual_cents', 'extra_1_cents', 'extra_5_cents', 'hello_wait_hours'];
 begin
   if not is_admin() then
     return jsonb_build_object('success', false, 'error', 'Only an admin can change settings.');
@@ -2063,7 +2101,8 @@ begin
   end if;
   select k into v_unknown from jsonb_object_keys(p) k
   where k <> all (v_int_keys || array['max_weekly_sessions', 'weekly_limit_scope', 'require_hello_video',
-                                      'hello_hold_bookings', 'sms_kinds', 'test_payments', 'contact_email'])
+                                      'hello_hold_bookings', 'sms_kinds', 'test_payments', 'contact_email',
+                                      'opens_at'])
   limit 1;
   if v_unknown is not null then
     return jsonb_build_object('success', false, 'error', format('Unknown setting: %s', v_unknown));
@@ -2074,8 +2113,16 @@ begin
      or (p ? 'hello_hold_bookings' and jsonb_typeof(p->'hello_hold_bookings') <> 'boolean')
      or (p ? 'test_payments' and jsonb_typeof(p->'test_payments') <> 'boolean')
      or (p ? 'sms_kinds' and jsonb_typeof(p->'sms_kinds') <> 'array')
-     or (p ? 'contact_email' and jsonb_typeof(p->'contact_email') not in ('string', 'null')) then
+     or (p ? 'contact_email' and jsonb_typeof(p->'contact_email') not in ('string', 'null'))
+     or (p ? 'opens_at' and jsonb_typeof(p->'opens_at') not in ('string', 'null')) then
     return jsonb_build_object('success', false, 'error', 'A setting has the wrong type.');
+  end if;
+  if p ? 'opens_at' then
+    begin
+      v_opens_at := nullif(btrim(p->>'opens_at'), '')::timestamptz;
+    exception when invalid_datetime_format or datetime_field_overflow then
+      return jsonb_build_object('success', false, 'error', 'Check the opening date.');
+    end;
   end if;
   if p ? 'contact_email' and nullif(btrim(p->>'contact_email'), '') is not null
      and (char_length(btrim(p->>'contact_email')) > 120
@@ -2114,6 +2161,10 @@ begin
   if p ? 'contact_email' then
     v_new.contact_email := nullif(btrim(p->>'contact_email'), '');
   end if;
+  v_new.hello_wait_hours := coalesce((p->>'hello_wait_hours')::int, v_old.hello_wait_hours);
+  if p ? 'opens_at' then
+    v_new.opens_at := v_opens_at;
+  end if;
 
   if v_new.monthly_credits not between 0 and 100 or v_new.household_monthly_credits not between 0 and 100
      or v_new.household_max_people not between 1 and 10 or v_new.welcome_trial_days not between 0 and 60
@@ -2126,6 +2177,7 @@ begin
                  v_new.household_annual_cents, v_new.extra_1_cents, v_new.extra_5_cents) > 1000000
      or (v_new.max_weekly_sessions is not null and v_new.max_weekly_sessions not between 1 and 21)
      or v_new.weekly_limit_scope not in ('person', 'household')
+     or v_new.hello_wait_hours not between 0 and 168
      or not (v_new.sms_kinds <@ array['1h', '24h']) then
     return jsonb_build_object('success', false, 'error', 'A setting is out of range.');
   end if;
@@ -2141,7 +2193,8 @@ begin
     extra_1_cents = v_new.extra_1_cents, extra_5_cents = v_new.extra_5_cents,
     weekly_limit_scope = v_new.weekly_limit_scope, require_hello_video = v_new.require_hello_video,
     hello_hold_bookings = v_new.hello_hold_bookings, sms_kinds = v_new.sms_kinds,
-    test_payments = v_new.test_payments, contact_email = v_new.contact_email
+    test_payments = v_new.test_payments, contact_email = v_new.contact_email,
+    opens_at = v_new.opens_at, hello_wait_hours = v_new.hello_wait_hours
   where id = 1;
 
   insert into admin_log (admin_id, action, details)
@@ -2200,6 +2253,8 @@ as $$
 #variable_conflict use_column
 declare
   v_cfg app_config%rowtype;
+  -- Sessions before this look full to the caller unless they hold a seat (section 8a).
+  v_full_until timestamptz := looks_full_until(auth.uid());
 begin
   if p_slug is null and not coalesce(p_mine, false) and (p_from is null or p_to is null or p_to <= p_from or p_to - p_from > interval '190 days') then
     raise exception 'Pick a range of up to 190 days.' using errcode = '22023';
@@ -2207,7 +2262,8 @@ begin
   select * into v_cfg from app_config c where c.id = 1;
   return query
   select s.id, s.slug, s.title, s.blurb, s.host, s.prep, s.starts_at, s.minutes, s.capacity,
-         coalesce(n.seats, 0)::int,
+         case when m.id is null and s.starts_at < v_full_until then greatest(s.capacity, coalesce(n.seats, 0))
+              else coalesce(n.seats, 0) end::int,
          s.starts_at - make_interval(mins => v_cfg.booking_closes_minutes),
          s.starts_at - make_interval(hours => v_cfg.cancel_hours),
          m.id, m.camera_off, m.held

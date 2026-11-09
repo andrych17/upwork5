@@ -68,7 +68,10 @@ export default function AdminSessions() {
       .select('id,title,blurb,host,prep,starts_at,minutes,capacity,published,bookings(count)')
       .eq('bookings.status', 'confirmed')
       .limit(60);
-    q = when === 'upcoming' ? q.gte('starts_at', now).order('starts_at') : q.lt('starts_at', now).order('starts_at', { ascending: false });
+    q =
+      when === 'upcoming'
+        ? q.gte('starts_at', now).order('starts_at')
+        : q.lt('starts_at', now).order('starts_at', { ascending: false });
     const { data, error } = await q;
     return { rows: (data ?? []) as Session[], error: Boolean(error) };
   }, [supabase, when]);
@@ -175,9 +178,7 @@ export default function AdminSessions() {
                   >
                     <td>
                       <strong>{s.title}</strong>
-                      <span className="adm-sub">
-                        {s.host} · {s.minutes} min
-                      </span>
+                      <span className="adm-sub">{s.minutes} min</span>
                     </td>
                     <td>{fmtWhen(s.starts_at)}</td>
                     <td>
@@ -259,10 +260,6 @@ export default function AdminSessions() {
                   />
                 </label>
               </div>
-              <label className="adm-field">
-                <span>Host</span>
-                <input className="adm-input" maxLength={80} value={draft.host} onChange={(e) => set('host', e.target.value)} />
-              </label>
               <label className="adm-field">
                 <span>Description</span>
                 <textarea

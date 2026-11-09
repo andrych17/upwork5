@@ -4,7 +4,7 @@
 import { useCallback, useState } from 'react';
 import AdminConnections from '@/components/admin/connections';
 import { useAdmin } from '@/components/admin/shell';
-import { adminRpc, useLoad } from '@/lib/admin';
+import { adminRpc, fromCentralInput, toCentralInput, useLoad } from '@/lib/admin';
 
 interface Config {
   monthly_credits: number;
@@ -24,6 +24,10 @@ interface Config {
   sms_kinds: string[];
   /** where Contact us sends members; null = no link */
   contact_email: string | null;
+  /** until then sessions look full to visitors and anyone not approved yet; null = open */
+  opens_at: string | null;
+  /** sessions this soon look full to people whose Hello Video is not approved yet; 0 = off */
+  hello_wait_hours: number;
   solo_monthly_cents: number;
   solo_annual_cents: number;
   household_monthly_cents: number;
@@ -110,7 +114,8 @@ export default function AdminSettings() {
       .select(
         'monthly_credits,household_monthly_credits,household_max_people,welcome_trial_days,welcome_credits,' +
           'cancel_hours,grace_days,bhd_per_month,booking_closes_minutes,book_ahead_days,max_weekly_sessions,' +
-          'weekly_limit_scope,require_hello_video,hello_hold_bookings,sms_kinds,contact_email,solo_monthly_cents,solo_annual_cents,' +
+          'weekly_limit_scope,require_hello_video,hello_hold_bookings,sms_kinds,contact_email,opens_at,hello_wait_hours,' +
+          'solo_monthly_cents,solo_annual_cents,' +
           'household_monthly_cents,household_annual_cents,extra_1_cents,extra_5_cents',
       )
       .eq('id', 1)
@@ -218,6 +223,28 @@ export default function AdminSettings() {
 
         <section className="adm-card">
           <div className="adm-card-head">
+            <h2>Opening</h2>
+          </div>
+          <div className="adm-card-body adm-form">
+            <label className="adm-field">
+              <span>Opening date (Central time)</span>
+              <input
+                className="adm-input"
+                type="datetime-local"
+                value={form.opens_at ? toCentralInput(form.opens_at) : ''}
+                onChange={(e) => set('opens_at', e.target.value === '' ? null : fromCentralInput(e.target.value))}
+              />
+              <small>
+                Until then every session shows as Full to visitors and to members whose Hello Video you have not
+                approved, so people who find the site cannot book. Members you approved see the real seats. Leave empty
+                to open the calendar to everyone.
+              </small>
+            </label>
+          </div>
+        </section>
+
+        <section className="adm-card">
+          <div className="adm-card-head">
             <h2>Plans and prices</h2>
           </div>
           <div className="adm-card-body">
@@ -272,6 +299,23 @@ export default function AdminSettings() {
                 onChange={(e) => set('hello_hold_bookings', e.target.checked)}
               />
               Let people book while their video waits (seats are held and released if not approved an hour before)
+            </label>
+            <label className="adm-field">
+              <span>Time to review a new Hello Video (hours)</span>
+              <input
+                className="adm-input"
+                type="number"
+                min={0}
+                max={168}
+                required
+                disabled={!form.require_hello_video}
+                value={form.hello_wait_hours}
+                onChange={(e) => set('hello_wait_hours', Number(e.target.value))}
+              />
+              <small>
+                Sessions starting sooner than this show as Full to people whose video is not approved yet. Once you
+                approve it, they see every session. 0 = off.
+              </small>
             </label>
             <label className="adm-field">
               <span>Contact email</span>

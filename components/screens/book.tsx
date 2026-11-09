@@ -270,7 +270,6 @@ export default function BookPage({ slug }: { slug: string }) {
             <div className="booking-tags">
               <span>{info.forWhom}</span>
               <span>{seatLabel(session).text}</span>
-              <span>Hosted by {session.host}</span>
             </div>
           </div>
 

@@ -6,6 +6,8 @@ export { isDemo };
 
 export const ph = (label: string, sample: string): string => (isDemo ? sample : `[${label}]`);
 
-export const EMAIL = ph('EMAIL', 'hello@example.com');
+// The real inbox (Cloudflare Email Routing forwards it to Kelly's Gmail). Also the Contact us link in the footer
+// and the account menu.
+export const EMAIL = 'hello@meetdoconnect.com';
 export const UPDATED = ph('DATE', 'October 24, 2026');
 export const LLC = ph('LEGAL NAME OF LLC', 'MeetDoConnect LLC');

@@ -102,3 +102,111 @@ set role authenticated;
 select t((book_session(:'late', false)->>'error') = 'Booking closes 15 minutes before the start.',
   'positive cutoff still closes before the start');
 reset role;
+
+-- Opening date and Hello Video review time (Kelly 9 Nov, section 8a): sessions look full to visitors and to
+-- people who are not approved yet, and book_session refuses them the same way.
+update app_config set booking_closes_minutes = -5;
+\set P4 '00000000-0000-0000-0000-0000000000b4'
+\set P5 '00000000-0000-0000-0000-0000000000b5'
+\set P6 '00000000-0000-0000-0000-0000000000b6'
+insert into auth.users (id, email, raw_user_meta_data) values
+  (:'P4', 'p4@example.com', '{"first_name": "Sol"}'),
+  (:'P5', 'p5@example.com', '{"first_name": "Tam"}'),
+  (:'P6', 'p6@example.com', '{"first_name": "Uma"}');
+select paid(array[:'P4', :'P5']::uuid[]);
+update profiles set hello_status = 'approved' where id = :'P4';
+update profiles set is_admin = true where id = :'P6';
+insert into sessions (slug, title, starts_at, capacity, published) values
+  ('open-soon', 'Open Soon', now() + interval '20 hours', 12, true),
+  ('open-later', 'Open Later', now() + interval '3 days', 12, true);
+select id as soon from sessions where slug = 'open-soon' \gset
+select id as later from sessions where slug = 'open-later' \gset
+update app_config set opens_at = now() + interval '30 days', require_hello_video = false, hello_wait_hours = 48;
+
+select set_config('request.jwt.claim.sub', '', false);
+set role anon;
+select t((select bool_and(booked = capacity) and count(*) = 2 from get_schedule(now(), now() + interval '7 days')
+          where slug like 'open-%'), 'before the opening, visitors see every session as full');
+reset role;
+
+select set_config('request.jwt.claim.sub', :'P5', false);
+set role authenticated;
+select t((select bool_and(booked = capacity) from get_schedule(now(), now() + interval '7 days') where slug like 'open-%'),
+  'before the opening, a member who is not approved sees every session as full');
+select t(book_session(:'later', false)->>'error' = 'This session is full.', 'and cannot book one');
+reset role;
+
+select set_config('request.jwt.claim.sub', :'P4', false);
+set role authenticated;
+select t((select booked = 0 from get_schedule(null, null, 'open-later')), 'an approved member sees the real seats');
+select t((book_session(:'later', false)->>'success')::boolean, 'and can book before the opening');
+reset role;
+
+select set_config('request.jwt.claim.sub', :'P6', false);
+set role authenticated;
+select t((select booked = 1 from get_schedule(null, null, 'open-later')), 'admins see the real seats before the opening');
+reset role;
+
+update profiles set hello_status = 'pending' where id = :'P4';
+select set_config('request.jwt.claim.sub', :'P4', false);
+set role authenticated;
+select t((select booked = 1 and my_booking_id is not null from get_schedule(null, null, 'open-later')),
+  'a session you hold a seat in keeps its real count');
+select t((select booked = capacity from get_schedule(null, null, 'open-soon')), 'other sessions still look full');
+reset role;
+
+-- After the opening: only the review time is left, and only with the Hello Video requirement on.
+update app_config set opens_at = null, require_hello_video = true, hello_hold_bookings = true;
+select set_config('request.jwt.claim.sub', :'P5', false);
+set role authenticated;
+select t((select booked = capacity from get_schedule(null, null, 'open-soon')),
+  'a session within 48 hours looks full to someone not approved yet');
+select t((select booked = 1 from get_schedule(null, null, 'open-later')), 'a session 3 days out shows its seats');
+select t(book_session(:'soon', false)->>'error' = 'This session is full.', 'booking within 48 hours is refused');
+select book_session(:'later', false) as b5 \gset
+select t((:'b5'::jsonb->>'success')::boolean and (:'b5'::jsonb->>'held')::boolean,
+  'booking 3 days out works, held until the video is approved');
+reset role;
+
+select set_config('request.jwt.claim.sub', '', false);
+set role anon;
+select t((select booked = capacity from get_schedule(null, null, 'open-soon')), 'visitors see the same 48 hours as full');
+reset role;
+
+update app_config set hello_wait_hours = 0;
+select set_config('request.jwt.claim.sub', :'P5', false);
+set role authenticated;
+select t((select booked = 0 from get_schedule(null, null, 'open-soon')), '0 hours turns the review time off');
+reset role;
+update app_config set hello_wait_hours = 48, require_hello_video = false;
+select set_config('request.jwt.claim.sub', :'P5', false);
+set role authenticated;
+select t((select booked = 0 from get_schedule(null, null, 'open-soon')), 'without the Hello Video requirement there is no wait');
+reset role;
+
+do $$
+begin
+  set local role authenticated;
+  perform looks_full_until(null);
+  raise exception 'FAIL: looks_full_until cannot be called directly';
+exception when insufficient_privilege then
+  raise notice 'ok: looks_full_until cannot be called directly';
+end $$;
+
+select set_config('request.jwt.claim.sub', :'P6', false);
+set role authenticated;
+select t((admin_update_config('{"opens_at": "2026-12-07T06:00:00Z", "hello_wait_hours": 24}')->>'success')::boolean,
+  'admin saves the opening date and review hours');
+select t(admin_update_config('{"opens_at": "next week"}')->>'error' = 'Check the opening date.', 'a bad date is refused');
+select t(admin_update_config('{"opens_at": 5}')->>'error' = 'A setting has the wrong type.', 'a number is not a date');
+select t(admin_update_config('{"hello_wait_hours": 200}')->>'error' = 'A setting is out of range.',
+  'review time over a week is refused');
+reset role;
+select t((select opens_at = '2026-12-07T06:00:00Z' and hello_wait_hours = 24 from app_config), 'both values saved');
+select set_config('request.jwt.claim.sub', :'P6', false);
+set role authenticated;
+select t((admin_update_config('{"opens_at": null}')->>'success')::boolean, 'clearing the date saves');
+reset role;
+select t((select opens_at is null from app_config), 'no date = open to everyone');
+update app_config set hello_wait_hours = 48, hello_hold_bookings = false;
+update app_config set booking_closes_minutes = 15;

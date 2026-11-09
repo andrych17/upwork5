@@ -344,14 +344,13 @@ export default function SchedulePage() {
                         <p>
                           <strong>Bring this:</strong> {info.shortPrep}
                         </p>
+                        {/* Kelly 9 Nov: no host name (names stay private until the room) and no second link to the
+                            booking page, the Book button beside Details already goes there. */}
                         <p>
                           {account
-                            ? `Hosted by ${room.host}. Member names are shown only inside the room.`
+                            ? 'Member names are shown only inside the room.'
                             : 'Sign in or join to reserve a seat. Member names are shown only inside the room.'}
                         </p>
-                        <Link href={{ pathname: '/book', query: { s: room.slug } }}>
-                          Open booking page <span aria-hidden="true">↗</span>
-                        </Link>
                       </div>
                     )}
                   </article>
