@@ -207,7 +207,7 @@ export default function AdminQuestions() {
           />
 
           {check && result && (
-            <div className="adm-check">
+            <div className="adm-upload-check">
               <p>
                 <strong>{check.file}</strong>: {result.bank.questions.length} questions
                 {result.bank.categories.map((c, i) => (result.counts[i] ? ` · ${c.name} ${result.counts[i]}` : ''))}

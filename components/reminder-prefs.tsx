@@ -3,6 +3,7 @@
 // Email and SMS reminder choices for the signed-in person (set_reminder_prefs, schema section 20).
 // Email is on by default. SMS needs a number with country code and an explicit opt-in (US carrier rules).
 import { useEffect, useState } from 'react';
+import { SMS_ON } from '@/lib/site';
 import { getSupabase, type MembershipSummary } from '@/lib/supabase';
 
 type Prefs = MembershipSummary['reminders'];
@@ -60,7 +61,7 @@ export default function ReminderPrefs() {
 
   return (
     <form className="reminders-card reminder-prefs" onSubmit={save}>
-      <h2>Email and text</h2>
+      <h2>{SMS_ON ? 'Email and text' : 'Email'}</h2>
       <label className="reminder-toggle">
         <input
           type="checkbox"
@@ -71,13 +72,15 @@ export default function ReminderPrefs() {
           <strong>Email reminders</strong> 24 hours and 1 hour before each session you book.
         </span>
       </label>
-      <label className="reminder-toggle">
-        <input type="checkbox" checked={prefs.sms} onChange={(e) => setPrefs({ ...prefs, sms: e.target.checked })} />
-        <span>
-          <strong>Text reminders</strong> 1 hour before each session you book.
-        </span>
-      </label>
-      {prefs.sms && (
+      {SMS_ON && (
+        <label className="reminder-toggle">
+          <input type="checkbox" checked={prefs.sms} onChange={(e) => setPrefs({ ...prefs, sms: e.target.checked })} />
+          <span>
+            <strong>Text reminders</strong> 1 hour before each session you book.
+          </span>
+        </label>
+      )}
+      {SMS_ON && prefs.sms && (
         <label className="reminder-phone">
           Mobile number with country code
           <input

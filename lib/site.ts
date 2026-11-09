@@ -9,6 +9,9 @@ export const TAGLINE = 'Skip the swiping. Start doing.';
 export const isDemo = process.env.DEMO === '1';
 // NOINDEX=1 is the dev.meetdoconnect.com build (wrangler.dev.json): real code, hidden from search engines.
 export const noindex = isDemo || process.env.NOINDEX === '1';
+// Text-message reminders (Twilio) are off: Kelly dropped SMS on 7 Nov 2026. The code stays. Set this to true and add
+// the Twilio keys to bring the SMS options back in sign-up, Reminders, Admin > Settings and Connections.
+export const SMS_ON = false;
 
 // The short answer to "what is MeetDoConnect?", used in structured data and llms.txt.
 export const DEFINITION =

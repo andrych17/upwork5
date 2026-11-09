@@ -570,6 +570,14 @@ a.adm-stat:hover {
   font-weight: 600;
 }
 
+/* A group of checkboxes under one label (Settings > SMS): drop the browser's fieldset frame. */
+fieldset.adm-field {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
 .adm-field small {
   color: var(--adm-muted);
   font-size: 0.75rem;
@@ -591,7 +599,7 @@ a.adm-stat:hover {
   font-weight: 600;
 }
 
-.adm-field > label {
+.adm-field > label:not(.adm-check) {
   font-size: 0.75rem;
   font-weight: 600;
 }
@@ -852,13 +860,14 @@ a.adm-stat:hover {
   line-height: 1.5;
 }
 
-.adm-check {
+/* Upload result box. Its own name: it used to reuse .adm-check and broke every admin checkbox row. */
+.adm-upload-check {
   display: grid;
   gap: 0.75rem;
   margin-top: 1rem;
 }
 
-.adm-check ul {
+.adm-upload-check ul {
   margin: 0.375rem 0 0;
   padding-left: 1.25rem;
 }

@@ -15,6 +15,7 @@ import { money, usd, type Interval, type Tier } from '@/lib/prices';
 import { usePlans } from '@/lib/use-plans';
 import { savePushSubscription, VAPID_PUBLIC_KEY } from '@/lib/push';
 import { resumeStep } from '@/lib/signup-step';
+import { SMS_ON } from '@/lib/site';
 import { getSupabase, setDemoUser, type MembershipSummary } from '@/lib/supabase';
 
 const STEPS = 6;
@@ -673,20 +674,22 @@ export default function SignupPage() {
                     <i />
                   </label>
                 </div>
-                <div>
-                  <span>
-                    <strong>Text reminders</strong>1 hour before each session
-                  </span>
-                  <label>
-                    <input
-                      type="checkbox"
-                      aria-label="Text reminders"
-                      checked={smsReminders}
-                      onChange={(e) => setSmsReminders(e.target.checked)}
-                    />
-                    <i />
-                  </label>
-                </div>
+                {SMS_ON && (
+                  <div>
+                    <span>
+                      <strong>Text reminders</strong>1 hour before each session
+                    </span>
+                    <label>
+                      <input
+                        type="checkbox"
+                        aria-label="Text reminders"
+                        checked={smsReminders}
+                        onChange={(e) => setSmsReminders(e.target.checked)}
+                      />
+                      <i />
+                    </label>
+                  </div>
+                )}
                 <div>
                   <span>
                     <strong>App notifications</strong>On this phone or computer
@@ -697,7 +700,7 @@ export default function SignupPage() {
                 </div>
               </div>
               {appNote && <p className="step-intro">{appNote}</p>}
-              {smsReminders && (
+              {SMS_ON && smsReminders && (
                 <label className="reminder-phone">
                   Mobile number with country code
                   <input

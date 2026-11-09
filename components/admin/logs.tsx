@@ -7,6 +7,7 @@ import { useCallback, useState } from 'react';
 import { useAdmin } from '@/components/admin/shell';
 import { callEdge } from '@/lib/edge';
 import { PAGE_SIZE, fmtWhen, fullName, useLoad } from '@/lib/admin';
+import { SMS_ON } from '@/lib/site';
 
 type Tab = 'admin' | 'credits' | 'notices' | 'reminders' | 'rooms' | 'video' | 'errors';
 
@@ -263,7 +264,7 @@ export default function AdminLogs() {
           detail: [
             `push ${r.push_sent ?? 0}`,
             `email ${r.email_sent ? 'sent' : 'no'}`,
-            `sms ${r.sms_sent ? 'sent' : 'no'}`,
+            SMS_ON && `sms ${r.sms_sent ? 'sent' : 'no'}`,
             r.error,
           ]
             .filter(Boolean)

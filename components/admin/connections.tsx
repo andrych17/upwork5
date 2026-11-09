@@ -6,6 +6,7 @@
 import { useCallback, useState } from 'react';
 import { useAdmin } from '@/components/admin/shell';
 import { ADMIN_TZ, adminRpc, useLoad } from '@/lib/admin';
+import { SMS_ON } from '@/lib/site';
 
 interface StoredKey {
   name: string;
@@ -128,7 +129,7 @@ export default function AdminConnections() {
             {loading ? 'Loading…' : 'Could not load connections. Refresh to try again.'}
           </p>
         ) : (
-          GROUPS.map((group) => (
+          GROUPS.filter((g) => SMS_ON || !g.title.startsWith('Twilio')).map((group) => (
             <fieldset key={group.title} className="adm-keys">
               <legend>{group.title}</legend>
               <small className="adm-sub">{group.hint}</small>

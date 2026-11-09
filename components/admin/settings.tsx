@@ -5,6 +5,7 @@ import { useCallback, useState } from 'react';
 import AdminConnections from '@/components/admin/connections';
 import { useAdmin } from '@/components/admin/shell';
 import { adminRpc, fromCentralInput, toCentralInput, useLoad } from '@/lib/admin';
+import { SMS_ON } from '@/lib/site';
 
 interface Config {
   monthly_credits: number;
@@ -56,8 +57,7 @@ const NUMBERS: { key: NumberKey; label: string; hint: string; min: number; max: 
     min: 1,
     max: 10,
   },
-  { key: 'welcome_trial_days', label: 'Welcome trial days', hint: 'Length of the free start.', min: 0, max: 60 },
-  { key: 'welcome_credits', label: 'Welcome credits', hint: 'Credits during the trial.', min: 0, max: 50 },
+  // Welcome trial days and welcome credits are left out: nothing reads them yet, so changing them did nothing.
   {
     key: 'cancel_hours',
     label: 'Free cancel window (hours)',
@@ -280,7 +280,7 @@ export default function AdminSettings() {
 
         <section className="adm-card">
           <div className="adm-card-head">
-            <h2>Hello Video and reminders</h2>
+            <h2>{SMS_ON ? 'Hello Video and reminders' : 'Hello Video'}</h2>
           </div>
           <div className="adm-card-body adm-form">
             <label className="adm-check">
@@ -328,30 +328,32 @@ export default function AdminSettings() {
                 onChange={(e) => set('contact_email', e.target.value === '' ? null : e.target.value)}
               />
               <small>
-                Members see it on Contact us buttons, for example after a Hello Video is declined. Leave empty for no
-                link.
+                Shown on the Contact us button after a Hello Video is declined. Leave empty for no link. The Contact us
+                link in the footer and account menu always goes to hello@meetdoconnect.com.
               </small>
             </label>
-            <fieldset className="adm-field">
-              <span>Also send by SMS (for members who opted in, about a cent each)</span>
-              {SMS_KINDS.map((k) => (
-                <label key={k.key} className="adm-check">
-                  <input
-                    type="checkbox"
-                    checked={form.sms_kinds.includes(k.key)}
-                    onChange={(e) =>
-                      set(
-                        'sms_kinds',
-                        e.target.checked
-                          ? [...form.sms_kinds, k.key].sort()
-                          : form.sms_kinds.filter((x) => x !== k.key),
-                      )
-                    }
-                  />
-                  {k.label}
-                </label>
-              ))}
-            </fieldset>
+            {SMS_ON && (
+              <fieldset className="adm-field">
+                <span>Also send by SMS (for members who opted in, about a cent each)</span>
+                {SMS_KINDS.map((k) => (
+                  <label key={k.key} className="adm-check">
+                    <input
+                      type="checkbox"
+                      checked={form.sms_kinds.includes(k.key)}
+                      onChange={(e) =>
+                        set(
+                          'sms_kinds',
+                          e.target.checked
+                            ? [...form.sms_kinds, k.key].sort()
+                            : form.sms_kinds.filter((x) => x !== k.key),
+                        )
+                      }
+                    />
+                    {k.label}
+                  </label>
+                ))}
+              </fieldset>
+            )}
           </div>
         </section>
 
