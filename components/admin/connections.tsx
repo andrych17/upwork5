@@ -1,14 +1,13 @@
 'use client';
 
-// Connections (schema section 32): API keys for Daily, Resend, Twilio and R2, kept encrypted in Supabase Vault.
-// Keys are write-only here: once saved, only their last 4 characters come back. A field with nothing saved uses the
-// function secret of the same name, so nothing changes until a value is saved.
-import { useCallback, useState } from 'react';
-import { useAdmin } from '@/components/admin/shell';
-import { ADMIN_TZ, adminRpc, useLoad } from '@/lib/admin';
+// Connections tab of Settings (schema section 32): API keys for Daily, Resend, Twilio and R2, kept encrypted in
+// Supabase Vault. Keys are write-only here: once saved, only their last 4 characters come back. A field with nothing
+// saved uses the function secret of the same name. This file only draws the fields; Settings owns the typed values
+// and saves them with everything else from its one Save button.
+import { ADMIN_TZ } from '@/lib/admin';
 import { SMS_ON } from '@/lib/site';
 
-interface StoredKey {
+export interface StoredKey {
   name: string;
   secret: boolean;
   set: boolean;
@@ -16,14 +15,14 @@ interface StoredKey {
   updated_at: string | null;
 }
 
-interface Field {
+export interface KeyField {
   name: string;
   label: string;
   placeholder?: string;
   hint?: string;
 }
 
-const GROUPS: { title: string; hint: string; fields: Field[] }[] = [
+const ALL_GROUPS: { title: string; hint: string; fields: KeyField[] }[] = [
   {
     title: 'Daily (video rooms)',
     hint: 'Daily dashboard > Developers.',
@@ -68,6 +67,17 @@ const GROUPS: { title: string; hint: string; fields: Field[] }[] = [
   },
 ];
 
+export const KEY_GROUPS = ALL_GROUPS.filter((g) => SMS_ON || !g.title.startsWith('Twilio'));
+
+/** "Daily API key", for save messages. */
+export const keyLabel = (name: string): string => {
+  for (const g of KEY_GROUPS) {
+    const f = g.fields.find((x) => x.name === name);
+    if (f) return `${g.title.split(' (')[0]} ${f.label}`;
+  }
+  return name;
+};
+
 const when = (iso: string) =>
   new Date(iso).toLocaleString('en-US', { timeZone: ADMIN_TZ, month: 'short', day: 'numeric' });
 
@@ -78,118 +88,73 @@ function status(k: StoredKey | undefined): string {
   return k.shown ? `Saved${date}, ends in ${k.shown}` : `Saved${date}`;
 }
 
-export default function AdminConnections() {
-  const { supabase } = useAdmin();
-  const [typed, setTyped] = useState<Record<string, string>>({});
-  const [busy, setBusy] = useState('');
-  const [msg, setMsg] = useState<{ text: string; error: boolean } | null>(null);
+interface Props {
+  keys: StoredKey[] | null | undefined;
+  loading: boolean;
+  typed: Record<string, string>;
+  removing: string[];
+  disabled: boolean;
+  onType: (name: string, value: string) => void;
+  onToggleRemove: (name: string) => void;
+}
 
-  const fetchKeys = useCallback(async () => {
-    const res = await adminRpc(supabase, 'admin_service_keys', {});
-    return res.ok ? (res.data.keys as StoredKey[]) : null;
-  }, [supabase]);
-  const { data: keys, loading, reload } = useLoad(fetchKeys);
-  const byName = new Map((keys ?? []).map((k) => [k.name, k]));
-
-  const save = async (field: Field, value: string) => {
-    setBusy(field.name);
-    const res = await adminRpc(supabase, 'admin_set_service_key', { p_name: field.name, p_value: value });
-    setBusy('');
-    if (!res.ok) {
-      setMsg({ text: res.error, error: true });
-      return;
-    }
-    setMsg({
-      text: value
-        ? `${field.label} saved. It is used from the next minute on.`
-        : `${field.label} removed here. The server’s own setting applies again.`,
-      error: false,
-    });
-    setTyped((t) => Object.fromEntries(Object.entries(t).filter(([name]) => name !== field.name)));
-    reload();
-  };
-
+export default function ConnectionFields({ keys, loading, typed, removing, disabled, onType, onToggleRemove }: Props) {
+  if (!keys) {
+    return (
+      <p className={loading ? 'adm-empty' : 'adm-msg adm-msg-error'}>
+        {loading ? 'Loading…' : 'Could not load connections. Refresh to try again.'}
+      </p>
+    );
+  }
+  const byName = new Map(keys.map((k) => [k.name, k]));
   return (
-    <section className="adm-card" aria-labelledby="adm-connections">
-      <div className="adm-card-head">
-        <h2 id="adm-connections">Connections</h2>
-      </div>
-      <div className="adm-card-body adm-form">
-        <p className="adm-sub">
-          Keys for the services the site uses. They are stored encrypted, and after saving only the last 4 characters
-          are shown. To change a key, paste the new one and save.
-        </p>
-        {msg && (
-          <p className={msg.error ? 'adm-msg adm-msg-error' : 'adm-msg'} role="status">
-            {msg.text}
-          </p>
-        )}
-        {!keys ? (
-          <p className={loading ? 'adm-empty' : 'adm-msg adm-msg-error'}>
-            {loading ? 'Loading…' : 'Could not load connections. Refresh to try again.'}
-          </p>
-        ) : (
-          GROUPS.filter((g) => SMS_ON || !g.title.startsWith('Twilio')).map((group) => (
-            <fieldset key={group.title} className="adm-keys">
-              <legend>{group.title}</legend>
-              <small className="adm-sub">{group.hint}</small>
-              <div className="adm-form-grid">
-                {group.fields.map((field) => {
-                  const stored = byName.get(field.name);
-                  const value = typed[field.name] ?? '';
-                  const id = `key-${field.name}`;
-                  return (
-                    <form
-                      key={field.name}
-                      className="adm-field"
-                      onSubmit={(e) => {
-                        e.preventDefault();
-                        if (value.trim()) void save(field, value);
-                      }}
-                    >
-                      <label htmlFor={id}>{field.label}</label>
-                      <div className="adm-key-row">
-                        <input
-                          id={id}
-                          className="adm-input"
-                          type={stored?.secret ? 'password' : 'text'}
-                          autoComplete={stored?.secret ? 'new-password' : 'off'}
-                          spellCheck={false}
-                          placeholder={stored?.set ? 'Type a new value to replace it' : (field.placeholder ?? '')}
-                          value={value}
-                          onChange={(e) => setTyped({ ...typed, [field.name]: e.target.value })}
-                        />
-                        <button
-                          type="submit"
-                          className="adm-btn adm-btn-primary adm-btn-sm"
-                          disabled={busy !== '' || !value.trim()}
-                        >
-                          Save
-                        </button>
-                        {stored?.set && (
-                          <button
-                            type="button"
-                            className="adm-btn adm-btn-sm"
-                            disabled={busy !== ''}
-                            onClick={() => {
-                              if (window.confirm(`Remove the saved ${group.title.split(' (')[0]} ${field.label}?`))
-                                void save(field, '');
-                            }}
-                          >
-                            Remove
-                          </button>
-                        )}
-                      </div>
-                      <small>{status(stored)}</small>
-                      {field.hint && <small>{field.hint}</small>}
-                    </form>
-                  );
-                })}
-              </div>
-            </fieldset>
-          ))
-        )}
-      </div>
-    </section>
+    <>
+      {KEY_GROUPS.map((group) => (
+        <fieldset key={group.title} className="adm-keys">
+          <legend>{group.title}</legend>
+          <small className="adm-sub">{group.hint}</small>
+          <div className="adm-form-grid">
+            {group.fields.map((field) => {
+              const stored = byName.get(field.name);
+              const gone = removing.includes(field.name);
+              const id = `key-${field.name}`;
+              return (
+                <div key={field.name} className="adm-field">
+                  <label htmlFor={id}>{field.label}</label>
+                  <div className="adm-key-row">
+                    <input
+                      id={id}
+                      className="adm-input"
+                      type={stored?.secret ? 'password' : 'text'}
+                      autoComplete={stored?.secret ? 'new-password' : 'off'}
+                      spellCheck={false}
+                      disabled={disabled || gone}
+                      placeholder={stored?.set ? 'Type a new value to replace it' : (field.placeholder ?? '')}
+                      value={gone ? '' : (typed[field.name] ?? '')}
+                      onChange={(e) => onType(field.name, e.target.value)}
+                    />
+                    {stored?.set && (
+                      <button
+                        type="button"
+                        className={gone ? 'adm-btn adm-btn-sm' : 'adm-btn adm-btn-sm adm-btn-danger'}
+                        disabled={disabled}
+                        aria-pressed={gone}
+                        onClick={() => onToggleRemove(field.name)}
+                      >
+                        {gone ? 'Keep' : 'Remove'}
+                      </button>
+                    )}
+                  </div>
+                  <small className={gone ? 'adm-will-remove' : undefined}>
+                    {gone ? 'Will be removed when you save. The server’s own setting applies again.' : status(stored)}
+                  </small>
+                  {field.hint && <small>{field.hint}</small>}
+                </div>
+              );
+            })}
+          </div>
+        </fieldset>
+      ))}
+    </>
   );
 }
