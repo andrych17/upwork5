@@ -1,5 +1,13 @@
 MeetDoConnect Trivia: Basic Rules of the Game
+For 2 to 12 players.
 
+OBJECT OF THE GAME
+Move round the board and answer questions in all six categories to collect as many points as you can.
+
+HOW TO WIN
+Have the highest score when the 60-minute session ends. You earn 10 points for every right answer and 5 bonus points for each category badge. Players tied on the top score win together.
+
+THE RULES
 1. On your turn, spin the spinner (1 to 6) and move that many spaces, in either direction round the ring.
 2. Answer a question in the colour of the space you land on. You have 60 seconds, shown by the hourglass.
 3. Right answer: 10 points, and you keep your turn. Wrong answer or out of time: no points and the turn passes.

@@ -24,7 +24,14 @@ import {
   type Room,
 } from '@/lib/rooms';
 import { getSupabase, type MembershipSummary } from '@/lib/supabase';
-import { TRIVIA_RULES, TRIVIA_SCORING, TRIVIA_SLUG } from '@/lib/trivia';
+import {
+  TRIVIA_HOW_TO_WIN,
+  TRIVIA_OBJECT,
+  TRIVIA_PLAYERS_LINE,
+  TRIVIA_RULES,
+  TRIVIA_SCORING,
+  TRIVIA_SLUG,
+} from '@/lib/trivia';
 import { useNow } from '@/lib/use-now';
 import InviteBanner from '@/components/invite-banner';
 import MenuToggle from '@/components/menu-toggle';
@@ -318,6 +325,13 @@ export default function BookPage({ slug }: { slug: string }) {
           {card?.slug === TRIVIA_SLUG && (
             <div className="run-panel trivia-book-rules">
               <p className="section-label">Basic rules of the game</p>
+              <p>{TRIVIA_PLAYERS_LINE}</p>
+              <p>
+                <strong>Object of the game.</strong> {TRIVIA_OBJECT}
+              </p>
+              <p>
+                <strong>How to win.</strong> {TRIVIA_HOW_TO_WIN}
+              </p>
               <ol className="full-run-copy">
                 {TRIVIA_RULES.map((rule) => (
                   <li key={rule}>{rule}</li>

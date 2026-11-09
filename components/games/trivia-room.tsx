@@ -15,6 +15,9 @@ import {
   PLAYER_COLOURS,
   POINTS_PER_RIGHT,
   SPACES_PER_COLOUR,
+  TRIVIA_HOW_TO_WIN,
+  TRIVIA_OBJECT,
+  TRIVIA_PLAYERS_LINE,
   TRIVIA_RULES,
   board,
   clockLeft,
@@ -269,6 +272,13 @@ function Rules({ open }: { open?: boolean }) {
   return (
     <details className="trivia-rules" open={open}>
       <summary>Basic rules of the game</summary>
+      <p>{TRIVIA_PLAYERS_LINE}</p>
+      <p>
+        <strong>Object of the game.</strong> {TRIVIA_OBJECT}
+      </p>
+      <p>
+        <strong>How to win.</strong> {TRIVIA_HOW_TO_WIN}
+      </p>
       <ol>
         {TRIVIA_RULES.map((rule) => (
           <li key={rule}>{rule}</li>

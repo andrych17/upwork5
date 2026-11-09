@@ -12,6 +12,9 @@ import {
   POINTS_PER_RIGHT,
   SESSION_MINUTES,
   SPINNER_MAX,
+  TRIVIA_HOW_TO_WIN,
+  TRIVIA_OBJECT,
+  TRIVIA_PLAYERS_LINE,
   TRIVIA_RULES,
   board,
   clockLeft,
@@ -110,16 +113,15 @@ assert.deepEqual(
   'rules text uses the engine settings',
 );
 // Her trivia-rules.txt, numbers filled in from the settings above (US spelling on the site).
-const rulesTxt = readFileSync(new URL('./fixtures/trivia-rules.txt', import.meta.url), 'utf8')
-  .split('\n')
-  .filter((l) => /^\d+\. /.test(l))
-  .map((l) =>
-    l
-      .replace(/^\d+\. /, '')
-      .replace(/colour/g, 'color')
-      .replace(/category's/g, 'category’s'),
-  );
+const rulesLines = readFileSync(new URL('./fixtures/trivia-rules.txt', import.meta.url), 'utf8').split('\n');
+const us = (l: string) => l.replace(/colour/g, 'color').replace(/category's/g, 'category’s');
+const rulesTxt = rulesLines.filter((l) => /^\d+\. /.test(l)).map((l) => us(l.replace(/^\d+\. /, '')));
 assert.deepEqual(TRIVIA_RULES, rulesTxt, 'the 8 Basic Rules match trivia-rules.txt word for word');
+// The line under each heading in her file: the players line, Object of the game, How to win.
+const under = (heading: string) => us(rulesLines[rulesLines.indexOf(heading) + 1]);
+assert.equal(TRIVIA_PLAYERS_LINE, rulesLines[1], 'players line matches trivia-rules.txt');
+assert.equal(TRIVIA_OBJECT, under('OBJECT OF THE GAME'), 'object of the game matches trivia-rules.txt');
+assert.equal(TRIVIA_HOW_TO_WIN, under('HOW TO WIN'), 'how to win matches trivia-rules.txt');
 const player = (
   id: string,
   points: number | undefined,

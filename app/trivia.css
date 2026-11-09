@@ -568,6 +568,11 @@
   font-weight: 700;
 }
 
+.trivia-rules p {
+  margin: 8px 0 0;
+  line-height: 1.5;
+}
+
 .trivia-rules ol {
   list-style: decimal;
   gap: 4px;

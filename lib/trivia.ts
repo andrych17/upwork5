@@ -17,7 +17,11 @@ export const BADGE_BONUS = 5;
 export const AWAY_AFTER_MISSES = 2;
 export const SESSION_MINUTES = 60;
 
-// Kelly's Basic Rules (trivia-rules.txt, 7 Nov zip), shown on the booking page and in the game.
+// Kelly's Basic Rules (trivia-rules.txt, 9 Nov zip), shown on the booking page and in the game.
+export const TRIVIA_PLAYERS_LINE = `For 2 to ${MAX_PLAYERS} players.`;
+export const TRIVIA_OBJECT =
+  'Move round the board and answer questions in all six categories to collect as many points as you can.';
+export const TRIVIA_HOW_TO_WIN = `Have the highest score when the ${SESSION_MINUTES}-minute session ends. You earn ${POINTS_PER_RIGHT} points for every right answer and ${BADGE_BONUS} bonus points for each category badge. Players tied on the top score win together.`;
 export const TRIVIA_RULES: string[] = [
   `On your turn, spin the spinner (1 to ${SPINNER_MAX}) and move that many spaces, in either direction round the ring.`,
   `Answer a question in the color of the space you land on. You have ${ANSWER_SECONDS} seconds, shown by the hourglass.`,
