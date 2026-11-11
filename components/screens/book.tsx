@@ -23,6 +23,7 @@ import {
   when,
   type Room,
 } from '@/lib/rooms';
+import { GAME_RULES, gameForSlug } from '@/lib/live-games';
 import { getSupabase, type MembershipSummary } from '@/lib/supabase';
 import {
   TRIVIA_HOW_TO_WIN,
@@ -140,6 +141,8 @@ export default function BookPage({ slug }: { slug: string }) {
   const session = room as Room;
   const info = roomInfo(session);
   const card = info.card;
+  const game = gameForSlug(session.slug);
+  const rules = game ? GAME_RULES[game] : undefined;
   const at = when(session.starts_at);
   const opensAt = timeOf(addMinutes(session.starts_at, -ROOM_OPENS_MINUTES));
   const closed = now > 0 && new Date(session.closes_at).getTime() <= now;
@@ -318,6 +321,24 @@ export default function BookPage({ slug }: { slug: string }) {
               <p>
                 Each color on the board is a question category. The key to the colors sits under the board in the game.
               </p>
+            </div>
+          )}
+          {rules && (
+            <div className="run-panel trivia-book-rules">
+              <p className="section-label">Basic rules of the game</p>
+              <p>{rules.players}</p>
+              <p>
+                <strong>Object of the game.</strong> {rules.object}
+              </p>
+              <p>
+                <strong>How to win.</strong> {rules.howToWin}
+              </p>
+              <ol className="full-run-copy">
+                {rules.rules.map((rule) => (
+                  <li key={rule}>{rule}</li>
+                ))}
+              </ol>
+              {rules.footer && <p>{rules.footer}</p>}
             </div>
           )}
         </div>

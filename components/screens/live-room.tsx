@@ -4,17 +4,22 @@
 // window and the Hello Video, then returns a private Daily room and a token for this person. Video runs on
 // Daily's call object (daily-js) inside the board's own layout: tiles, the activity guide, Safety (mute
 // someone just for you, report privately to the admins) and Leave, which goes on to Buddy picks.
+// Invent It (and Kelly's other 11 Nov games as they are built) works the same way through components/games/live-game.
 // Trivia, Trivier, Triviest sessions also get Kelly's board game next to a smaller strip of videos.
 import type { DailyCall, DailyParticipant } from '@daily-co/daily-js';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import LiveGame from '@/components/games/live-game';
 import TriviaRoom, { leaveTrivia } from '@/components/games/trivia-room';
+import { leaveGame } from '@/components/games/use-live-game';
 import { useAccount } from '@/lib/account';
 import { callEdge } from '@/lib/edge';
+import { gameForSlug, PLAYABLE } from '@/lib/live-games';
 import { loadRoomPrefs } from '@/lib/media';
 import { logClientError } from '@/lib/client-errors';
 import { ROOM_ROLES, catalogFor, fetchRoles, fetchRoom, type Room, type RoomRole } from '@/lib/rooms';
+import { runSteps } from '@/lib/run-steps';
 import { getSupabase } from '@/lib/supabase';
 import { TRIVIA_SLUG } from '@/lib/trivia';
 import { useQueryParam } from '@/lib/use-query';
@@ -72,20 +77,6 @@ function toTile(p: DailyParticipant): Tile {
 }
 
 /** "5 min: hello. 45 min: work. Last 10 min: share." -> timed steps of the hour. */
-function steps(run: string | undefined, total: number) {
-  const parts = (run ?? '').split(/(?=(?:Last\s+)?\d+\s*min:)/i).map((s) => s.trim());
-  const parsed = parts
-    .map((p) => p.match(/^(Last\s+)?(\d+)\s*min:\s*(.+)$/i))
-    .filter((m): m is RegExpMatchArray => Boolean(m))
-    .map((m) => ({ last: Boolean(m[1]), minutes: Number(m[2]), text: m[3].trim() }));
-  let at = 0;
-  return parsed.map((s) => {
-    const start = s.last ? total - s.minutes : at;
-    at = start + s.minutes;
-    return { ...s, start };
-  });
-}
-
 // The last minutes of a session: a banner above the controls counts down to the end (Kelly, 2 Nov). Kelly 6 Nov:
 // no countdown before that (minute 55 of an hour), so the top bar shows the end time until then.
 const WRAP_UP_MINUTES = 5;
@@ -254,8 +245,10 @@ export default function LiveRoomPage() {
   const wrapUp = ends > 0 && now > 0 && ends > now && ends - now <= WRAP_UP_MINUTES * 60_000;
   const endsLabel = ends ? new Date(ends).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '';
   const catalog = room ? catalogFor(room) : undefined;
-  const plan = steps(catalog?.run, room?.minutes ?? 60);
+  const plan = runSteps(catalog?.run, room?.minutes ?? 60);
   const trivia = catalog?.slug === TRIVIA_SLUG && phase !== 'loading' && room && account ? room.id : null;
+  const gameKey = gameForSlug(room?.slug);
+  const game = gameKey && PLAYABLE.includes(gameKey) && phase !== 'loading' && room && account ? gameKey : null;
   const elapsedMin = now && starts ? (now - starts) / 60_000 : 0;
   const currentIdx = plan.findIndex((s) => elapsedMin >= s.start && elapsedMin < s.start + s.minutes);
   const current = plan[currentIdx];
@@ -270,6 +263,7 @@ export default function LiveRoomPage() {
   };
   const leave = async () => {
     if (trivia) leaveTrivia(trivia);
+    if (game && room) leaveGame(room.id);
     const c = call.current;
     if (c) await c.leave();
     else router.push(slug ? `/after-session?s=${encodeURIComponent(slug)}` : '/sessions');
@@ -380,6 +374,11 @@ export default function LiveRoomPage() {
           <div className="trivia-main">
             {videos}
             <TriviaRoom sessionId={trivia} me={account?.id ?? ''} />
+          </div>
+        ) : game && room ? (
+          <div className="trivia-main">
+            {videos}
+            <LiveGame game={game} sessionId={room.id} me={account?.id ?? ''} />
           </div>
         ) : (
           videos

@@ -52,6 +52,10 @@ const SHORT: Record<string, { audience: string; prep: string }> = {
     prep: 'A second device for playing a favorite song and your playlist.',
   },
   'trivia-trivier-triviest': { audience: 'Adults & teens', prep: 'No prep. Just show up and guess.' },
+  'invent-it': { audience: 'Adults & teens', prep: 'No prep. Invent something out loud with your team.' },
+  'guess-whose-story': { audience: 'Adults & teens', prep: 'No prep. Bring a story or two about yourself.' },
+  'puzzle-room': { audience: 'Adults & teens', prep: 'No prep. Solve puzzles out loud with your team.' },
+  'draw-and-guess': { audience: 'Families welcome', prep: 'A phone or tablet to draw on with your finger.' },
 };
 
 const TONES = ['navy', 'berry', 'leaf', 'sky', 'plum', 'gold', 'coral', 'cobalt', 'tomato', 'sage', 'violet', 'ink'];

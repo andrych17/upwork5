@@ -1,0 +1,20 @@
+INVENT IT ("Yes, And") - RULES
+For 2 to 12 players, in teams of 1 to 6. Everything is spoken out loud in the video room. No typing.
+
+OBJECT OF THE GAME
+Work with your team to invent something out loud from two surprise items, and make the other players want it.
+
+HOW TO WIN
+Score the most points. Each turn your team scores the average 1-to-5 rating the other players give your invention, and your total is every turn added up. When the session ends, the highest total wins. Teams tied on the top total win together.
+
+THE RULES
+1. Players are put into teams when the game starts, either at random or by choosing (set in the lobby before Start). With 2 players each plays alone as a team of one; with 3 players it is a team of 2 against a team of 1. A team with fewer than 3 players gets longer turns, so every team has about the same time on stage.
+2. Teams go on stage one at a time. First comes a 10-second huddle: the team is shown 3 categories and each teammate taps one (most taps wins; ties and no taps are settled at random). Then the team gets two random items from that category to combine into one invention.
+3. Each team member speaks for 15 seconds, in turn. The first says what the invention is, each next one starts with "Yes, and..." and adds a feature, and the last one gives it a name. Press Next to finish early, or Pass to skip your turn.
+4. Then everyone on the other teams taps a rating from 1 to 5 for "How much would you buy it?"  1 = No way!   5 = Absolutely!  Nobody rates their own team.
+5. A team's score for its turn is the average of the ratings it got (to 2 decimals). A team's total is all its turn scores added together.
+6. After every team has had a turn, the round ends and the scoreboard updates. Then there is a 60-second chat break with a conversation prompt (anyone can end it early), and a new round begins, with a different person starting for each team.
+7. Rounds keep going until there is not enough time left for another chat break and a full round. The highest total wins; teams tied on the top total win together.
+8. No round starts unless it can finish before the 60-minute session ends. If time does run out, the team on stage is not scored.
+
+If nobody on a team speaks, that turn is skipped and scores 0.

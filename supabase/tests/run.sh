@@ -25,4 +25,6 @@ psql < tests/trivia.sql
 psql < tests/roles.sql
 psql < tests/keys.sql
 psql < tests/errors.sql
+psql < tests/testers.sql
+psql < tests/live-games.sql
 echo "schema checks: ok"

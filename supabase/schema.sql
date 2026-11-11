@@ -4491,3 +4491,526 @@ $$;
 
 revoke execute on function admin_trivia_import(jsonb, boolean) from public, anon;
 grant execute on function admin_trivia_import(jsonb, boolean) to authenticated;
+
+-- ========================================================================
+-- 37. Tester sign-ups (Kelly 10 Nov: "a beginning form for Testers to join"). The public page /testers saves here
+-- through tester_join(); only admins can read the list (Admin > Testers). The free-week code email goes out from
+-- the send-reminders Edge Function (every 5 minutes, through Resend), right away or once an admin taps Send code
+-- (app_config.tester_auto_code). The form stops taking sign-ups once tester_limit people have joined; declined
+-- sign-ups don't hold a spot. Safe to run again.
+-- ========================================================================
+alter table app_config add column if not exists tester_form_open boolean not null default true;
+alter table app_config add column if not exists tester_limit int not null default 50;
+alter table app_config add column if not exists tester_auto_code boolean not null default false;
+alter table app_config add column if not exists test_week_start date not null default date '2026-11-23';
+alter table app_config add column if not exists test_week_end date not null default date '2026-11-29';
+alter table app_config drop constraint if exists app_config_tester_check;
+alter table app_config drop column if exists tester_code;
+alter table app_config add constraint app_config_tester_check check (
+  tester_limit between 1 and 500
+  and test_week_end >= test_week_start);
+
+-- The free-week code lives here, not in app_config: every visitor can read app_config, and the code is only for
+-- people who signed up. Admins read it (Admin > Testers); send-reminders gets it through claim_tester_codes().
+create table if not exists tester_secret (
+  id smallint primary key default 1 check (id = 1),
+  code text not null default 'WELCOME7' check (code ~ '^[A-Z0-9]{3,20}$')
+);
+insert into tester_secret (id) values (1) on conflict (id) do nothing;
+alter table tester_secret enable row level security;
+revoke all on tester_secret from anon, authenticated;
+grant select on tester_secret to authenticated;
+drop policy if exists tester_secret_admin_read on tester_secret;
+create policy tester_secret_admin_read on tester_secret for select to authenticated using (is_admin());
+
+create table if not exists tester_signups (
+  id uuid primary key default gen_random_uuid(),
+  first_name text not null check (char_length(first_name) between 1 and 40),
+  email text not null check (char_length(email) <= 120 and email ~ '^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$'),
+  time_zone text not null check (char_length(time_zone) between 1 and 40),
+  interests text[] not null default '{}' check (cardinality(interests) <= 30),
+  times text[] not null default '{}'
+    check (times <@ array['weekday_mornings', 'weekday_evenings', 'weekend_mornings', 'weekend_evenings']),
+  heard text check (char_length(heard) <= 200),
+  note text check (char_length(note) <= 600),
+  -- waiting = needs an admin's OK, queued = code email about to go out, sent, failed (Send code tries again), declined
+  status text not null default 'waiting' check (status in ('waiting', 'queued', 'sent', 'failed', 'declined')),
+  created_at timestamptz not null default now(),
+  queued_at timestamptz,
+  claimed_at timestamptz,
+  sent_at timestamptz,
+  error text check (char_length(error) <= 300)
+);
+create unique index if not exists uq_tester_signups_email on tester_signups (lower(email));
+create index if not exists idx_tester_signups_created on tester_signups (created_at desc);
+create index if not exists idx_tester_signups_queued on tester_signups (queued_at)
+  where status = 'queued' and claimed_at is null;
+
+alter table tester_signups enable row level security;
+revoke all on tester_signups from anon, authenticated;
+grant select on tester_signups to authenticated;
+drop policy if exists tester_signups_admin_read on tester_signups;
+create policy tester_signups_admin_read on tester_signups for select to authenticated using (is_admin());
+
+-- What the public form needs before it shows: open or not, spots left, the test week and how the code is sent.
+create or replace function tester_form_info()
+returns jsonb
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select jsonb_build_object(
+    'open', c.tester_form_open,
+    'spots_left', greatest(c.tester_limit - (select count(*) from tester_signups where status <> 'declined'), 0),
+    'limit', c.tester_limit,
+    'starts', c.test_week_start,
+    'ends', c.test_week_end,
+    'auto', c.tester_auto_code)
+  from app_config c where c.id = 1;
+$$;
+
+-- The public form. Everything is checked here again, since anyone can call it. Signing up twice with the same email
+-- gives the same friendly answer and keeps the first sign-up.
+create or replace function tester_join(p jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_cfg app_config%rowtype;
+  v_name text;
+  v_email text;
+  v_tz text;
+  v_heard text;
+  v_note text;
+  v_interests text[];
+  v_times text[];
+  v_taken int;
+begin
+  if p is null or jsonb_typeof(p) <> 'object' then
+    return jsonb_build_object('success', false, 'error', 'Please fill in the form.');
+  end if;
+  v_name := btrim(regexp_replace(coalesce(p->>'first_name', ''), '\s+', ' ', 'g'));
+  v_email := lower(btrim(coalesce(p->>'email', '')));
+  v_tz := btrim(coalesce(p->>'time_zone', ''));
+  v_heard := nullif(btrim(coalesce(p->>'heard', '')), '');
+  v_note := nullif(btrim(coalesce(p->>'note', '')), '');
+
+  -- A hidden "website" box only bots fill in: they get the normal answer and nothing is saved.
+  if nullif(btrim(coalesce(p->>'website', '')), '') is not null then
+    return jsonb_build_object('success', true, 'first_name', left(v_name, 40), 'auto', false);
+  end if;
+
+  select * into v_cfg from app_config where id = 1;
+  if not v_cfg.tester_form_open then
+    return jsonb_build_object('success', false, 'error', 'Sign-ups for the test are closed.', 'closed', true);
+  end if;
+
+  if char_length(v_name) not between 1 and 40 then
+    return jsonb_build_object('success', false, 'error', 'Please enter your first name (up to 40 letters).');
+  end if;
+  if char_length(v_email) > 120 or v_email !~ '^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$' then
+    return jsonb_build_object('success', false, 'error', 'Please enter a valid email address.');
+  end if;
+  if char_length(v_tz) not between 1 and 40 then
+    return jsonb_build_object('success', false, 'error', 'Please choose your time zone.');
+  end if;
+  if jsonb_typeof(p->'interests') is distinct from 'array' or jsonb_typeof(p->'times') is distinct from 'array' then
+    return jsonb_build_object('success', false, 'error', 'Please choose at least one session and one time.');
+  end if;
+  select coalesce(array_agg(distinct btrim(x)), '{}') into v_interests
+  from jsonb_array_elements_text(p->'interests') x where btrim(x) <> '';
+  select coalesce(array_agg(distinct x), '{}') into v_times from jsonb_array_elements_text(p->'times') x;
+  if cardinality(v_interests) = 0 or cardinality(v_interests) > 30
+     or exists (select 1 from unnest(v_interests) x where char_length(x) > 60) then
+    return jsonb_build_object('success', false, 'error', 'Please choose at least one session type.');
+  end if;
+  if cardinality(v_times) = 0
+     or not v_times <@ array['weekday_mornings', 'weekday_evenings', 'weekend_mornings', 'weekend_evenings'] then
+    return jsonb_build_object('success', false, 'error', 'Please choose at least one time you could attend.');
+  end if;
+  if v_heard is null or char_length(v_heard) > 200 then
+    return jsonb_build_object('success', false, 'error', 'Please tell us how you heard about us (up to 200 characters).');
+  end if;
+  if char_length(v_note) > 600 then
+    return jsonb_build_object('success', false, 'error', 'Please keep the last answer under 600 characters.');
+  end if;
+  if p->'agree_dates' is distinct from 'true'::jsonb or p->'agree_camera' is distinct from 'true'::jsonb
+     or p->'agree_feedback' is distinct from 'true'::jsonb or p->'agree_reward' is distinct from 'true'::jsonb then
+    return jsonb_build_object('success', false, 'error', 'Please tick all four boxes to join the test.');
+  end if;
+
+  -- One sign-up at a time, so the last spot can't go to two people.
+  perform pg_advisory_xact_lock(hashtext('tester_join'));
+  if exists (select 1 from tester_signups where lower(email) = v_email) then
+    return jsonb_build_object('success', true, 'first_name', v_name, 'auto', v_cfg.tester_auto_code);
+  end if;
+  select count(*) into v_taken from tester_signups where status <> 'declined';
+  if v_taken >= v_cfg.tester_limit then
+    return jsonb_build_object('success', false, 'full', true,
+      'error', format('All %s tester spots are taken. Thank you for your interest.', v_cfg.tester_limit));
+  end if;
+  -- A flood of sign-ups in a few minutes is almost always a script, not 30 real people.
+  if (select count(*) from tester_signups where created_at > now() - interval '10 minutes') >= 30 then
+    return jsonb_build_object('success', false, 'error', 'A lot of people are signing up right now. Please try again in a few minutes.');
+  end if;
+
+  insert into tester_signups (first_name, email, time_zone, interests, times, heard, note, status, queued_at)
+  values (v_name, v_email, v_tz, v_interests, v_times, v_heard, v_note,
+          case when v_cfg.tester_auto_code then 'queued' else 'waiting' end,
+          case when v_cfg.tester_auto_code then now() end);
+  return jsonb_build_object('success', true, 'first_name', v_name, 'auto', v_cfg.tester_auto_code);
+end;
+$$;
+
+-- Admin > Testers settings. Only the keys sent are changed.
+create or replace function admin_tester_settings(p jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_old app_config%rowtype;
+  v_new app_config%rowtype;
+  v_code text;
+begin
+  if not is_admin() then
+    return jsonb_build_object('success', false, 'error', 'Only an admin can change these settings.');
+  end if;
+  if p is null or jsonb_typeof(p) <> 'object' then
+    return jsonb_build_object('success', false, 'error', 'Nothing to save.');
+  end if;
+  select * into v_old from app_config where id = 1 for update;
+  select code into v_code from tester_secret where id = 1 for update;
+  v_new := v_old;
+  begin
+    if p ? 'tester_form_open' then v_new.tester_form_open := (p->>'tester_form_open')::boolean; end if;
+    if p ? 'tester_auto_code' then v_new.tester_auto_code := (p->>'tester_auto_code')::boolean; end if;
+    if p ? 'tester_limit' then v_new.tester_limit := (p->>'tester_limit')::int; end if;
+    if p ? 'test_week_start' then v_new.test_week_start := (p->>'test_week_start')::date; end if;
+    if p ? 'test_week_end' then v_new.test_week_end := (p->>'test_week_end')::date; end if;
+    if p ? 'tester_code' then v_code := upper(btrim(p->>'tester_code')); end if;
+  exception when others then
+    return jsonb_build_object('success', false, 'error', 'One of the values is not valid.');
+  end;
+  if v_new.tester_form_open is null or v_new.tester_auto_code is null or v_new.tester_limit is null
+     or v_new.test_week_start is null or v_new.test_week_end is null or v_code is null then
+    return jsonb_build_object('success', false, 'error', 'Please fill in every setting.');
+  end if;
+  if v_new.tester_limit not between 1 and 500 then
+    return jsonb_build_object('success', false, 'error', 'Spots must be between 1 and 500.');
+  end if;
+  if v_new.test_week_end < v_new.test_week_start then
+    return jsonb_build_object('success', false, 'error', 'The test week must end on or after its first day.');
+  end if;
+  if v_code !~ '^[A-Z0-9]{3,20}$' then
+    return jsonb_build_object('success', false, 'error', 'The code must be 3 to 20 letters or numbers.');
+  end if;
+  update app_config set tester_form_open = v_new.tester_form_open, tester_auto_code = v_new.tester_auto_code,
+    tester_limit = v_new.tester_limit, test_week_start = v_new.test_week_start, test_week_end = v_new.test_week_end
+  where id = 1;
+  update tester_secret set code = v_code where id = 1;
+  insert into admin_log (admin_id, action, details)
+  values (auth.uid(), 'tester_settings_saved', jsonb_build_object(
+    'form_open', v_new.tester_form_open, 'auto_code', v_new.tester_auto_code, 'limit', v_new.tester_limit,
+    'starts', v_new.test_week_start, 'ends', v_new.test_week_end, 'code', v_code));
+  return jsonb_build_object('success', true);
+end;
+$$;
+
+-- One tester: send (or send again) the code email, decline, or delete (spam).
+create or replace function admin_tester_action(p_id uuid, p_action text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_row tester_signups%rowtype;
+begin
+  if not is_admin() then
+    return jsonb_build_object('success', false, 'error', 'Only an admin can do this.');
+  end if;
+  select * into v_row from tester_signups where id = p_id for update;
+  if not found then
+    return jsonb_build_object('success', false, 'error', 'This sign-up was not found. Refresh the page.');
+  end if;
+  if p_action = 'send' then
+    update tester_signups set status = 'queued', queued_at = now(), claimed_at = null, error = null where id = p_id;
+  elsif p_action = 'decline' then
+    if v_row.status = 'sent' then
+      return jsonb_build_object('success', false, 'error', 'The code was already sent to this person.');
+    end if;
+    update tester_signups set status = 'declined', claimed_at = null where id = p_id;
+  elsif p_action = 'delete' then
+    delete from tester_signups where id = p_id;
+  else
+    return jsonb_build_object('success', false, 'error', 'Unknown action.');
+  end if;
+  insert into admin_log (admin_id, action, details)
+  values (auth.uid(), 'tester_' || p_action, jsonb_build_object('email', v_row.email, 'was', v_row.status));
+  return jsonb_build_object('success', true);
+end;
+$$;
+
+-- Send the code to everyone still waiting for an admin's OK.
+create or replace function admin_tester_send_waiting()
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_count int;
+begin
+  if not is_admin() then
+    return jsonb_build_object('success', false, 'error', 'Only an admin can do this.');
+  end if;
+  update tester_signups set status = 'queued', queued_at = now(), claimed_at = null, error = null
+  where status = 'waiting';
+  get diagnostics v_count = row_count;
+  if v_count > 0 then
+    insert into admin_log (admin_id, action, details)
+    values (auth.uid(), 'tester_send_waiting', jsonb_build_object('count', v_count));
+  end if;
+  return jsonb_build_object('success', true, 'count', v_count);
+end;
+$$;
+
+-- For send-reminders: claims the queued code emails (claimed before sending, so a crash never sends one twice) and
+-- gives what the email needs. contact_email is where replies go.
+create or replace function claim_tester_codes(p_limit int default 50)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_items jsonb;
+begin
+  with due as (
+    select id from tester_signups
+    where status = 'queued' and claimed_at is null
+    order by queued_at
+    limit least(greatest(p_limit, 1), 100)
+    for update skip locked
+  ),
+  claimed as (
+    update tester_signups t set claimed_at = now()
+    from due where t.id = due.id
+    returning t.id, t.first_name, t.email
+  )
+  select coalesce(jsonb_agg(jsonb_build_object(
+    'id', c.id, 'first_name', c.first_name, 'email', c.email,
+    'code', s.code, 'starts', cfg.test_week_start, 'ends', cfg.test_week_end,
+    'contact_email', cfg.contact_email)), '[]'::jsonb)
+  into v_items
+  from claimed c cross join app_config cfg cross join tester_secret s where cfg.id = 1 and s.id = 1;
+  return v_items;
+end;
+$$;
+
+-- [{ id, sent, error }] from send-reminders. Only rows still queued are touched, so a Decline tapped while the email
+-- was going out is kept.
+create or replace function record_tester_codes(p_results jsonb)
+returns int
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_count int;
+begin
+  update tester_signups t
+  set status = case when (r->>'sent')::boolean then 'sent' else 'failed' end,
+      sent_at = case when (r->>'sent')::boolean then now() else t.sent_at end,
+      error = left(r->>'error', 300)
+  from jsonb_array_elements(p_results) r
+  where t.id = (r->>'id')::uuid and t.status = 'queued' and t.claimed_at is not null;
+  get diagnostics v_count = row_count;
+  return v_count;
+end;
+$$;
+
+revoke execute on function tester_form_info() from public;
+revoke execute on function tester_join(jsonb) from public;
+grant execute on function tester_form_info() to anon, authenticated;
+grant execute on function tester_join(jsonb) to anon, authenticated;
+revoke execute on function admin_tester_settings(jsonb) from public, anon;
+revoke execute on function admin_tester_action(uuid, text) from public, anon;
+revoke execute on function admin_tester_send_waiting() from public, anon;
+grant execute on function admin_tester_settings(jsonb) to authenticated;
+grant execute on function admin_tester_action(uuid, text) to authenticated;
+grant execute on function admin_tester_send_waiting() to authenticated;
+revoke execute on function claim_tester_codes(int) from public, anon, authenticated;
+revoke execute on function record_tester_codes(jsonb) from public, anon, authenticated;
+grant execute on function claim_tester_codes(int) to service_role;
+grant execute on function record_tester_codes(jsonb) to service_role;
+
+-- ========================================================================
+-- 38. Live-room games (Kelly 11 Nov zips): Invent It, Guess Whose Story, Puzzle Room and Draw and Guess, played in
+-- the live room next to the video like Trivia (section 31). Every move runs in the game-act Edge Function with
+-- Kelly's engine (functions/_shared/games). One game per session; the session's slug says which game
+-- (game_for_slug, the same patterns as lib/live-games.ts).
+--   game_rooms          the engine's whole state with the random seed: server only (no member policy on purpose)
+--   game_views          what everyone in the session sees, sent over Realtime
+--   game_private_views  a player's own view when it differs (Draw and Guess: the artist's word; Guess Whose Story:
+--                       your own answer). Only that player can read it. Same rev as the game_views row it goes with.
+-- ========================================================================
+create or replace function game_for_slug(p_slug text)
+returns text
+language sql
+immutable
+set search_path = public
+as $$
+  select case
+    when p_slug ~ '^invent-it(-|$)' then 'invent-it'
+    when p_slug ~ '^guess-(whose|whos|who-s)-story(-|$)' then 'guess-whose-story'
+    when p_slug ~ '^puzzle-room(-|$)' then 'puzzle-room'
+    when p_slug ~ '^draw-(and-)?guess(-|$)' then 'draw-and-guess'
+  end;
+$$;
+
+create table if not exists game_rooms (
+  session_id uuid primary key references sessions(id) on delete cascade,
+  game text not null check (game in ('invent-it', 'guess-whose-story', 'puzzle-room', 'draw-and-guess')),
+  state jsonb not null,
+  rev int not null default 0,
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists game_views (
+  session_id uuid primary key references game_rooms(session_id) on delete cascade,
+  game text not null,
+  rev int not null,
+  view jsonb not null
+);
+
+create table if not exists game_private_views (
+  session_id uuid not null references game_rooms(session_id) on delete cascade,
+  user_id uuid not null references profiles(id) on delete cascade,
+  rev int not null,
+  view jsonb not null,
+  primary key (session_id, user_id)
+);
+create index if not exists idx_game_private_views_user on game_private_views (user_id);
+
+alter table game_rooms enable row level security;
+alter table game_views enable row level security;
+alter table game_private_views enable row level security;
+revoke all on game_rooms, game_views, game_private_views from anon, authenticated;
+grant select on game_views, game_private_views to authenticated;
+
+-- The people with a seat in the session (and admins) read the shared view, the same people the video room lets in.
+drop policy if exists game_views_read on game_views;
+create policy game_views_read on game_views for select to authenticated
+  using (is_admin() or exists (
+    select 1 from bookings b
+    where b.session_id = game_views.session_id and b.user_id = (select auth.uid())
+      and b.status in ('confirmed', 'attended') and not b.held));
+drop policy if exists game_private_views_read on game_private_views;
+create policy game_private_views_read on game_private_views for select to authenticated
+  using (user_id = (select auth.uid()));
+
+-- Who may play: the same rules as trivia_seat (section 31), for a session whose slug names one of the games.
+-- Returns the player's name, the session's end (the engines end the game there) and the game.
+create or replace function game_seat(p_user uuid, p_session uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_cfg app_config%rowtype;
+  v_me profiles%rowtype;
+  v_s sessions%rowtype;
+  v_game text;
+begin
+  select * into v_cfg from app_config where id = 1;
+  select * into v_me from profiles where id = p_user;
+  if not found or v_me.disabled_at is not null then
+    return jsonb_build_object('success', false, 'error', 'This account can’t play. Please contact us.');
+  end if;
+  select * into v_s from sessions where id = p_session;
+  if not found or (not v_s.published and not v_me.is_admin) then
+    return jsonb_build_object('success', false, 'error', 'This session was not found.');
+  end if;
+  v_game := game_for_slug(coalesce(v_s.slug, ''));
+  if v_game is null then
+    return jsonb_build_object('success', false, 'error', 'This session has no game.');
+  end if;
+  if now() < v_s.starts_at - interval '5 minutes' then
+    return jsonb_build_object('success', false, 'error', 'The game opens with the room, 5 minutes before the start.');
+  elsif now() >= v_s.starts_at + make_interval(mins => v_s.minutes) + interval '5 minutes' then
+    return jsonb_build_object('success', false, 'error', 'This session has ended.');
+  end if;
+  if not v_me.is_admin then
+    if not exists (select 1 from bookings where session_id = p_session and user_id = p_user
+                   and status in ('confirmed', 'attended') and not held) then
+      return jsonb_build_object('success', false, 'error', 'You don’t have a seat in this session.');
+    end if;
+    if v_cfg.require_hello_video and v_me.hello_status <> 'approved' then
+      return jsonb_build_object('success', false, 'error', 'Rooms open for you once your Hello Video is approved.');
+    end if;
+  end if;
+  return jsonb_build_object('success', true, 'name', public_name(v_me), 'game', v_game,
+                            'ends_at', v_s.starts_at + make_interval(mins => v_s.minutes));
+end;
+$$;
+
+-- Saves one move in one step. p_rev = -1 creates the room; otherwise p_rev must still be the row's rev, or nothing is
+-- saved and false comes back (game-act reloads and retries). p_own = { "<user id>": view } for players whose view
+-- differs. They are written before the shared view, so a player's own view arrives first over Realtime.
+create or replace function game_save(p_session uuid, p_game text, p_rev int, p_state jsonb, p_view jsonb, p_own jsonb)
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_rev int;
+begin
+  if p_rev < 0 then
+    insert into game_rooms (session_id, game, state, rev) values (p_session, p_game, p_state, 0)
+    on conflict (session_id) do nothing;
+    v_rev := 0;
+  else
+    update game_rooms set game = p_game, state = p_state, rev = rev + 1, updated_at = now()
+    where session_id = p_session and rev = p_rev;
+    v_rev := p_rev + 1;
+  end if;
+  if not found then
+    return false;
+  end if;
+  insert into game_private_views (session_id, user_id, rev, view)
+  select p_session, e.key::uuid, v_rev, e.value
+  from jsonb_each(coalesce(p_own, '{}'::jsonb)) e
+  where exists (select 1 from profiles where id = e.key::uuid)
+  on conflict (session_id, user_id) do update set rev = excluded.rev, view = excluded.view;
+  insert into game_views (session_id, game, rev, view) values (p_session, p_game, v_rev, p_view)
+  on conflict (session_id) do update set game = excluded.game, rev = excluded.rev, view = excluded.view;
+  return true;
+end;
+$$;
+
+revoke execute on function game_seat(uuid, uuid) from public, anon, authenticated;
+revoke execute on function game_save(uuid, text, int, jsonb, jsonb, jsonb) from public, anon, authenticated;
+grant execute on function game_seat(uuid, uuid) to service_role;
+grant execute on function game_save(uuid, text, int, jsonb, jsonb, jsonb) to service_role;
+
+do $$
+declare
+  t text;
+begin
+  if exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
+    foreach t in array array['game_views', 'game_private_views'] loop
+      if not exists (select 1 from pg_publication_tables
+                     where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t) then
+        execute format('alter publication supabase_realtime add table %I', t);
+      end if;
+    end loop;
+  end if;
+end $$;

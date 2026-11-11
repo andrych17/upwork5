@@ -1,0 +1,107 @@
+/* /testers sign-up form (reuses the sign-up page from figma.css) and the Admin > Testers row buttons. */
+.testers-page .signup-header {
+  grid-template-columns: 1fr auto;
+}
+
+/* Kelly's title is a full sentence, so it runs smaller than the one-word sign-up titles. */
+.testers-page .signup-aside h1 {
+  font-size: clamp(2.6rem, 4.6vw, 4.4rem);
+  line-height: 0.92;
+}
+
+.testers-page .signup-card,
+.testers-page .signup-step {
+  min-height: 0;
+}
+
+.testers-page .signup-step > h2 {
+  margin-bottom: 30px;
+}
+
+.testers-grid fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.testers-grid legend {
+  margin-bottom: 9px;
+  padding: 0;
+  font-size: 0.7rem;
+  font-weight: 800;
+}
+
+.testers-grid select,
+.testers-grid textarea {
+  border: 1.5px solid var(--ink);
+  background: #fff;
+  border-radius: 10px;
+  width: 100%;
+  min-height: 48px;
+  padding: 0 14px;
+  font: inherit;
+  color: var(--ink);
+}
+
+.testers-grid textarea {
+  padding: 12px 14px;
+  resize: vertical;
+  line-height: 1.45;
+}
+
+.testers-grid input:focus-visible,
+.testers-grid select:focus-visible,
+.testers-grid textarea:focus-visible,
+.testers-grid .interest-grid button:focus-visible {
+  outline: 3px solid var(--berry);
+  outline-offset: 2px;
+}
+
+.testers-grid .interest-grid button {
+  color: var(--ink);
+  text-align: left;
+  gap: 10px;
+}
+
+/* The hidden box only bots fill in. Off screen, not display:none, which some bots skip. */
+.testers-trap {
+  position: absolute;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
+.testers-actions {
+  justify-content: flex-end;
+}
+
+.testers-page .signup-alert {
+  margin-top: 22px;
+}
+
+/* Six short columns: on a phone the list scrolls sideways instead of breaking words into letters. */
+.adm-testers-list .adm-table {
+  min-width: 58rem;
+}
+
+.adm-testers-list .adm-table td {
+  overflow-wrap: break-word;
+}
+
+.adm-tester-email {
+  white-space: nowrap;
+}
+
+.adm-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.375rem;
+}
+
+.adm-toolbar .adm-msg {
+  margin: 0;
+  padding: 0.375rem 0.75rem;
+}

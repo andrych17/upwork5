@@ -189,6 +189,15 @@ Steps:
 Reminders are claimed in the database before sending, so a reminder never goes out twice; if a run
 crashes halfway, the rest of that batch is skipped and logged in `reminder_log`.
 
+### Tester sign-ups (`/testers`)
+
+A public form for the free test week (schema section 37). Anyone can sign up without an account; the form
+closes itself at the spot limit (50 by default). Admin > Testers holds the settings (form open, spots, test
+week dates, the free-week code, and whether the code is sent right away) and the list, with Send code,
+Decline (frees the spot) and Delete (spam). The code email goes out from `send-reminders` through Resend
+within five minutes, so it needs the same `RESEND_*` secrets as the email reminders. The code is kept in
+`tester_secret`, which only admins can read; it is never in `app_config`, which every visitor can read.
+
 ---
 
 ## Progressive Web App (PWA)

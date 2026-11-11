@@ -140,6 +140,8 @@ Deno.test('send-reminders sends each channel once and cleans up dead devices', a
         removed_devices: 1,
         notices: 0,
         notices_failed: 0,
+        codes: 0,
+        codes_failed: 0,
       }),
     JSON.stringify(summary),
   );
@@ -221,11 +223,53 @@ Deno.test('send-reminders sends each channel once and cleans up dead devices', a
     JSON.stringify(noticeRows),
   );
 
+  // Free-week codes for testers: one batch, replies to the contact email, results recorded per person.
+  calls = [];
+  answer = ({ url }) => {
+    if (url.pathname === '/rest/v1/rpc/claim_due_reminders') return json({ tz: 'America/Chicago', items: [] });
+    if (url.pathname === '/rest/v1/rpc/claim_member_notices') return json([]);
+    if (url.pathname === '/rest/v1/rpc/claim_tester_codes') {
+      const week = {
+        code: 'WELCOME7',
+        starts: '2026-11-23',
+        ends: '2026-11-29',
+        contact_email: 'hello@meetdoconnect.com',
+      };
+      return json([
+        { id: 't1', first_name: 'Ana', email: 'ana@example.test', ...week },
+        { id: 't2', first_name: 'Ben', email: null, ...week },
+      ]);
+    }
+    if (url.pathname.startsWith('/rest/v1/rpc/')) return json(1);
+    if (url.host === 'api.resend.com') return json({ data: [{ id: 'e1' }] });
+    return new Response('unexpected', { status: 599 });
+  };
+  const codeRes = await handler(
+    new Request('https://fn.test', { method: 'POST', headers: { Authorization: 'Bearer cron-secret' } }),
+  );
+  const codeSummary = await codeRes.json();
+  assert(codeSummary.codes === 1 && codeSummary.codes_failed === 1, JSON.stringify(codeSummary));
+  const codeMails = JSON.parse(calls.find((c) => c.url.host === 'api.resend.com')!.body);
+  assert(
+    codeMails.length === 1 &&
+      codeMails[0].to[0] === 'ana@example.test' &&
+      codeMails[0].reply_to === 'hello@meetdoconnect.com' &&
+      codeMails[0].subject === 'Your free week at MeetDoConnect starts Monday, November 23' &&
+      codeMails[0].text.includes('Your code: WELCOME7'),
+    JSON.stringify(codeMails[0]),
+  );
+  const codeRows = JSON.parse(calls.find((c) => c.url.pathname === '/rest/v1/rpc/record_tester_codes')!.body).p_results;
+  assert(
+    codeRows[0].sent === true && codeRows[1].sent === false && codeRows[1].error === 'no email address',
+    JSON.stringify(codeRows),
+  );
+
   // Without Resend nothing is claimed, so the notices wait instead of being lost.
   Deno.env.delete('RESEND_API_KEY');
   calls = [];
   await handler(new Request('https://fn.test', { method: 'POST', headers: { Authorization: 'Bearer cron-secret' } }));
   assert(!calls.some((c) => c.url.pathname === '/rest/v1/rpc/claim_member_notices'), 'no claim without Resend');
+  assert(!calls.some((c) => c.url.pathname === '/rest/v1/rpc/claim_tester_codes'), 'no code claimed without Resend');
 });
 
 Deno.test('hello-video signs uploads, rejects oversized files and keeps the queue for admins', async () => {

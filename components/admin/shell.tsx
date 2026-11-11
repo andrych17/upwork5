@@ -40,7 +40,9 @@ const icon = (d: string) => (
   </svg>
 );
 
-const NAV: { title: string; items: { href: Route; label: string; d: string; count?: 'hello' | 'reports' }[] }[] = [
+type Counts = { hello: number; reports: number; testers: number };
+
+const NAV: { title: string; items: { href: Route; label: string; d: string; count?: keyof Counts }[] }[] = [
   {
     title: 'Overview',
     items: [{ href: '/admin', label: 'Dashboard', d: 'M3 10.5 12 3l9 7.5V21h-6v-6H9v6H3z' }],
@@ -56,6 +58,12 @@ const NAV: { title: string; items: { href: Route; label: string; d: string; coun
       { href: '/admin/hello-videos', label: 'Hello Videos', d: 'M4 7h11v10H4zM15 10l5-3v10l-5-3', count: 'hello' },
       { href: '/admin/payments', label: 'Payments', d: 'M3 6h18v12H3zM3 10h18M7 15h3' },
       { href: '/admin/reports', label: 'Reports', d: 'M5 21V4h11l-1 4 4 1v8H9l1 4z', count: 'reports' },
+      {
+        href: '/admin/testers',
+        label: 'Testers',
+        d: 'M9 3h6M10 3v6l-5 9a2 2 0 0 0 1.7 3h10.6a2 2 0 0 0 1.7-3l-5-9V3M7.5 14h9',
+        count: 'testers',
+      },
     ],
   },
   {
@@ -98,13 +106,14 @@ async function resolveGate(supabase: SupabaseClient): Promise<{ gate: Gate; me: 
   return { gate: 'ok', me: { id: prof.id, name: fullName(prof), email: prof.email ?? data.user.email ?? '' } };
 }
 
-/** Pending Hello Videos and open room reports, for the sidebar. */
-async function countPending(supabase: SupabaseClient): Promise<{ hello: number; reports: number }> {
-  const [hello, reports] = await Promise.all([
+/** Pending Hello Videos, open room reports and testers waiting for their code, for the sidebar. */
+async function countPending(supabase: SupabaseClient): Promise<Counts> {
+  const [hello, reports, testers] = await Promise.all([
     supabase.from('hello_videos').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
     supabase.from('room_reports').select('id', { count: 'exact', head: true }).eq('status', 'open'),
+    supabase.from('tester_signups').select('id', { count: 'exact', head: true }).eq('status', 'waiting'),
   ]);
-  return { hello: hello.count ?? 0, reports: reports.count ?? 0 };
+  return { hello: hello.count ?? 0, reports: reports.count ?? 0, testers: testers.count ?? 0 };
 }
 
 export default function AdminShell({ children }: { children: ReactNode }) {
@@ -112,7 +121,7 @@ export default function AdminShell({ children }: { children: ReactNode }) {
   const pathname = usePathname().replace(/\/$/, '') || '/admin';
   const [gate, setGate] = useState<Gate>(supabase ? 'loading' : 'no-db');
   const [me, setMe] = useState<AdminCtx['me'] | null>(null);
-  const [counts, setCounts] = useState({ hello: 0, reports: 0 });
+  const [counts, setCounts] = useState<Counts>({ hello: 0, reports: 0, testers: 0 });
   const [navOpen, setNavOpen] = useState(false);
 
   const apply = useCallback((r: { gate: Gate; me: AdminCtx['me'] | null }) => {

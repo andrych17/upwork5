@@ -1,5 +1,6 @@
 // Sends the 24-hour and 1-hour reminders, then the emails about the Hello Video and released holds
-// (member_notices, email only, needs RESEND_API_KEY and RESEND_FROM). pg_cron calls this every 5 minutes (supabase/cron-reminders.sql)
+// (member_notices) and the free-week codes for testers (tester_signups); both are email only and need
+// RESEND_API_KEY and RESEND_FROM. pg_cron calls this every 5 minutes (supabase/cron-reminders.sql)
 // with "Authorization: Bearer <CRON_SECRET>". Deploy with --no-verify-jwt; the secret is the check.
 // Each channel runs only when its secrets are set, so it can go live one channel at a time:
 // - App notifications: VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT (mailto: or https: address)
@@ -13,6 +14,7 @@ import type { SupabaseClient } from 'npm:@supabase/supabase-js@2';
 import { admin, env, loadKeys } from '../_shared/http.ts';
 import { noticeText, type NoticeItem } from '../_shared/notice-text.ts';
 import { reminderText, type ReminderItem, type ReminderText } from '../_shared/reminder-text.ts';
+import { testerText, type TesterItem } from '../_shared/tester-text.ts';
 
 interface PushTarget {
   endpoint: string;
@@ -237,6 +239,57 @@ async function sendNotices(db: SupabaseClient, site: string): Promise<{ notices:
   };
 }
 
+// ---- Free-week code for people who joined the test on /testers (schema section 37) ---------------
+// Same pattern: claimed first, so without Resend nothing is claimed and the codes wait. Replies go to the
+// contact email in Settings (hello@), not to the no-reply sender.
+async function sendTesterCodes(db: SupabaseClient, site: string): Promise<{ codes: number; codes_failed: number }> {
+  const key = env('RESEND_API_KEY');
+  const from = env('RESEND_FROM');
+  if (!key || !from) return { codes: 0, codes_failed: 0 };
+  const { data, error } = await db.rpc('claim_tester_codes', { p_limit: 50 });
+  if (error) throw new Error(`claim_tester_codes: ${error.message}`);
+  const items = Array.isArray(data) ? (data as TesterItem[]) : [];
+  if (!items.length) return { codes: 0, codes_failed: 0 };
+
+  const withEmail = items.filter((item) => item.email);
+  let failure: string | null = null;
+  if (withEmail.length) {
+    try {
+      const res = await fetch('https://api.resend.com/emails/batch', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(
+          withEmail.map((item) => {
+            const text = testerText(item, site);
+            const replyTo = item.contact_email?.trim() || env('REPLY_TO');
+            return {
+              from,
+              to: [item.email],
+              subject: text.subject,
+              html: text.html,
+              text: text.text,
+              ...(replyTo ? { reply_to: replyTo } : {}),
+            };
+          }),
+        ),
+        signal: AbortSignal.timeout(20_000),
+      });
+      if (!res.ok) failure = `email ${res.status} ${(await res.text()).slice(0, 200)}`;
+      else await res.body?.cancel();
+    } catch (e) {
+      failure = `email ${(e as Error).message}`;
+    }
+  }
+  const rows = items.map((item) => ({
+    id: item.id,
+    sent: item.email ? failure === null : false,
+    error: item.email ? failure : 'no email address',
+  }));
+  const { error: recordError } = await db.rpc('record_tester_codes', { p_results: rows });
+  if (recordError) console.error('record_tester_codes', recordError.message);
+  return { codes: rows.filter((row) => row.sent).length, codes_failed: rows.filter((row) => !row.sent).length };
+}
+
 async function sendReminders(db: SupabaseClient, site: string) {
   const { data, error } = await db.rpc('claim_due_reminders', { p_limit: 300 });
   if (error) throw new Error(`claim_due_reminders: ${error.message}`);
@@ -299,7 +352,8 @@ Deno.serve(async (req) => {
     const site = env('SITE_URL') ?? 'https://meetdoconnect.com';
     const reminders = await sendReminders(db, site);
     const notices = await sendNotices(db, site);
-    return Response.json({ ...reminders, ...notices });
+    const codes = await sendTesterCodes(db, site);
+    return Response.json({ ...reminders, ...notices, ...codes });
   } catch (e) {
     console.error('send-reminders', e);
     return Response.json(
