@@ -1,6 +1,6 @@
 'use client';
 
-// Connections tab of Settings (schema section 32): API keys for Daily, Resend, Twilio and R2, kept encrypted in
+// Connections tab of Settings (schema section 32): API keys for Daily, Resend, Twilio, Stripe and R2, kept encrypted in
 // Supabase Vault. Keys are write-only here: once saved, only their last 4 characters come back. A field with nothing
 // saved uses the function secret of the same name. This file only draws the fields; Settings owns the typed values
 // and saves them with everything else from its one Save button.
@@ -53,6 +53,30 @@ const ALL_GROUPS: { title: string; hint: string; fields: KeyField[] }[] = [
       { name: 'TWILIO_AUTH_TOKEN', label: 'Auth token' },
       { name: 'TWILIO_MESSAGING_SERVICE_SID', label: 'Messaging Service SID', placeholder: 'MG…' },
       { name: 'TWILIO_FROM', label: 'From number', placeholder: '+15551234567' },
+    ],
+  },
+  {
+    title: 'Stripe (membership checkout)',
+    hint: 'Stripe Dashboard > Developers > API keys. Start with the test keys (they have “test” in them). Each box only accepts its own kind of key, so a key in the wrong box is refused.',
+    fields: [
+      {
+        name: 'STRIPE_PUBLISHABLE_KEY',
+        label: 'Publishable key (starts with pk_)',
+        placeholder: 'pk_test_…',
+        hint: 'Not secret. It is shown in full once saved.',
+      },
+      {
+        name: 'STRIPE_SECRET_KEY',
+        label: 'Secret key (starts with sk_) · the secret one',
+        placeholder: 'sk_test_…',
+        hint: 'Paste it here only, never in email or chat. Once saved, only the last 4 characters show.',
+      },
+      {
+        name: 'STRIPE_WEBHOOK_SECRET',
+        label: 'Webhook signing secret (starts with whsec_)',
+        placeholder: 'whsec_…',
+        hint: 'Leave empty for now. Andry will tell you when and where to find it.',
+      },
     ],
   },
   {

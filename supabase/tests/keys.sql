@@ -39,12 +39,26 @@ select t(admin_set_service_key('SUPABASE_SERVICE_ROLE_KEY', 'x')->>'error' = 'Un
 select t(admin_set_service_key('TWILIO_AUTH_TOKEN', 'abc def 123456789')->>'success' = 'false'
          and admin_set_service_key('RESEND_API_KEY', E're_abc\n123456789')->>'success' = 'false',
          'keys with spaces or line breaks are refused');
+select t(admin_set_service_key('STRIPE_PUBLISHABLE_KEY', 'sk_test_51abcDEF')->>'error' = 'That is the secret key. It goes in the Secret key box, not here.'
+         and admin_set_service_key('STRIPE_SECRET_KEY', 'pk_test_51abcDEF')->>'error' = 'That is the publishable key. It goes in the Publishable key box.'
+         and admin_set_service_key('STRIPE_WEBHOOK_SECRET', 'sk_test_51abcDEF')->>'success' = 'false',
+         'a Stripe key pasted in the wrong box is refused, so a secret key is never shown in full');
+select t((admin_set_service_key('STRIPE_PUBLISHABLE_KEY', 'pk_test_51abcDEFghij')->>'success')::boolean
+         and (admin_set_service_key('STRIPE_SECRET_KEY', 'sk_test_51abcDEFghijKLMN')->>'success')::boolean,
+         'Stripe test keys are stored');
+select t((select k->>'shown' = 'KLMN' and (k->>'secret')::boolean
+          from jsonb_array_elements(admin_service_keys()->'keys') k where k->>'name' = 'STRIPE_SECRET_KEY')
+         and (select k->>'shown' = 'pk_test_51abcDEFghij'
+              from jsonb_array_elements(admin_service_keys()->'keys') k where k->>'name' = 'STRIPE_PUBLISHABLE_KEY'),
+         'the secret key shows its last 4 only, the publishable key in full');
+select t((admin_set_service_key('STRIPE_PUBLISHABLE_KEY', '')->>'success')::boolean
+         and (admin_set_service_key('STRIPE_SECRET_KEY', '')->>'success')::boolean, 'Stripe keys can be removed');
 reset role;
 
 select t((select count(*) from vault.secrets where name = 'mdc:DAILY_API_KEY') = 1
          and (select decrypted_secret from vault.decrypted_secrets where name = 'mdc:DAILY_API_KEY')
              = 'dk_live_second_value_0000', 'one stored copy per key, holding the newest value');
-select t((select count(*) from admin_log where action = 'connection_set' and admin_id = :'KA') = 4
+select t((select count(*) from admin_log where action = 'connection_set' and admin_id = :'KA') = 6
          and not exists (select 1 from admin_log where details::text like '%dk_live%'),
          'each change is logged by name, without the value');
 

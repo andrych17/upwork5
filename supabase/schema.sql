@@ -4027,7 +4027,7 @@ insert into trivia_questions (id, cat, q, a, wrong, note, source) values
 
 on conflict do nothing;
 
--- 32. Connections (Andry, 5 Nov): API keys for Daily, Resend, Twilio and R2, kept encrypted in Supabase Vault and set
+-- 32. Connections (Andry, 5 Nov; Stripe 11 Nov): API keys for Daily, Resend, Twilio, R2 and Stripe, kept encrypted in Supabase Vault and set
 -- from Admin > Settings. The browser can only write a value or see its last 4 characters (plain settings like the
 -- sender address are shown in full). Edge Functions read the values through service_keys(), which only the service
 -- role can call; a name with nothing stored here falls back to the function secret of the same name.
@@ -4041,7 +4041,10 @@ as $$
     ('RESEND_API_KEY', true), ('RESEND_FROM', false), ('REPLY_TO', false),
     ('TWILIO_ACCOUNT_SID', false), ('TWILIO_AUTH_TOKEN', true), ('TWILIO_MESSAGING_SERVICE_SID', false),
     ('TWILIO_FROM', false),
-    ('R2_ACCOUNT_ID', false), ('R2_ACCESS_KEY_ID', true), ('R2_SECRET_ACCESS_KEY', true), ('R2_BUCKET', false)
+    ('R2_ACCOUNT_ID', false), ('R2_ACCESS_KEY_ID', true), ('R2_SECRET_ACCESS_KEY', true), ('R2_BUCKET', false),
+    -- Stripe (Kelly 11 Nov): the publishable key is public by design and shown in full; the secret key and the
+    -- webhook signing secret are write-only like the others.
+    ('STRIPE_PUBLISHABLE_KEY', false), ('STRIPE_SECRET_KEY', true), ('STRIPE_WEBHOOK_SECRET', true)
 $$;
 
 create or replace function admin_service_keys()
@@ -4094,6 +4097,21 @@ begin
   end if;
   if p_name = 'DAILY_MONTHLY_MINUTES' and v <> '' and v !~ '^[0-9]{1,7}$' then
     return jsonb_build_object('success', false, 'error', 'Enter whole minutes, like 8000.');
+  end if;
+  -- Stripe keys are easy to paste into the wrong box, and a secret key in the publishable box would be shown in full.
+  -- Each box only takes its own kind of key.
+  if p_name = 'STRIPE_PUBLISHABLE_KEY' and v <> '' and v !~ '^pk_(test|live)_[A-Za-z0-9]+$' then
+    return jsonb_build_object('success', false, 'error', case when v ~ '^(sk|rk)_' then
+      'That is the secret key. It goes in the Secret key box, not here.' else
+      'The publishable key starts with pk_test_ or pk_live_.' end);
+  end if;
+  if p_name = 'STRIPE_SECRET_KEY' and v <> '' and v !~ '^(sk|rk)_(test|live)_[A-Za-z0-9]+$' then
+    return jsonb_build_object('success', false, 'error', case when v ~ '^pk_' then
+      'That is the publishable key. It goes in the Publishable key box.' else
+      'The secret key starts with sk_test_ or sk_live_.' end);
+  end if;
+  if p_name = 'STRIPE_WEBHOOK_SECRET' and v <> '' and v !~ '^whsec_[A-Za-z0-9]+$' then
+    return jsonb_build_object('success', false, 'error', 'The webhook signing secret starts with whsec_.');
   end if;
 
   perform pg_advisory_xact_lock(hashtext('mdc:' || p_name));

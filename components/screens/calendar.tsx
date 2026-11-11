@@ -20,6 +20,7 @@ import {
 } from '@/lib/rooms';
 import { getSupabase } from '@/lib/supabase';
 import { useNow } from '@/lib/use-now';
+import PrepCard from '@/components/prep-card';
 
 const FILTERS = ['All sessions', 'Adults & teens', 'Families welcome', 'No preparation'] as const;
 const WEEKS_AHEAD = 8;
@@ -341,11 +342,9 @@ export default function SchedulePage() {
                     </div>
                     {isExpanded && (
                       <div className="session-detail">
-                        <p>
-                          <strong>Bring this:</strong> {info.shortPrep}
-                        </p>
-                        {/* Kelly 9 Nov: no host name (names stay private until the room) and no second link to the
-                            booking page, the Book button beside Details already goes there. */}
+                        {/* Kelly 10 Nov: Details opens the full prep card. 9 Nov: no host name (names stay private
+                            until the room) and no second link to the booking page, Book beside Details goes there. */}
+                        <PrepCard prep={info.prep} card={info.card} compact />
                         <p>
                           {account
                             ? 'Member names are shown only inside the room.'

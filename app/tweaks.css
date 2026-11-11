@@ -752,3 +752,28 @@
   display: inline-block;
   min-width: 80px;
 }
+
+/* Calendar Details opens the prep card (Kelly 10 Nov). Same card as the booking page, sized for the list. */
+.session-detail .prep-panel-compact {
+  max-width: 720px;
+  margin: 4px 0 14px;
+  padding: 20px 22px;
+  border-radius: 20px;
+  box-shadow: 4px 5px 0 var(--ink);
+}
+.prep-panel-compact h2 {
+  margin: 12px 0 14px;
+  font-size: clamp(1.5rem, 2.4vw, 2rem);
+}
+.prep-panel-compact .full-prep-copy {
+  margin: 0;
+  font-size: 0.92rem;
+  max-width: none;
+}
+.prep-panel-compact .full-prep-details {
+  margin-top: 16px;
+  padding-top: 14px;
+}
+.prep-panel-compact .detail-label {
+  margin-bottom: 10px;
+}

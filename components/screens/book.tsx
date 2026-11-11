@@ -34,6 +34,7 @@ import {
 } from '@/lib/trivia';
 import { useNow } from '@/lib/use-now';
 import InviteBanner from '@/components/invite-banner';
+import PrepCard from '@/components/prep-card';
 import MenuToggle from '@/components/menu-toggle';
 
 function Header({ active }: { active: boolean }) {
@@ -280,31 +281,7 @@ export default function BookPage({ slug }: { slug: string }) {
             </div>
           </div>
 
-          <div className="prep-panel">
-            <div className="prep-panel-heading">
-              <p className="section-label">Your prep card</p>
-              <span>Review before your session</span>
-            </div>
-            <h2>What to bring</h2>
-            <p className="full-prep-copy">{info.prep}</p>
-            <div className="full-prep-details">
-              {card?.ideas && (
-                <>
-                  <p className="detail-label">Ideas & prompts</p>
-                  <div className="idea-list">
-                    {card.ideas.map((idea) => (
-                      <span key={idea}>{idea}</span>
-                    ))}
-                  </div>
-                </>
-              )}
-              {card?.note && (
-                <p className="booking-safety-note">
-                  <strong>Please note:</strong> {card.note}
-                </p>
-              )}
-            </div>
-          </div>
+          <PrepCard prep={info.prep} card={card} />
 
           <div className="run-panel">
             <p className="section-label">How the hour flows</p>
