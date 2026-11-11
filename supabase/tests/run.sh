@@ -27,4 +27,5 @@ psql < tests/keys.sql
 psql < tests/errors.sql
 psql < tests/testers.sql
 psql < tests/live-games.sql
+psql < tests/feedback.sql
 echo "schema checks: ok"

@@ -71,6 +71,7 @@ const NAV: { title: string; items: { href: Route; label: string; d: string; coun
     items: [
       { href: '/admin/sessions', label: 'Sessions', d: 'M4 6h16v14H4zM4 10h16M9 3v4M15 3v4' },
       { href: '/admin/bookings', label: 'Bookings', d: 'M5 4h14v16H5zM9 9h6M9 13h6M9 17h3' },
+      { href: '/admin/feedback', label: 'Feedback', d: 'M4 5h16v11H10l-4 4v-4H4zM8 9h8M8 12h5' },
       {
         href: '/admin/questions',
         label: 'Trivia questions',

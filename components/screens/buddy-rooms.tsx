@@ -9,6 +9,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import AccountMenu from '@/components/account-menu';
 import MenuToggle from '@/components/menu-toggle';
+import SessionFeedback from '@/components/screens/session-feedback';
 import { useAccount } from '@/lib/account';
 import {
   fetchMessages,
@@ -28,6 +29,7 @@ import {
 } from '@/lib/buddies';
 import { updateBuddyDemo } from '@/lib/buddy-demo';
 import { fetchGames, gameStatus, otherOf, startBuddyGame, subscribeMyGames, type BuddyGame } from '@/lib/buddy-games';
+import { getFeedbackStatus, rememberSkip, skippedFeedback, type FeedbackStatus } from '@/lib/feedback';
 import { fetchRoom, when } from '@/lib/rooms';
 import { getSupabase } from '@/lib/supabase';
 import { useNow } from '@/lib/use-now';
@@ -45,7 +47,13 @@ interface Loaded {
   buddies: Buddy[] | null;
   /** Sessions I was in during the last two days, where picks may still be open */
   recent: Recent[];
+  /** The survey for this session (schema section 39), and whether Skip was tapped in this tab */
+  feedback: FeedbackStatus | null;
+  skipped: boolean;
 }
+
+type PeopleResult = Awaited<ReturnType<typeof getSessionPeople>>;
+type FeedbackChoice = 'sent' | 'skipped' | 'open';
 
 /** Sessions this person joined in the last two days (picks close 24 hours after the end). */
 async function recentSessions(supabase: SupabaseClient, me: string): Promise<Recent[]> {
@@ -112,19 +120,40 @@ export default function BuddyRooms() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [chat, setChat] = useState<string | null>(params.get('buddy'));
+  const [feedbackChoice, setFeedbackChoice] = useState<Record<string, FeedbackChoice>>({});
 
   const key = `${me}|${slug}|${tick}`;
   useEffect(() => {
     if (!me) return;
     let live = true;
+    const none = (error: string): { p: PeopleResult; feedback: FeedbackStatus | null; skipped: boolean } => ({
+      p: { data: null, error },
+      feedback: null,
+      skipped: false,
+    });
     const people = slug
-      ? fetchRoom(supabase, slug).then((room) =>
-          room ? getSessionPeople(supabase, room.id) : { data: null, error: 'This session isn’t on the calendar.' },
-        )
-      : Promise.resolve({ data: null, error: '' });
+      ? fetchRoom(supabase, slug).then(async (room) => {
+          if (!room) return none('This session isn’t on the calendar.');
+          const [p, feedback] = await Promise.all([
+            getSessionPeople(supabase, room.id),
+            getFeedbackStatus(supabase, room.id),
+          ]);
+          return { p, feedback, skipped: skippedFeedback(room.id) };
+        })
+      : Promise.resolve(none(''));
     const recent = slug ? Promise.resolve([]) : recentSessions(supabase, me);
-    Promise.all([people, getMyBuddies(supabase), recent]).then(([p, buddies, r]) => {
-      if (live) setLoaded({ key, people: p.data, peopleError: p.error, buddies, recent: r });
+    Promise.all([people, getMyBuddies(supabase), recent]).then(([x, buddies, r]) => {
+      if (live) {
+        setLoaded({
+          key,
+          people: x.p.data,
+          peopleError: x.p.error,
+          buddies,
+          recent: r,
+          feedback: x.feedback,
+          skipped: x.skipped,
+        });
+      }
     });
     return () => {
       live = false;
@@ -232,11 +261,43 @@ export default function BuddyRooms() {
     );
   }
 
+  // The survey comes first (schema section 39). Skip is remembered for this tab; the picks pages offer it again.
+  const sessionId = data?.session.id ?? '';
+  const choice = feedbackChoice[sessionId];
+  const feedbackOpen = Boolean(data && current.feedback?.ask && !current.feedback.sent) && choice !== 'sent';
+  const askFeedback = feedbackOpen && (choice === 'open' || (choice === undefined && !current.skipped));
+  const chooseFeedback = (next: FeedbackChoice) => {
+    if (next === 'skipped') rememberSkip(sessionId);
+    setFeedbackChoice((all) => ({ ...all, [sessionId]: next }));
+    window.scrollTo(0, 0);
+  };
+  const feedbackThanks =
+    choice === 'sent' ? (
+      <p className="fb-thanks" role="status">
+        Thanks, your feedback is saved.
+      </p>
+    ) : null;
+  const feedbackAgain = feedbackOpen ? (
+    <button type="button" className="link-button" onClick={() => chooseFeedback('open')}>
+      Answer the four feedback questions
+    </button>
+  ) : null;
+
+  if (data && askFeedback) {
+    return (
+      <main className="after-page">
+        <Header />
+        <SessionFeedback supabase={supabase} session={data.session} onDone={chooseFeedback} />
+      </main>
+    );
+  }
+
   if (data && showPicker) {
     return (
       <main className="after-page">
         <Header />
         <section className="after-hero">
+          {feedbackThanks}
           <p className="section-label">{data.session.title} complete</p>
           <h1>
             Anyone you’d like
@@ -311,6 +372,7 @@ export default function BuddyRooms() {
               <Link href="/sessions">Skip for now</Link>
             )}
           </div>
+          {feedbackAgain && <p className="fb-reopen">{feedbackAgain}</p>}
         </section>
       </main>
     );
@@ -322,6 +384,7 @@ export default function BuddyRooms() {
       <section className="picks-saved" aria-live="polite">
         {data ? (
           <>
+            {feedbackThanks}
             <div className="confirmation-mark" aria-hidden="true">
               ✓
             </div>
@@ -408,6 +471,7 @@ export default function BuddyRooms() {
               Change my picks
             </button>
           )}
+          {feedbackAgain}
           {data && buddies.length > matchedHere.length && (
             <button type="button" onClick={() => router.push('/after-session')}>
               All my Buddy Rooms

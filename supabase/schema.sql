@@ -5014,3 +5014,213 @@ begin
     end loop;
   end if;
 end $$;
+
+-- ========================================================================
+-- 39. Session feedback (Kelly 9 Nov: "a short survey after each session, for each Tester"; 10 Nov: questions 3, 5,
+-- 6, 7 and comments). When a member leaves the live room, /after-session asks four one-tap questions before the
+-- buddy picks: how easy it was to join, video and audio, the Starter/Timekeeper/Closer roles and prompts, and how
+-- comfortable they felt, plus one comment box. The member and the session are attached here, and the browser tells
+-- whether it was the Android app, the Apple app or the website, so nobody types them. Only people who sat in the
+-- session can answer, up to 3 days after it ends; sending again replaces their answer. Admins read the answers in
+-- Admin > Feedback (newest first, spreadsheet download), which also has the on/off switch (app_config.feedback_on).
+-- Safe to run again.
+-- ========================================================================
+alter table app_config add column if not exists feedback_on boolean not null default true;
+
+create table if not exists session_feedback (
+  id uuid primary key default gen_random_uuid(),
+  session_id uuid not null references sessions(id) on delete cascade,
+  user_id uuid not null references profiles(id) on delete cascade,
+  device text not null check (device in ('android_app', 'apple_app', 'website')),
+  join_ease smallint not null check (join_ease between 1 and 5),
+  av text not null check (av in ('yes', 'mostly', 'no')),
+  av_note text check (char_length(av_note) <= 600),
+  roles smallint not null check (roles between 1 and 5),
+  comfort smallint not null check (comfort between 1 and 5),
+  comfort_note text check (char_length(comfort_note) <= 600),
+  confusing text check (char_length(confusing) <= 1000),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (session_id, user_id)
+);
+create index if not exists idx_session_feedback_created on session_feedback (created_at desc);
+create index if not exists idx_session_feedback_user on session_feedback (user_id);
+
+alter table session_feedback enable row level security;
+revoke all on session_feedback from anon, authenticated;
+grant select on session_feedback to authenticated;
+drop policy if exists session_feedback_admin_read on session_feedback;
+create policy session_feedback_admin_read on session_feedback for select to authenticated using (is_admin());
+
+-- Answers stay open for 3 days after the session ends, for anyone who closed the page and comes back.
+create or replace function feedback_closes_at(p_starts timestamptz, p_minutes int)
+returns timestamptz
+language sql
+immutable
+set search_path = public
+as $$
+  select p_starts + make_interval(mins => p_minutes) + interval '3 days';
+$$;
+
+-- For /after-session: ask = show the questions (switch on, the caller sat in the session, still open);
+-- sent = the caller already answered.
+create or replace function feedback_status(p_session uuid)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  v_me uuid := auth.uid();
+  v_s sessions%rowtype;
+begin
+  select * into v_s from sessions where id = p_session;
+  if v_me is null or not found then
+    return jsonb_build_object('ask', false, 'sent', false);
+  end if;
+  return jsonb_build_object(
+    'ask', coalesce((select feedback_on from app_config where id = 1), false) and sat_in(p_session, v_me)
+           and now() <= feedback_closes_at(v_s.starts_at, v_s.minutes),
+    'sent', exists (select 1 from session_feedback where session_id = p_session and user_id = v_me));
+end;
+$$;
+
+-- The survey. Everything is checked here again, since any signed-in member can call it.
+create or replace function submit_session_feedback(p jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_me uuid := auth.uid();
+  v_session uuid;
+  v_s sessions%rowtype;
+  v_device text;
+  v_av text;
+  v_join int;
+  v_roles int;
+  v_comfort int;
+  v_av_note text;
+  v_comfort_note text;
+  v_confusing text;
+begin
+  if v_me is null then
+    return jsonb_build_object('success', false, 'error', 'Please sign in to send feedback.');
+  end if;
+  if p is null or jsonb_typeof(p) <> 'object' then
+    return jsonb_build_object('success', false, 'error', 'Please answer the four questions.');
+  end if;
+  if not coalesce((select feedback_on from app_config where id = 1), false) then
+    return jsonb_build_object('success', false, 'off', true, 'error', 'Feedback is turned off right now.');
+  end if;
+  begin
+    v_session := (p->>'session_id')::uuid;
+    v_join := (p->>'join_ease')::int;
+    v_roles := (p->>'roles')::int;
+    v_comfort := (p->>'comfort')::int;
+  exception when others then
+    return jsonb_build_object('success', false, 'error', 'Please answer the four questions.');
+  end;
+
+  select * into v_s from sessions where id = v_session;
+  if not found or not sat_in(v_session, v_me) then
+    return jsonb_build_object('success', false, 'error', 'Only people who were in this session can send feedback on it.');
+  end if;
+  if now() > feedback_closes_at(v_s.starts_at, v_s.minutes) then
+    return jsonb_build_object('success', false, 'error', 'Feedback for this session has closed.');
+  end if;
+
+  v_device := p->>'device';
+  v_av := p->>'av';
+  if v_device is null or v_device not in ('android_app', 'apple_app', 'website') then
+    return jsonb_build_object('success', false, 'error', 'Please refresh the page and try again.');
+  end if;
+  if coalesce(v_join, 0) not between 1 and 5 or coalesce(v_roles, 0) not between 1 and 5
+     or coalesce(v_comfort, 0) not between 1 and 5 or v_av is null or v_av not in ('yes', 'mostly', 'no') then
+    return jsonb_build_object('success', false, 'error', 'Please answer the four questions.');
+  end if;
+
+  v_av_note := nullif(btrim(coalesce(p->>'av_note', '')), '');
+  v_comfort_note := nullif(btrim(coalesce(p->>'comfort_note', '')), '');
+  v_confusing := nullif(btrim(coalesce(p->>'confusing', '')), '');
+  if char_length(v_av_note) > 600 or char_length(v_comfort_note) > 600 then
+    return jsonb_build_object('success', false, 'error', 'Please keep each short answer under 600 characters.');
+  end if;
+  if char_length(v_confusing) > 1000 then
+    return jsonb_build_object('success', false, 'error', 'Please keep the last answer under 1,000 characters.');
+  end if;
+
+  insert into session_feedback (session_id, user_id, device, join_ease, av, av_note, roles, comfort, comfort_note,
+                                confusing)
+  values (v_session, v_me, v_device, v_join, v_av, v_av_note, v_roles, v_comfort, v_comfort_note, v_confusing)
+  on conflict (session_id, user_id) do update set
+    device = excluded.device, join_ease = excluded.join_ease, av = excluded.av, av_note = excluded.av_note,
+    roles = excluded.roles, comfort = excluded.comfort, comfort_note = excluded.comfort_note,
+    confusing = excluded.confusing, updated_at = now();
+  return jsonb_build_object('success', true);
+end;
+$$;
+
+-- Admin > Feedback switch.
+create or replace function admin_feedback_setting(p_on boolean)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not is_admin() then
+    return jsonb_build_object('success', false, 'error', 'Only an admin can change this.');
+  end if;
+  if p_on is null then
+    return jsonb_build_object('success', false, 'error', 'Nothing to save.');
+  end if;
+  update app_config set feedback_on = p_on where id = 1;
+  insert into admin_log (admin_id, action, details)
+  values (auth.uid(), 'feedback_setting_saved', jsonb_build_object('on', p_on));
+  return jsonb_build_object('success', true);
+end;
+$$;
+
+-- Admin > Feedback totals: answers, members, members with 3 or more answers (the second free week asks for 3 to 4
+-- sessions and forms), averages of the 1-to-5 questions and the video and audio counts.
+create or replace function admin_feedback_summary()
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  v jsonb;
+begin
+  if not is_admin() then
+    return jsonb_build_object('success', false, 'error', 'Only an admin can see this.');
+  end if;
+  select jsonb_build_object(
+    'success', true,
+    'answers', count(*),
+    'members', count(distinct user_id),
+    'members_3plus', (select count(*) from (select 1 from session_feedback group by user_id having count(*) >= 3) m),
+    'join_avg', round(avg(join_ease), 1),
+    'roles_avg', round(avg(roles), 1),
+    'comfort_avg', round(avg(comfort), 1),
+    'av_yes', count(*) filter (where av = 'yes'),
+    'av_mostly', count(*) filter (where av = 'mostly'),
+    'av_no', count(*) filter (where av = 'no'))
+  into v
+  from session_feedback;
+  return v;
+end;
+$$;
+
+revoke execute on function feedback_status(uuid) from public, anon;
+revoke execute on function submit_session_feedback(jsonb) from public, anon;
+revoke execute on function admin_feedback_setting(boolean) from public, anon;
+revoke execute on function admin_feedback_summary() from public, anon;
+grant execute on function feedback_status(uuid) to authenticated;
+grant execute on function submit_session_feedback(jsonb) to authenticated;
+grant execute on function admin_feedback_setting(boolean) to authenticated;
+grant execute on function admin_feedback_summary() to authenticated;
