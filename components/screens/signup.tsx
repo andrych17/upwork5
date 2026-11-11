@@ -11,6 +11,7 @@ import GoogleButton from '@/components/google-button';
 import HelloRecorder from '@/components/hello-recorder';
 import PasswordInput from '@/components/password-input';
 import { useAccount } from '@/lib/account';
+import { isEmailRateLimit, useEmailWait } from '@/lib/email-wait';
 import { money, usd, type Interval, type Tier } from '@/lib/prices';
 import { usePlans } from '@/lib/use-plans';
 import { savePushSubscription, VAPID_PUBLIC_KEY } from '@/lib/push';
@@ -69,6 +70,7 @@ export default function SignupPage() {
   const [code, setCode] = useState('');
   const [awaitingCode, setAwaitingCode] = useState(false);
   const [notice, setNotice] = useState('');
+  const codeWait = useEmailWait();
   // Step 3
   const [tier, setTier] = useState<Tier>('individual');
   const [plan, setPlan] = useState<Interval>('monthly');
@@ -172,16 +174,27 @@ export default function SignupPage() {
       setAwaitingCode(true);
       setBusy(false);
       setNotice(`We emailed a code to ${email.trim()}. Enter it below to confirm your email.`);
+      codeWait.start();
       return;
     }
     return acceptTerms();
   };
 
   const resendCode = async () => {
+    if (codeWait.left > 0) return;
     setErrorMsg('');
     const { error } = await supabase!.auth.resend({ type: 'signup', email: email.trim() });
-    setNotice(error ? '' : `A new code is on its way to ${email.trim()}.`);
-    if (error) setErrorMsg(error.message);
+    if (error && !isEmailRateLimit(error)) {
+      setNotice('');
+      setErrorMsg('We couldn’t send a new code right now. Please try again in a few minutes.');
+      return;
+    }
+    setNotice(
+      error
+        ? `A code went to ${email.trim()} less than a minute ago. Please check that email first.`
+        : `A new code is on its way to ${email.trim()}.`,
+    );
+    codeWait.start();
   };
 
   const pay = async () => {
@@ -485,8 +498,13 @@ export default function SignupPage() {
                   </label>
                   <p className="signup-switch full-field">
                     No email after a minute? Check spam, or{' '}
-                    <button type="button" className="link-button" onClick={() => void resendCode()}>
-                      send a new code
+                    <button
+                      type="button"
+                      className="link-button"
+                      disabled={codeWait.left > 0}
+                      onClick={() => void resendCode()}
+                    >
+                      {codeWait.left > 0 ? `send a new code in ${codeWait.left}s` : 'send a new code'}
                     </button>
                     .
                   </p>

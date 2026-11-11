@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import GoogleButton from '@/components/google-button';
 import PasswordInput from '@/components/password-input';
+import { isEmailRateLimit, useEmailWait } from '@/lib/email-wait';
 import { mustFinishSignup } from '@/lib/signup-step';
 import { getSupabase, setDemoUser, type MembershipSummary } from '@/lib/supabase';
 
@@ -18,6 +19,9 @@ export default function SigninPage() {
   const [infoMsg, setInfoMsg] = useState('');
   const [loading, setLoading] = useState(false);
   const [mode, setMode] = useState<'signin' | 'forgot'>('signin');
+  // After a reset email is asked for, the form gives way to the message and a timed "Send again".
+  const [sent, setSent] = useState(false);
+  const wait = useEmailWait();
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -80,37 +84,52 @@ export default function SigninPage() {
     }
   };
 
-  const handleForgotPassword = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const sendReset = async () => {
+    if (wait.left > 0) return;
     setErrorMsg('');
     setInfoMsg('');
-
-    if (!email) {
-      setErrorMsg('Please enter your email address to receive reset instructions.');
-      return;
-    }
-
     setLoading(true);
+    const address = email.trim();
     try {
       const supabase = getSupabase();
-      if (supabase) {
-        const { error } = await supabase.auth.resetPasswordForEmail(email, {
-          redirectTo: `${window.location.origin}/password`,
-        });
-        if (error) {
-          setErrorMsg(error.message);
-        } else {
-          setInfoMsg('Check your email for the password reset link.');
-        }
-      } else {
-        setInfoMsg('Reset instructions sent (preview mode). Check your inbox.');
+      const error = supabase
+        ? (await supabase.auth.resetPasswordForEmail(address, { redirectTo: `${window.location.origin}/password` }))
+            .error
+        : null;
+      // The same answer whether or not the address has an account, so the page can't be used to test emails
+      // (Supabase sends nothing to an unknown address). A rate-limit answer means a link went out less than a
+      // minute ago, so it reads the same too.
+      if (error && !isEmailRateLimit(error)) {
+        setErrorMsg('We couldn’t send the email right now. Please try again in a few minutes.');
+        return;
       }
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Could not send reset email.';
-      setErrorMsg(msg);
+      setSent(true);
+      setInfoMsg(
+        `If there is an account for ${address}, we’ve emailed it a link to choose a new password. It can take a few minutes, so check your spam folder too.`,
+      );
+      wait.start();
+    } catch {
+      setErrorMsg('We couldn’t send the email right now. Please try again in a few minutes.');
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email.trim()) {
+      setInfoMsg('');
+      setErrorMsg('Please enter your email address.');
+      return;
+    }
+    await sendReset();
+  };
+
+  const showSignin = () => {
+    setMode('signin');
+    setSent(false);
+    setErrorMsg('');
+    setInfoMsg('');
   };
 
   return (
@@ -223,6 +242,7 @@ export default function SigninPage() {
                     type="button"
                     onClick={() => {
                       setMode('forgot');
+                      setSent(false);
                       setErrorMsg('');
                       setInfoMsg('');
                     }}
@@ -270,8 +290,10 @@ export default function SigninPage() {
           ) : (
             <div className="signup-step">
               <p className="step-count">Account Help</p>
-              <h2>Reset your password</h2>
-              <p className="step-intro">Enter your email and we’ll send a link to securely choose a new password.</p>
+              <h2>{sent ? 'Check your email' : 'Reset your password'}</h2>
+              {!sent && (
+                <p className="step-intro">Enter your email and we’ll send a link to securely choose a new password.</p>
+              )}
 
               {errorMsg && (
                 <div
@@ -291,6 +313,7 @@ export default function SigninPage() {
 
               {infoMsg && (
                 <div
+                  role="status"
                   style={{
                     padding: '12px 16px',
                     borderRadius: '8px',
@@ -305,28 +328,11 @@ export default function SigninPage() {
                 </div>
               )}
 
-              <form onSubmit={handleForgotPassword}>
-                <div className="form-grid">
-                  <label className="full-field">
-                    <span>Email</span>
-                    <input
-                      type="email"
-                      required
-                      placeholder="you@example.com"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                    />
-                  </label>
-                </div>
-
+              {sent ? (
                 <div style={{ marginTop: '28px', display: 'flex', gap: '12px' }}>
                   <button
                     type="button"
-                    onClick={() => {
-                      setMode('signin');
-                      setErrorMsg('');
-                      setInfoMsg('');
-                    }}
+                    onClick={showSignin}
                     style={{
                       padding: '12px 20px',
                       borderRadius: '8px',
@@ -339,14 +345,54 @@ export default function SigninPage() {
                   </button>
                   <button
                     className="signup-next"
-                    type="submit"
-                    disabled={loading}
+                    type="button"
+                    disabled={loading || wait.left > 0}
+                    onClick={() => void sendReset()}
                     style={{ flex: 1, justifyContent: 'center' }}
                   >
-                    {loading ? 'Sending...' : 'Send reset link'}
+                    {loading ? 'Sending...' : wait.left > 0 ? `Send again in ${wait.left}s` : 'Send again'}
                   </button>
                 </div>
-              </form>
+              ) : (
+                <form onSubmit={handleForgotPassword}>
+                  <div className="form-grid">
+                    <label className="full-field">
+                      <span>Email</span>
+                      <input
+                        type="email"
+                        required
+                        placeholder="you@example.com"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                      />
+                    </label>
+                  </div>
+
+                  <div style={{ marginTop: '28px', display: 'flex', gap: '12px' }}>
+                    <button
+                      type="button"
+                      onClick={showSignin}
+                      style={{
+                        padding: '12px 20px',
+                        borderRadius: '8px',
+                        border: '1px solid #d1d5db',
+                        background: 'white',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Back to sign in
+                    </button>
+                    <button
+                      className="signup-next"
+                      type="submit"
+                      disabled={loading || wait.left > 0}
+                      style={{ flex: 1, justifyContent: 'center' }}
+                    >
+                      {loading ? 'Sending...' : wait.left > 0 ? `Send in ${wait.left}s` : 'Send reset link'}
+                    </button>
+                  </div>
+                </form>
+              )}
             </div>
           )}
         </section>

@@ -440,6 +440,13 @@
   font-size: 0.8rem;
 }
 
+/* "send a new code in 42s": waiting, not clickable yet. */
+.link-button:disabled {
+  color: var(--color-muted);
+  cursor: default;
+  text-decoration: none;
+}
+
 .signup-tiers {
   grid-template-columns: 1fr 1fr;
   gap: 10px;
