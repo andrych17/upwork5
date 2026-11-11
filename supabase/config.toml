@@ -249,6 +249,11 @@ sender_name = "MeetDoConnect"
 subject = "Your MeetDoConnect code"
 content_path = "./supabase/templates/confirmation.html"
 
+# Forgot password on /signin: a link back to /password. Both templates come from scripts/auth-emails.ts.
+[auth.email.template.recovery]
+subject = "Reset your MeetDoConnect password"
+content_path = "./supabase/templates/recovery.html"
+
 # Uncomment to customize email template
 # [auth.email.template.invite]
 # subject = "You have been invited"

@@ -1,5 +1,8 @@
 // Words for the 24-hour and 1-hour reminders: app notification, email and SMS.
 // Pure functions with no Deno or Node globals, so `node supabase/functions/_tests/reminder-text.test.ts` can check them.
+import { emailButton, escapeHtml } from './email-layout.ts';
+
+export { escapeHtml };
 
 export type ReminderKind = '24h' | '1h';
 
@@ -18,7 +21,10 @@ export interface ReminderText {
   url: string;
   tag: string;
   subject: string;
+  /** The email's card (emailFrame wraps it) */
   html: string;
+  /** Why they get the email, under the card */
+  footer: string;
   text: string;
   sms: string;
 }
@@ -51,13 +57,6 @@ export function dayWord(start: Date, now: Date, tz: string): string {
   if (day === calendarDay(now, tz)) return 'today';
   if (day === calendarDay(new Date(now.getTime() + 86_400_000), tz)) return 'tomorrow';
   return new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'long' }).format(start);
-}
-
-export function escapeHtml(value: string): string {
-  return value.replace(
-    /[&<>"']/g,
-    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!,
-  );
 }
 
 function capitalize(value: string): string {
@@ -93,13 +92,14 @@ export function reminderText(item: ReminderItem, tz: string, siteUrl: string, no
     `<p>${escapeHtml(greeting)}</p>` +
     `<p><strong>${escapeHtml(title)}</strong></p>` +
     `<p>${escapeHtml(body.replace(/ ?Tap to .*$/, ''))}</p>` +
-    `<p><a href="${escapeHtml(link)}">${item.kind === '24h' ? 'See your session' : 'Check your camera and mic'}</a></p>` +
-    `<p style="color:#666;font-size:12px">You get this because you booked a MeetDoConnect session. ` +
-    `<a href="${escapeHtml(site)}/reminders">Change reminders</a></p>`;
+    emailButton(link, item.kind === '24h' ? 'See your session' : 'Check your camera and mic');
+  const footerHtml =
+    'You get this because you booked a MeetDoConnect session. ' +
+    `<a href="${escapeHtml(site)}/reminders" style="color:#55524c">Change reminders</a>`;
   const sms =
     item.kind === '1h'
       ? `MeetDoConnect: ${item.title} starts in 1 hour (${time}). Room opens ${opens}. ${link} Reply STOP to opt out.`
       : `MeetDoConnect: ${item.title} is ${dayWord(start, now, tz)} at ${time}. ${site}/sessions Reply STOP to opt out.`;
 
-  return { title, body, url, tag, subject: title, html, text, sms };
+  return { title, body, url, tag, subject: title, html, footer: footerHtml, text, sms };
 }

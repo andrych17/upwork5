@@ -11,6 +11,7 @@ import { timingSafeEqual } from 'node:crypto';
 // @ts-types="npm:@types/web-push@3.6.4"
 import webpush from 'npm:web-push@3.6.7';
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2';
+import { emailFrame, preheaderOf } from '../_shared/email-layout.ts';
 import { admin, env, loadKeys } from '../_shared/http.ts';
 import { noticeText, type NoticeItem } from '../_shared/notice-text.ts';
 import { reminderText, type ReminderItem, type ReminderText } from '../_shared/reminder-text.ts';
@@ -61,6 +62,11 @@ function addError(result: Result, message: string) {
   result.error = result.error ? `${result.error}; ${message}` : message;
 }
 
+// Every email goes out in the same frame: logo, card, footer (_shared/email-layout.ts).
+function framed(site: string, mail: { html: string; text: string; footer?: string }): string {
+  return emailFrame({ site, body: mail.html, footer: mail.footer, preheader: preheaderOf(mail.text) });
+}
+
 // ---- App notifications -------------------------------------------------------------------------
 async function sendPush(items: Due[], texts: Map<Due, ReminderText>, results: Map<Due, Result>, dead: Set<string>) {
   const publicKey = env('VAPID_PUBLIC_KEY');
@@ -104,7 +110,7 @@ async function sendPush(items: Due[], texts: Map<Due, ReminderText>, results: Ma
 }
 
 // ---- Email (Resend batch: up to 100 emails per call) --------------------------------------------
-async function sendEmail(items: Due[], texts: Map<Due, ReminderText>, results: Map<Due, Result>) {
+async function sendEmail(items: Due[], texts: Map<Due, ReminderText>, results: Map<Due, Result>, site: string) {
   const key = env('RESEND_API_KEY');
   const from = env('RESEND_FROM');
   if (!key || !from) return;
@@ -119,7 +125,7 @@ async function sendEmail(items: Due[], texts: Map<Due, ReminderText>, results: M
         from,
         to: [item.email],
         subject: text.subject,
-        html: text.html,
+        html: framed(site, text),
         text: text.text,
         ...(replyTo ? { reply_to: replyTo } : {}),
       };
@@ -212,7 +218,7 @@ async function sendNotices(db: SupabaseClient, site: string): Promise<{ notices:
               from,
               to: [item.email],
               subject: text.subject,
-              html: text.html,
+              html: framed(site, text),
               text: text.text,
               ...(replyTo ? { reply_to: replyTo } : {}),
             };
@@ -266,7 +272,7 @@ async function sendTesterCodes(db: SupabaseClient, site: string): Promise<{ code
               from,
               to: [item.email],
               subject: text.subject,
-              html: text.html,
+              html: framed(site, text),
               text: text.text,
               ...(replyTo ? { reply_to: replyTo } : {}),
             };
@@ -315,7 +321,7 @@ async function sendReminders(db: SupabaseClient, site: string) {
 
   await Promise.all([
     sendPush(items, texts, results, dead),
-    sendEmail(items, texts, results),
+    sendEmail(items, texts, results, site),
     sendSms(items, texts, results),
   ]);
 

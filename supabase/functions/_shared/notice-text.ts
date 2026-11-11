@@ -1,5 +1,5 @@
 // Words for the emails about the Hello Video and held bookings. Pure functions, same style as reminder-text.ts.
-import { escapeHtml } from './reminder-text.ts';
+import { emailButton, escapeHtml } from './email-layout.ts';
 
 export type NoticeKind = 'hello_approved' | 'hello_redo' | 'hello_declined' | 'hold_released';
 
@@ -76,6 +76,6 @@ export function noticeText(item: NoticeItem, siteUrl: string): NoticeText {
   const html =
     `<p>${escapeHtml(greeting)}</p>` +
     lines.map((line) => `<p>${escapeHtml(line)}</p>`).join('') +
-    `<p><a href="${escapeHtml(link)}">${escapeHtml(linkLabel)}</a></p>`;
+    emailButton(link, linkLabel);
   return { subject, text, html };
 }

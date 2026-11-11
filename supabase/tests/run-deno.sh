@@ -9,3 +9,4 @@ docker run --rm -v "$PWD/supabase/functions:/fn" -v deno-cache:/deno-dir -w /fn 
 '
 node supabase/functions/_tests/reminder-text.test.ts
 node supabase/functions/_tests/tester-text.test.ts
+node supabase/functions/_tests/email-layout.test.ts

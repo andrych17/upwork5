@@ -1,6 +1,6 @@
 // The free-week code email for people who joined the test on /testers (schema section 37). Kelly's 10 Nov text,
 // with her placeholders filled in. Pure function, same style as notice-text.ts.
-import { escapeHtml } from './reminder-text.ts';
+import { CHIP_STYLE, emailButton, escapeHtml } from './email-layout.ts';
 
 export interface TesterItem {
   id: string;
@@ -86,11 +86,16 @@ export function testerText(item: TesterItem, siteUrl: string): TesterText {
       if ('h' in b) return `<p><strong>${escapeHtml(b.h)}</strong></p>`;
       const tag = 'ol' in b ? 'ol' : 'ul';
       const lines = 'ol' in b ? b.ol : b.ul;
-      return `<${tag}>${lines.map((line) => `<li>${escapeHtml(line)}</li>`).join('')}</${tag}>`;
+      const list = `<${tag}>${lines.map((line) => `<li>${escapeHtml(line)}</li>`).join('')}</${tag}>`;
+      // The steps end with the button for step 1 (email only; the plain text already has the address).
+      return 'ol' in b ? list + emailButton(`${site}/signup`, 'Create your account') : list;
     })
     .join('')
     // The code and the site address stand out in the email.
-    .replace(escapeHtml(`Your code: ${item.code}`), `Your code: <strong>${escapeHtml(item.code)}</strong>`)
+    .replace(
+      `<p>${escapeHtml(`Your code: ${item.code}`)}</p>`,
+      `<p style="${CHIP_STYLE};font-size:20px">Your code: <strong>${escapeHtml(item.code)}</strong></p>`,
+    )
     .replace(escapeHtml(`Go to ${site} `), `Go to <a href="${escapeHtml(site)}">${escapeHtml(site)}</a> `);
 
   return { subject: `Your free week at MeetDoConnect starts ${starts}`, text, html };
